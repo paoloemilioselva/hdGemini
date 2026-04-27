@@ -7,8 +7,9 @@
 
 #include <atomic>
 
-PXR_NAMESPACE_OPEN_SCOPE
+PXR_NAMESPACE_USING_DIRECTIVE
 
+class HdGeminiRenderer;
 class HdGeminiRenderDelegate;
 
 class HdGeminiRenderParam final : public HdRenderParam
@@ -36,7 +37,5 @@ private:
     HdGeminiRenderer* _renderer;
     std::atomic<int> *_sceneVersion;
 };
-
-PXR_NAMESPACE_CLOSE_SCOPE
 
 #endif // HD_GEMINI_RENDER_PARAM_H

@@ -9,10 +9,12 @@
 
 #include "pxr/imaging/hd/camera.h"
 #include "pxr/imaging/hd/tokens.h"
+#include "pxr/base/gf/vec4f.h"
+#include "pxr/base/vt/value.h"
 
 #include <iostream>
 
-PXR_NAMESPACE_OPEN_SCOPE
+PXR_NAMESPACE_USING_DIRECTIVE
 
 const TfTokenVector HdGeminiRenderDelegate::SUPPORTED_RPRIM_TYPES =
 {
@@ -235,5 +237,3 @@ HdGeminiRenderDelegate::RemoveMesh(const SdfPath& id)
 {
     _meshes.erase(id);
 }
-
-PXR_NAMESPACE_CLOSE_SCOPE

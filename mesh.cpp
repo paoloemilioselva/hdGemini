@@ -3,8 +3,10 @@
 #include "renderDelegate.h"
 #include "pxr/imaging/hd/meshUtil.h"
 #include "pxr/imaging/hd/sceneDelegate.h"
+#include "pxr/imaging/hd/tokens.h"
+#include "pxr/base/vt/value.h"
 
-PXR_NAMESPACE_OPEN_SCOPE
+PXR_NAMESPACE_USING_DIRECTIVE
 
 HdGeminiMesh::HdGeminiMesh(SdfPath const& id)
     : HdMesh(id)
@@ -65,5 +67,3 @@ HdGeminiMesh::_PropagateDirtyBits(HdDirtyBits bits) const
 {
     return bits;
 }
-
-PXR_NAMESPACE_CLOSE_SCOPE

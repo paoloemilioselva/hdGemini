@@ -10,7 +10,7 @@
 #include <vector>
 #include <atomic>
 
-PXR_NAMESPACE_OPEN_SCOPE
+PXR_NAMESPACE_USING_DIRECTIVE
 
 class HdGeminiRenderDelegate;
 
@@ -30,6 +30,7 @@ public:
     void MarkAovBuffersUnconverged();
 
 private:
+    static GfVec4f _GetClearColor(VtValue const& clearValue);
     void _RenderTiles(HdRenderThread *renderThread, HdGeminiRenderDelegate* delegate);
 
     HdRenderPassAovBindingVector _aovBindings;
@@ -39,7 +40,5 @@ private:
     GfMatrix4d _inverseViewMatrix;
     GfMatrix4d _inverseProjMatrix;
 };
-
-PXR_NAMESPACE_CLOSE_SCOPE
 
 #endif // HD_GEMINI_RENDERER_H

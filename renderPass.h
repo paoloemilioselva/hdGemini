@@ -5,10 +5,11 @@
 #include "pxr/imaging/hd/renderPass.h"
 #include "pxr/imaging/hd/renderThread.h"
 #include "renderer.h"
+#include "renderBuffer.h"
 
 #include <atomic>
 
-PXR_NAMESPACE_OPEN_SCOPE
+PXR_NAMESPACE_USING_DIRECTIVE
 
 class HdGeminiRenderPass final : public HdRenderPass {
 public:
@@ -38,7 +39,5 @@ private:
     HdGeminiRenderBuffer _colorBuffer;
     HdGeminiRenderBuffer _depthBuffer;
 };
-
-PXR_NAMESPACE_CLOSE_SCOPE
 
 #endif // HD_GEMINI_RENDER_PASS_H

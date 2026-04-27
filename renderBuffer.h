@@ -3,8 +3,9 @@
 
 #include "pxr/pxr.h"
 #include "pxr/imaging/hd/renderBuffer.h"
+#include <vector>
 
-PXR_NAMESPACE_OPEN_SCOPE
+PXR_NAMESPACE_USING_DIRECTIVE
 
 class HdGeminiRenderBuffer final : public HdRenderBuffer {
 public:
@@ -28,13 +29,19 @@ public:
     virtual void Resolve() override {}
     virtual bool IsConverged() const override { return true; }
 
+    void Write(GfVec3i const& pixel, size_t numComponents, float const* value);
+    void Write(GfVec3i const& pixel, size_t numComponents, int const* value);
+    void Clear(size_t numComponents, float const* value);
+    void Clear(size_t numComponents, int const* value);
+
+protected:
+    virtual void _Deallocate() override;
+
 private:
     unsigned int _width, _height;
     HdFormat _format;
     bool _multiSampled;
     std::vector<uint8_t> _buffer;
 };
-
-PXR_NAMESPACE_CLOSE_SCOPE
 
 #endif // HD_GEMINI_RENDER_BUFFER_H

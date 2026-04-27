@@ -3,8 +3,15 @@
 
 #include "pxr/pxr.h"
 #include "pxr/imaging/hd/mesh.h"
+#include "pxr/base/vt/array.h"
+#include "pxr/base/gf/matrix4f.h"
+#include "pxr/base/gf/vec3f.h"
+#include "pxr/base/gf/vec3i.h"
+#include <string>
+#include <vector>
+#include <memory>
 
-PXR_NAMESPACE_OPEN_SCOPE
+PXR_NAMESPACE_USING_DIRECTIVE
 
 class HdGeminiMesh final : public HdMesh {
 public:
@@ -38,7 +45,5 @@ private:
     HdGeminiMesh(const HdGeminiMesh&) = delete;
     HdGeminiMesh &operator =(const HdGeminiMesh&) = delete;
 };
-
-PXR_NAMESPACE_CLOSE_SCOPE
 
 #endif // HD_GEMINI_MESH_H

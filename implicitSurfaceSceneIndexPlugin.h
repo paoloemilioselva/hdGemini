@@ -4,7 +4,7 @@
 #include "pxr/pxr.h"
 #include "pxr/imaging/hd/sceneIndexPlugin.h"
 
-PXR_NAMESPACE_OPEN_SCOPE
+PXR_NAMESPACE_USING_DIRECTIVE
 
 class HdGemini_ImplicitSurfaceSceneIndexPlugin : public HdSceneIndexPlugin
 {
@@ -16,7 +16,5 @@ protected:
         const HdSceneIndexBaseRefPtr &inputScene,
         const HdContainerDataSourceHandle &inputArgs) override;
 };
-
-PXR_NAMESPACE_CLOSE_SCOPE
 
 #endif // HD_GEMINI_IMPLICIT_SURFACE_SCENE_INDEX_PLUGIN_H

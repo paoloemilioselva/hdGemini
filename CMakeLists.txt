@@ -72,7 +72,7 @@ add_library( ${DELEGATE_NAME} SHARED
 target_compile_options( 
     ${DELEGATE_NAME}
     PRIVATE
-    $<$<CXX_COMPILER_ID:MSVC>:/W3 /O2 /wd4273 /Zi>
+    $<$<CXX_COMPILER_ID:MSVC>:/W3 /wd4273 /Zi>
 )
 
 target_link_directories( 

@@ -1,16 +1,23 @@
 @ECHO OFF
-SET CURRENT_FOLDER=%~dp0
-CALL ..\..\usd-26.03_env.bat
-REM The above CALL starts a new cmd.exe at the end because of the batch file content provided.
-REM We might need to adjust or just manually type the commands.
-REM However, for automation, let's assume we can run the logic here.
 
-echo Building hdGemini...
-mkdir build
-cd build
-cmake -G "Ninja" -DTARGET_CONFIG=usd-26.03 ..
-ninja install
-cd ..
+SET USDROOT=C:\dev\usd-26.03
+SET RMANTREE=C:\Program Files\Pixar\RenderManProServer-26.3
+SET USDEXTRA=C:\Users\paolo\Desktop\usd-26.03-extra
+
+SET RMAN_SHADERPATH=%RMANTREE%\lib\shaders;%USDROOT%\plugin\usd\resources\shaders
+SET RMAN_RIXPLUGINPATH=%RMANTREE%\lib\plugins
+SET RMAN_TEXTUREPATH=%RMANTREE%\lib\textures:%RMANTREE%\lib\plugins:%USDROOT%\plugin\usd
+SET RMAN_DISPLAYPATH=%RMANTREE%\lib\plugins
+SET RMAN_PROCEDURALPATH=%RMANTREE%\lib\plugins
+
+SET PXR_PLUGINPATH_NAME=%USDROOT%;%USDROOT%\plugin\usd;%USDEXTRA%\plugin\usd
+
+SET PYTHONPATH=%USDROOT%\lib\python;%USDEXTRA%\lib\python;%PYTHONPATH%
+
+SET PATH=%USDROOT%\bin;%USDEXTRA%\bin;%RMANTREE%\bin;%PATH%
+SET PATH=%USDROOT%\lib;%USDEXTRA%\lib;%RMANTREE%\lib;%PATH%
+
+SET PXR_DEBUG=*
 
 echo Launching usdview with Gemini renderer...
 usdview scene.usda --renderer Gemini

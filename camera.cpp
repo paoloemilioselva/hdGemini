@@ -1,7 +1,5 @@
 #include "camera.h"
 
-PXR_NAMESPACE_OPEN_SCOPE
+PXR_NAMESPACE_USING_DIRECTIVE
 
 // Empty implementation, using standard HdCamera for now.
-
-PXR_NAMESPACE_CLOSE_SCOPE

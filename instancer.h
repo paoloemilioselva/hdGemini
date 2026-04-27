@@ -3,8 +3,10 @@
 
 #include "pxr/pxr.h"
 #include "pxr/imaging/hd/instancer.h"
+#include "pxr/base/vt/array.h"
+#include "pxr/base/gf/matrix4d.h"
 
-PXR_NAMESPACE_OPEN_SCOPE
+PXR_NAMESPACE_USING_DIRECTIVE
 
 class HdGeminiInstancer final : public HdInstancer {
 public:
@@ -17,7 +19,5 @@ public:
 
     VtMatrix4dArray ComputeInstanceTransforms(SdfPath const &prototypeId);
 };
-
-PXR_NAMESPACE_CLOSE_SCOPE
 
 #endif // HD_GEMINI_INSTANCER_H

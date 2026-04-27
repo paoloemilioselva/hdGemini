@@ -4,7 +4,7 @@
 #include "pxr/pxr.h"
 #include "pxr/imaging/hd/light.h"
 
-PXR_NAMESPACE_OPEN_SCOPE
+PXR_NAMESPACE_USING_DIRECTIVE
 
 class HdGeminiLight final : public HdLight {
 public:
@@ -17,7 +17,5 @@ public:
 
     virtual HdDirtyBits GetInitialDirtyBitsMask() const override;
 };
-
-PXR_NAMESPACE_CLOSE_SCOPE
 
 #endif // HD_GEMINI_LIGHT_H

@@ -2,7 +2,7 @@
 #include "renderDelegate.h"
 #include "pxr/imaging/hd/rendererPluginRegistry.h"
 
-PXR_NAMESPACE_OPEN_SCOPE
+PXR_NAMESPACE_USING_DIRECTIVE
 
 TF_REGISTRY_FUNCTION(TfType)
 {
@@ -29,9 +29,8 @@ HdGeminiRendererPlugin::DeleteRenderDelegate(HdRenderDelegate *renderDelegate)
 }
 
 bool 
-HdGeminiRendererPlugin::IsSupported(bool /* glEnabled */) const
+HdGeminiRendererPlugin::IsSupported(HdRendererCreateArgs const& /* createArgs */,
+                                    std::string* /* reasonWhyNot */) const
 {
     return true;
 }
-
-PXR_NAMESPACE_CLOSE_SCOPE

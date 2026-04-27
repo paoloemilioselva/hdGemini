@@ -35,8 +35,12 @@ set (_usd_libs
     usd_usdImaging
     usd_usdHydra
     usd_hdx
+    usd_hdsi
+    usd_hio
     usd_hdSt
     usd_hd
+    usd_python
+    usd_boost
     usd_glf
     usd_garch
     usd_pxOsd

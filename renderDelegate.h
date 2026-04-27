@@ -8,10 +8,13 @@
 #include "renderer.h"
 
 #include <mutex>
+#include <map>
+#include <vector>
 
-PXR_NAMESPACE_OPEN_SCOPE
+PXR_NAMESPACE_USING_DIRECTIVE
 
 class HdGeminiRenderParam;
+class HdGeminiMesh;
 
 class HdGeminiRenderDelegate final : public HdRenderDelegate
 {
@@ -79,7 +82,5 @@ private:
     HdGeminiRenderDelegate(const HdGeminiRenderDelegate &) = delete;
     HdGeminiRenderDelegate &operator =(const HdGeminiRenderDelegate &) = delete;
 };
-
-PXR_NAMESPACE_OPEN_SCOPE
 
 #endif // HD_GEMINI_RENDER_DELEGATE_H

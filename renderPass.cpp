@@ -2,8 +2,11 @@
 #include "renderer.h"
 #include <pxr/imaging/hd/renderPassState.h>
 #include <pxr/imaging/hd/tokens.h>
+#include <pxr/base/gf/vec3i.h>
+#include <pxr/base/gf/vec4f.h>
+#include <pxr/base/vt/value.h>
 
-PXR_NAMESPACE_OPEN_SCOPE
+PXR_NAMESPACE_USING_DIRECTIVE
 
 HdGeminiRenderPass::HdGeminiRenderPass(HdRenderIndex *index,
                                        HdRprimCollection const &collection,
@@ -110,5 +113,3 @@ HdGeminiRenderPass::_Execute(HdRenderPassStateSharedPtr const& renderPassState,
         _renderThread->StartRender();
     }
 }
-
-PXR_NAMESPACE_CLOSE_SCOPE

@@ -4,7 +4,7 @@
 #include "pxr/imaging/hd/tokens.h"
 #include "pxr/imaging/hdsi/implicitSurfaceSceneIndex.h"
 
-PXR_NAMESPACE_OPEN_SCOPE
+PXR_NAMESPACE_USING_DIRECTIVE
 
 TF_DEFINE_PRIVATE_TOKENS(
     _tokens,
@@ -52,5 +52,3 @@ HdGemini_ImplicitSurfaceSceneIndexPlugin::_AppendSceneIndex(
 
     return HdsiImplicitSurfaceSceneIndex::New(inputScene, localInputArgs);
 }
-
-PXR_NAMESPACE_CLOSE_SCOPE

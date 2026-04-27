@@ -1,6 +1,6 @@
 #include "light.h"
 
-PXR_NAMESPACE_OPEN_SCOPE
+PXR_NAMESPACE_USING_DIRECTIVE
 
 HdGeminiLight::HdGeminiLight(SdfPath const& id, TfToken const& lightType)
     : HdLight(id)
@@ -20,5 +20,3 @@ HdGeminiLight::GetInitialDirtyBitsMask() const
 {
     return HdLight::AllDirty;
 }
-
-PXR_NAMESPACE_CLOSE_SCOPE

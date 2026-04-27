@@ -1,6 +1,8 @@
 #include "instancer.h"
+#include "pxr/base/vt/array.h"
+#include "pxr/base/gf/matrix4d.h"
 
-PXR_NAMESPACE_OPEN_SCOPE
+PXR_NAMESPACE_USING_DIRECTIVE
 
 HdGeminiInstancer::HdGeminiInstancer(HdSceneDelegate* delegate, SdfPath const& id)
     : HdInstancer(delegate, id)
@@ -20,5 +22,3 @@ HdGeminiInstancer::ComputeInstanceTransforms(SdfPath const &prototypeId)
 {
     return VtMatrix4dArray();
 }
-
-PXR_NAMESPACE_CLOSE_SCOPE

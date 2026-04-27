@@ -4,7 +4,7 @@
 #include "pxr/pxr.h"
 #include "pxr/imaging/hd/rendererPlugin.h"
 
-PXR_NAMESPACE_OPEN_SCOPE
+PXR_NAMESPACE_USING_DIRECTIVE
 
 class HdGeminiRendererPlugin final : public HdRendererPlugin
 {
@@ -19,13 +19,12 @@ public:
     virtual void DeleteRenderDelegate(
         HdRenderDelegate *renderDelegate) override;
 
-    virtual bool IsSupported(bool glEnabled = true) const override;
+    virtual bool IsSupported(HdRendererCreateArgs const& createArgs,
+                             std::string *reasonWhyNot = nullptr) const override;
 
 private:
     HdGeminiRendererPlugin(const HdGeminiRendererPlugin&) = delete;
     HdGeminiRendererPlugin &operator =(const HdGeminiRendererPlugin&) = delete;
 };
-
-PXR_NAMESPACE_CLOSE_SCOPE
 
 #endif // HD_GEMINI_RENDERER_PLUGIN_H

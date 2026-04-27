@@ -22,20 +22,30 @@ HdGeminiMesh::GetInitialDirtyBitsMask() const
 }
 
 void
-HdGeminiMesh::Sync(HdSceneDelegate *sceneDelegate,
-                   HdRenderParam   *renderParam,
-                   HdDirtyBits     *dirtyBits,
+HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
+                   HdRenderParam*   renderParam,
+                   HdDirtyBits*     dirtyBits,
                    TfToken const   &reprToken)
 {
     HdGeminiRenderParam *geminiRenderParam = static_cast<HdGeminiRenderParam*>(renderParam);
     geminiRenderParam->AcquireSceneForEdit();
 
     const SdfPath& id = GetId();
-    if (HdChangeTracker::IsTopologyDirty(*dirtyBits, id)) {
-        // Handle topology update
+    
+    if (HdChangeTracker::IsTransformDirty(*dirtyBits, id)) {
+        _transform = GfMatrix4f(sceneDelegate->GetTransform(id));
     }
+
     if (HdChangeTracker::IsPrimvarDirty(*dirtyBits, id, HdTokens->points)) {
-        // Handle points update
+        VtValue value = sceneDelegate->Get(id, HdTokens->points);
+        _points = value.Get<VtVec3fArray>();
+    }
+
+    if (HdChangeTracker::IsTopologyDirty(*dirtyBits, id)) {
+        HdMeshTopology topology = GetMeshTopology(sceneDelegate);
+        HdMeshUtil meshUtil(&topology, id);
+        VtIntArray trianglePrimitiveParams;
+        meshUtil.ComputeTriangleIndices(&_triangulatedIndices, &trianglePrimitiveParams);
     }
 
     *dirtyBits &= ~HdChangeTracker::AllSceneDirtyBits;

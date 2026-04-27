@@ -53,6 +53,10 @@ public:
 
     virtual HdAovDescriptor GetDefaultAovDescriptor(TfToken const& name) const override;
 
+    void AddMesh(const SdfPath& id, HdGeminiMesh* mesh);
+    void RemoveMesh(const SdfPath& id);
+    const std::map<SdfPath, HdGeminiMesh*>& GetMeshes() const { return _meshes; }
+
 private:
     static const TfTokenVector SUPPORTED_RPRIM_TYPES;
     static const TfTokenVector SUPPORTED_SPRIM_TYPES;
@@ -69,6 +73,8 @@ private:
     HdGeminiRenderer _renderer;
     
     std::atomic<int> _sceneVersion;
+
+    std::map<SdfPath, HdGeminiMesh*> _meshes;
 
     HdGeminiRenderDelegate(const HdGeminiRenderDelegate &) = delete;
     HdGeminiRenderDelegate &operator =(const HdGeminiRenderDelegate &) = delete;

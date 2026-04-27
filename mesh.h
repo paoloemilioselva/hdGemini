@@ -20,6 +20,10 @@ public:
 
     virtual void Finalize(HdRenderParam *renderParam) override;
 
+    const VtVec3fArray& GetPoints() const { return _points; }
+    const VtVec3iArray& GetIndices() const { return _triangulatedIndices; }
+    const GfMatrix4f& GetTransform() const { return _transform; }
+
 protected:
     virtual void _InitRepr(TfToken const &reprToken,
                            HdDirtyBits *dirtyBits) override;
@@ -27,6 +31,10 @@ protected:
     virtual HdDirtyBits _PropagateDirtyBits(HdDirtyBits bits) const override;
 
 private:
+    VtVec3fArray _points;
+    VtVec3iArray _triangulatedIndices;
+    GfMatrix4f _transform;
+
     HdGeminiMesh(const HdGeminiMesh&) = delete;
     HdGeminiMesh &operator =(const HdGeminiMesh&) = delete;
 };

@@ -223,4 +223,16 @@ HdGeminiRenderDelegate::GetDefaultAovDescriptor(TfToken const& name) const
     return HdAovDescriptor();
 }
 
+void
+HdGeminiRenderDelegate::AddMesh(const SdfPath& id, HdGeminiMesh* mesh)
+{
+    _meshes[id] = mesh;
+}
+
+void
+HdGeminiRenderDelegate::RemoveMesh(const SdfPath& id)
+{
+    _meshes.erase(id);
+}
+
 PXR_NAMESPACE_CLOSE_SCOPE

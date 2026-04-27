@@ -1,0 +1,16 @@
+.vs
+out
+build
+*.user
+*.suo
+*.pdb
+*.ilk
+*.exe
+*.dll
+*.lib
+*.exp
+*.obj
+*.o
+*.a
+*.so
+*.dylib

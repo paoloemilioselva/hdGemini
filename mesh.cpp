@@ -1,5 +1,6 @@
 #include "mesh.h"
 #include "renderParam.h"
+#include "renderDelegate.h"
 #include "pxr/imaging/hd/meshUtil.h"
 #include "pxr/imaging/hd/sceneDelegate.h"
 
@@ -13,6 +14,8 @@ HdGeminiMesh::HdGeminiMesh(SdfPath const& id)
 void
 HdGeminiMesh::Finalize(HdRenderParam *renderParam)
 {
+    HdGeminiRenderParam *geminiRenderParam = static_cast<HdGeminiRenderParam*>(renderParam);
+    geminiRenderParam->GetRenderDelegate()->RemoveMesh(GetId());
 }
 
 HdDirtyBits
@@ -29,6 +32,7 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
 {
     HdGeminiRenderParam *geminiRenderParam = static_cast<HdGeminiRenderParam*>(renderParam);
     geminiRenderParam->AcquireSceneForEdit();
+    geminiRenderParam->GetRenderDelegate()->AddMesh(GetId(), this);
 
     const SdfPath& id = GetId();
     

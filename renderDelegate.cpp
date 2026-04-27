@@ -36,10 +36,11 @@ std::atomic_int HdGeminiRenderDelegate::_counterResourceRegistry;
 HdResourceRegistrySharedPtr HdGeminiRenderDelegate::_resourceRegistry;
 
 static void _RenderCallback(HdGeminiRenderer *renderer,
-                            HdRenderThread *renderThread)
+                            HdRenderThread *renderThread,
+                            HdGeminiRenderDelegate *delegate)
 {
     renderer->Clear();
-    renderer->Render(renderThread);
+    renderer->Render(renderThread, delegate);
 }
 
 HdGeminiRenderDelegate::HdGeminiRenderDelegate()
@@ -60,10 +61,10 @@ HdGeminiRenderDelegate::_Initialize()
 {
     _sceneVersion.store(0);
     _renderParam = std::make_shared<HdGeminiRenderParam>(
-        &_renderThread, &_renderer, &_sceneVersion);
+        this, &_renderThread, &_renderer, &_sceneVersion);
 
     _renderThread.SetRenderCallback(
-        std::bind(_RenderCallback, &_renderer, &_renderThread));
+        std::bind(_RenderCallback, &_renderer, &_renderThread, this));
     _renderThread.StartThread();
 
     std::lock_guard<std::mutex> guard(_mutexResourceRegistry);

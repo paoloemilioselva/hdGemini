@@ -1,5 +1,10 @@
 #include "renderer.h"
+#include "renderDelegate.h"
+#include "renderBuffer.h"
+#include "mesh.h"
 #include <pxr/base/work/loops.h>
+#include <pxr/base/gf/vec3f.h>
+#include <pxr/base/gf/matrix4f.h>
 #include <iostream>
 
 PXR_NAMESPACE_OPEN_SCOPE
@@ -7,6 +12,8 @@ PXR_NAMESPACE_OPEN_SCOPE
 HdGeminiRenderer::HdGeminiRenderer()
     : _viewMatrix(1.0)
     , _projMatrix(1.0)
+    , _inverseViewMatrix(1.0)
+    , _inverseProjMatrix(1.0)
 {
 }
 
@@ -17,6 +24,8 @@ HdGeminiRenderer::SetCamera(const GfMatrix4d& viewMatrix, const GfMatrix4d& proj
 {
     _viewMatrix = viewMatrix;
     _projMatrix = projMatrix;
+    _inverseViewMatrix = viewMatrix.GetInverse();
+    _inverseProjMatrix = projMatrix.GetInverse();
 }
 
 void
@@ -31,10 +40,99 @@ HdGeminiRenderer::SetAovBindings(const HdRenderPassAovBindingVector& aovBindings
     _aovBindings = aovBindings;
 }
 
-void
-HdGeminiRenderer::Render(HdRenderThread *renderThread)
+static bool 
+IntersectTriangle(const GfVec3f& rayOrigin, const GfVec3f& rayDir,
+                  const GfVec3f& v0, const GfVec3f& v1, const GfVec3f& v2,
+                  float& t)
 {
-    // Basic raytracing implementation placeholder
+    GfVec3f edge1 = v1 - v0;
+    GfVec3f edge2 = v2 - v0;
+    GfVec3f pvec = GfCross(rayDir, edge2);
+    float det = GfDot(edge1, pvec);
+    if (std::abs(det) < 1e-8) return false;
+    float invDet = 1.0f / det;
+    GfVec3f tvec = rayOrigin - v0;
+    float u = GfDot(tvec, pvec) * invDet;
+    if (u < 0.0f || u > 1.0f) return false;
+    GfVec3f qvec = GfCross(tvec, edge1);
+    float v = GfDot(rayDir, qvec) * invDet;
+    if (v < 0.0f || u + v > 1.0f) return false;
+    t = GfDot(edge2, qvec) * invDet;
+    return (t > 1e-4);
+}
+
+void
+HdGeminiRenderer::Render(HdRenderThread *renderThread, HdGeminiRenderDelegate* delegate)
+{
+    _RenderTiles(renderThread, delegate);
+}
+
+void
+HdGeminiRenderer::_RenderTiles(HdRenderThread *renderThread, HdGeminiRenderDelegate* delegate)
+{
+    unsigned int width = _dataWindow.GetWidth();
+    unsigned int height = _dataWindow.GetHeight();
+
+    if (width == 0 || height == 0 || _aovBindings.empty()) return;
+
+    HdGeminiRenderBuffer* colorBuffer = static_cast<HdGeminiRenderBuffer*>(_aovBindings[0].renderBuffer);
+
+    const auto& meshes = delegate->GetMeshes();
+
+    WorkParallelForN(height, [&](size_t y_start, size_t y_end) {
+        for (size_t y = y_start; y < y_end; ++y) {
+            for (size_t x = 0; x < width; ++x) {
+                if (renderThread->IsStopRequested()) return;
+
+                // Generate ray
+                float ndcX = (2.0f * x / width) - 1.0f;
+                float ndcY = (2.0f * y / height) - 1.0f;
+                GfVec3f nearPlaneTrace(_inverseProjMatrix.Transform(GfVec3f(ndcX, ndcY, -1.0f)));
+                GfVec3f rayOrigin(_inverseViewMatrix.Transform(GfVec3f(0, 0, 0)));
+                GfVec3f rayDir(_inverseViewMatrix.TransformDir(nearPlaneTrace));
+                rayDir.Normalize();
+
+                float minT = std::numeric_limits<float>::max();
+                GfVec3f hitColor(0.1f, 0.1f, 0.1f);
+                bool hit = false;
+
+                for (auto const& item : meshes) {
+                    HdGeminiMesh* mesh = item.second;
+                    const GfMatrix4f& transform = mesh->GetTransform();
+                    const VtVec3fArray& points = mesh->GetPoints();
+                    const VtVec3iArray& indices = mesh->GetIndices();
+
+                    // Transform ray to object space
+                    GfMatrix4f invTransform = transform.GetInverse();
+                    GfVec3f objRayOrigin = invTransform.Transform(rayOrigin);
+                    GfVec3f objRayDir = invTransform.TransformDir(rayDir);
+
+                    for (const auto& tri : indices) {
+                        float t;
+                        if (IntersectTriangle(objRayOrigin, objRayDir, points[tri[0]], points[tri[1]], points[tri[2]], t)) {
+                            if (t < minT) {
+                                minT = t;
+                                hit = true;
+                                // Simple shading: normal-based
+                                GfVec3f n = GfCross(points[tri[1]] - points[tri[0]], points[tri[2]] - points[tri[0]]);
+                                n.Normalize();
+                                float shade = std::abs(GfDot(n, -objRayDir.GetNormalized()));
+                                hitColor = GfVec3f(shade);
+                            }
+                        }
+                    }
+                }
+
+                if (hit) {
+                    GfVec4f finalColor(hitColor[0], hitColor[1], hitColor[2], 1.0f);
+                    colorBuffer->Write(GfVec3i(x, y, 1), 4, finalColor.data());
+                } else {
+                    GfVec4f bgColor(0.0f, 0.0f, 0.0f, 1.0f);
+                    colorBuffer->Write(GfVec3i(x, y, 1), 4, bgColor.data());
+                }
+            }
+        }
+    });
 }
 
 void

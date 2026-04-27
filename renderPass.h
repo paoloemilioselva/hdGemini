@@ -33,6 +33,8 @@ private:
     std::atomic<int> *_sceneVersion;
     int _lastSceneVersion;
     GfMatrix4d _viewMatrix, _projMatrix;
+    GfRect2i _dataWindow;
+    HdRenderPassAovBindingVector _aovBindings;
 };
 
 PXR_NAMESPACE_CLOSE_SCOPE

@@ -138,11 +138,24 @@ HdGeminiRenderer::_RenderTiles(HdRenderThread *renderThread, HdGeminiRenderDeleg
 void
 HdGeminiRenderer::Clear()
 {
+    for (auto const& binding : _aovBindings) {
+        if (binding.renderBuffer && !binding.clearValue.IsEmpty()) {
+            HdGeminiRenderBuffer* rb = static_cast<HdGeminiRenderBuffer*>(binding.renderBuffer);
+            if (binding.aovName == HdAovTokens->color) {
+                GfVec4f clearColor = binding.clearValue.Get<GfVec4f>();
+                rb->Clear(4, clearColor.data());
+            } else if (rb->GetFormat() == HdFormatFloat32) {
+                float clearValue = binding.clearValue.Get<float>();
+                rb->Clear(1, &clearValue);
+            }
+        }
+    }
 }
 
 void
 HdGeminiRenderer::MarkAovBuffersUnconverged()
 {
+    // Our implementation currently is always converged since it's a single pass
 }
 
 PXR_NAMESPACE_CLOSE_SCOPE

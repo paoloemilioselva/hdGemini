@@ -1,0 +1,22 @@
+{
+    "Plugins": [
+      {
+        "Info": {
+          "Types": {
+            "HdGeminiRendererPlugin": {
+              "bases": [
+                "HdRendererPlugin"
+              ],
+              "displayName": "Gemini",
+              "priority": 99
+            }
+          }
+        },
+        "LibraryPath": "../hdGemini.dll",
+        "Name": "hdGemini",
+        "Type": "library",
+        "ResourcePath": "resources",
+        "Root": ".."
+      }
+    ]
+}

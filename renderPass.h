@@ -35,6 +35,8 @@ private:
     GfMatrix4d _viewMatrix, _projMatrix;
     GfRect2i _dataWindow;
     HdRenderPassAovBindingVector _aovBindings;
+    HdGeminiRenderBuffer _colorBuffer;
+    HdGeminiRenderBuffer _depthBuffer;
 };
 
 PXR_NAMESPACE_CLOSE_SCOPE

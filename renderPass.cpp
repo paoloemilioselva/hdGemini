@@ -18,6 +18,8 @@ HdGeminiRenderPass::HdGeminiRenderPass(HdRenderIndex *index,
     , _viewMatrix(1.0)
     , _projMatrix(1.0)
     , _dataWindow(GfVec2i(0), 0, 0)
+    , _colorBuffer(SdfPath::EmptyPath())
+    , _depthBuffer(SdfPath::EmptyPath())
 {
 }
 
@@ -70,6 +72,13 @@ HdGeminiRenderPass::_Execute(HdRenderPassStateSharedPtr const& renderPassState,
         _dataWindow = dataWindow;
         _renderThread->StopRender();
         _renderer->SetDataWindow(dataWindow);
+
+        if (!renderPassState->GetFraming().IsValid()) {
+            const GfVec3i dimensions(_dataWindow.GetWidth(), _dataWindow.GetHeight(), 1);
+            _colorBuffer.Allocate(dimensions, HdFormatUNorm8Vec4, false);
+            _depthBuffer.Allocate(dimensions, HdFormatFloat32, false);
+        }
+
         needStartRender = true;
     }
 
@@ -77,6 +86,20 @@ HdGeminiRenderPass::_Execute(HdRenderPassStateSharedPtr const& renderPassState,
     if (_aovBindings != aovBindings || _renderer->GetAovBindings().empty()) {
         _aovBindings = aovBindings;
         _renderThread->StopRender();
+
+        if (aovBindings.empty()) {
+            HdRenderPassAovBinding colorAov;
+            colorAov.aovName = HdAovTokens->color;
+            colorAov.renderBuffer = &_colorBuffer;
+            colorAov.clearValue = VtValue(GfVec4f(0.0f, 0.0f, 0.0f, 1.0f));
+            aovBindings.push_back(colorAov);
+            HdRenderPassAovBinding depthAov;
+            depthAov.aovName = HdAovTokens->depth;
+            depthAov.renderBuffer = &_depthBuffer;
+            depthAov.clearValue = VtValue(1.0f);
+            aovBindings.push_back(depthAov);
+        }
+
         _renderer->SetAovBindings(aovBindings);
         _renderer->Clear();
         needStartRender = true;

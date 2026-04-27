@@ -65,6 +65,8 @@ add_library( ${DELEGATE_NAME} SHARED
     renderer.cpp
     renderer.h
     renderParam.h
+    implicitSurfaceSceneIndexPlugin.cpp
+    implicitSurfaceSceneIndexPlugin.h
 )
 
 target_compile_options( 

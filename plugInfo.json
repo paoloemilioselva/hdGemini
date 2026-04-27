@@ -9,6 +9,12 @@
                         ],
                         "displayName": "Gemini",
                         "priority": 99
+                    },
+                    "HdGemini_ImplicitSurfaceSceneIndexPlugin" : {
+                        "bases": ["HdSceneIndexPlugin"],
+                        "loadWithRenderer" : "Gemini",
+                        "priority": 0,
+                        "displayName": "Scene Index to turn implicit surfaces into prims suitable for HdGemini"
                     }
                 }
             },

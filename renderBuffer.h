@@ -3,6 +3,8 @@
 
 #include "pxr/pxr.h"
 #include "pxr/imaging/hd/renderBuffer.h"
+#include "pxr/base/gf/vec3i.h"
+#include "pxr/base/gf/vec4f.h"
 #include <vector>
 #include <atomic>
 
@@ -32,6 +34,7 @@ public:
     virtual bool IsConverged() const override { return _converged.load(); }
     void SetConverged(bool converged) { _converged.store(converged); }
 
+    void WriteSample(GfVec3i const& pixel, GfVec4f const& color);
     void Write(GfVec3i const& pixel, size_t numComponents, float const* value);
     void Write(GfVec3i const& pixel, size_t numComponents, int const* value);
     void Clear(size_t numComponents, float const* value);
@@ -46,6 +49,8 @@ private:
     bool _multiSampled;
     std::vector<uint8_t> _buffer;
     std::vector<uint8_t> _renderBuffer;
+    std::vector<float> _accumBuffer;
+    std::vector<int> _sampleCount;
     std::atomic<bool> _converged;
 };
 

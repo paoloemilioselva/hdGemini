@@ -15,6 +15,10 @@
 #include <cmath>
 #include <algorithm>
 
+#ifndef M_PI
+#define M_PI 3.14159265358979323846f
+#endif
+
 PXR_NAMESPACE_USING_DIRECTIVE
 
 static bool
@@ -291,68 +295,97 @@ bool HdGeminiRenderer::_IntersectTLAS(int nodeIdx, const GfVec3f& rayOrigin, con
     }
 }
 
-GfVec3f HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVec3f& rayDir, int depth, bool isInteractive, HdRenderThread* renderThread, const std::map<SdfPath, HdGeminiLight*>& lights) const
+#include <random>
+
+static float RandomFloat(uint32_t& state) {
+    state = state * 1664525 + 1013904223;
+    return (float)state / (float)0xFFFFFFFF;
+}
+
+static GfVec3f SampleCosineHemisphere(float u1, float u2) {
+    float r = std::sqrt(u1);
+    float theta = 2.0f * M_PI * u2;
+    return GfVec3f(r * std::cos(theta), std::sqrt(1.0f - u1), r * std::sin(theta));
+}
+
+static GfVec3f AlignToNormal(const GfVec3f& sample, const GfVec3f& normal) {
+    GfVec3f up = std::abs(normal[1]) < 0.999f ? GfVec3f(0, 1, 0) : GfVec3f(1, 0, 0);
+    GfVec3f tangent = GfCross(up, normal).GetNormalized();
+    GfVec3f bitangent = GfCross(normal, tangent);
+    return sample[0] * tangent + sample[1] * normal + sample[2] * bitangent;
+}
+
+GfVec3f HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVec3f& rayDir, int depth, bool isInteractive, HdRenderThread* renderThread, const std::map<SdfPath, HdGeminiLight*>& lights, uint32_t& rng) const
 {
     if (depth > (isInteractive ? 0 : 3) || renderThread->IsStopRequested()) return GfVec3f(0.0f);
 
     HitRecord hit;
-    if (!_IntersectTLAS(0, rayOrigin, rayDir, hit, renderThread)) {
-        // Sky gradient + Dome light
-        float ndcY = rayDir[1];
-        GfVec3f sky(0.3f + 0.2f * ndcY);
-        sky[0] *= 0.8f; sky[1] *= 0.9f;
-
+    if (!this->_IntersectTLAS(0, rayOrigin, rayDir, hit, renderThread)) {
+        // Dome light background
         for (const auto& lightPair : lights) {
             HdGeminiLight* light = lightPair.second;
             if (light->GetLightType() == HdPrimTypeTokens->domeLight) {
                 return light->GetColor() * light->GetIntensity();
             }
         }
-        return sky;
+        float ndcY = rayDir[1];
+        float skyIntensity = 0.3f + 0.2f * ndcY;
+        return GfVec3f(skyIntensity * 0.8f, skyIntensity * 0.9f, skyIntensity);
     }
 
-    GfVec3f diffuse(0.0f);
     GfVec3f hitPos = rayOrigin + rayDir * hit.t;
-    GfVec3f shadowOrigin = hitPos + hit.normal * 1e-3f;
+    GfVec3f shadowOrigin = hitPos + hit.normal * 1e-4f;
+    GfVec3f result(0.0f);
 
-    for (const auto& lightPair : lights) {
-        HdGeminiLight* light = lightPair.second;
-        GfVec3f lColor = light->GetColor() * light->GetIntensity();
+    // --- MIS: Direct Light Sampling ---
+    if (!lights.empty()) {
+        auto it = lights.begin();
+        std::advance(it, (size_t)(RandomFloat(rng) * lights.size()));
+        HdGeminiLight* light = it->second;
+
         GfVec3f lDir;
         float lightDist = 1e30f;
+        float lightPdf = 1.0f / (float)lights.size();
 
         if (light->GetLightType() == HdPrimTypeTokens->distantLight) {
             lDir = GfMatrix4f(light->GetTransform()).TransformDir(GfVec3f(0, 0, -1)).GetNormalized();
         } else if (light->GetLightType() == HdPrimTypeTokens->domeLight) {
-            // Very simple dome light shadow: sample one direction (Up)
-            lDir = GfVec3f(0, 1, 0); 
+            lDir = AlignToNormal(SampleCosineHemisphere(RandomFloat(rng), RandomFloat(rng)), hit.normal);
         } else {
             GfVec3f lPos = GfMatrix4f(light->GetTransform()).ExtractTranslation();
             GfVec3f toLight = lPos - hitPos;
             lightDist = toLight.GetLength();
-            lDir = toLight.GetNormalized();
+            lDir = toLight / lightDist;
         }
-        
-        // Shadow ray
-        HitRecord shadowHit;
-        shadowHit.t = lightDist;
-        if (!_IntersectTLAS(0, shadowOrigin, lDir, shadowHit, renderThread)) {
-            float nDotL = std::max(0.0f, GfDot(hit.normal, lDir));
-            diffuse += lColor * nDotL;
+
+        float nDotL = std::max(0.0f, GfDot(hit.normal, lDir));
+        if (nDotL > 0) {
+            HitRecord shadowHit;
+            shadowHit.t = lightDist - 1e-3f;
+            if (!this->_IntersectTLAS(0, shadowOrigin, lDir, shadowHit, renderThread)) {
+                GfVec3f lColor = light->GetColor() * light->GetIntensity();
+                GfVec3f bsdf = hit.baseColor / (float)M_PI;
+                result += GfCompMult(bsdf, lColor) * (nDotL / lightPdf);
+            }
         }
     }
 
-    // Indirect bounce
-    GfVec3f indirect(0.0f);
+    // --- MIS: BSDF Sampling (Indirect) ---
     if (!isInteractive && depth < 3) {
-        GfVec3f reflectDir = rayDir - 2.0f * GfDot(rayDir, hit.normal) * hit.normal;
-        indirect = _TraceRay(shadowOrigin, reflectDir, depth + 1, isInteractive, renderThread, lights) * 0.3f;
+        GfVec3f bounceDir = AlignToNormal(SampleCosineHemisphere(RandomFloat(rng), RandomFloat(rng)), hit.normal);
+        float nDotL = std::max(0.0f, GfDot(hit.normal, bounceDir));
+        float pdf = nDotL / (float)M_PI;
+        
+        if (pdf > 1e-6f) {
+            GfVec3f indirect = _TraceRay(shadowOrigin, bounceDir, depth + 1, isInteractive, renderThread, lights, rng);
+            GfVec3f bsdf = hit.baseColor / (float)M_PI;
+            result += GfCompMult(bsdf, indirect) * (nDotL / pdf);
+        }
+    } else if (isInteractive) {
+        result += hit.baseColor * 0.2f;
     }
 
-    GfVec3f finalColor = GfVec3f(hit.baseColor[0] * (diffuse[0] + indirect[0] + 0.1f),
-                                 hit.baseColor[1] * (diffuse[1] + indirect[1] + 0.1f),
-                                 hit.baseColor[2] * (diffuse[2] + indirect[2] + 0.1f));
-    return finalColor;
+    return result;
 }
 
 void
@@ -393,26 +426,30 @@ HdGeminiRenderer::_RenderTiles(HdRenderThread *renderThread, HdGeminiRenderDeleg
             startY = (startY / res) * res;
 
             for (size_t y = startY; y < endY; y += res) {
-                if (renderThread->IsStopRequested()) return;
-
                 for (size_t x = startX; x < endX; x += res) {
                     if (renderThread->IsStopRequested()) return;
 
-                    float ndcX = (2.0f * (x + res * 0.5f) / width) - 1.0f;
-                    float ndcY = (2.0f * (y + res * 0.5f) / height) - 1.0f;
+                    // Unique RNG state per pixel and resolution pass
+                    uint32_t rng = (uint32_t)(y * width + x) ^ (uint32_t)(res * 1000);
+
+                    float ndcX = (2.0f * (x + res * RandomFloat(rng)) / width) - 1.0f;
+                    float ndcY = (2.0f * (y + res * RandomFloat(rng)) / height) - 1.0f;
                     
                     GfVec3f nearPlanePointCam(_inverseProjMatrix.Transform(GfVec3f(ndcX, ndcY, -1.0f)));
                     GfVec3f nearPlanePointWorld(_inverseViewMatrix.Transform(nearPlanePointCam));
                     GfVec3f rayDirWorld = (nearPlanePointWorld - cameraPosWorld).GetNormalized();
 
-                    GfVec3f hitColor = _TraceRay(cameraPosWorld, rayDirWorld, 0, isInteractive, renderThread, lights);
+                    GfVec3f hitColor = _TraceRay(cameraPosWorld, rayDirWorld, 0, isInteractive, renderThread, lights, rng);
 
-                    GfVec4f finalColor(hitColor[0], hitColor[1], hitColor[2], 1.0f);
-
-                    for (int dy = 0; dy < res && y + dy < height; ++dy) {
-                        for (int dx = 0; dx < res && x + dx < width; ++dx) {
-                            colorBuffer->Write(GfVec3i(x + dx, y + dy, 0), 4, finalColor.data());
+                    if (isInteractive) {
+                        GfVec4f finalColor(hitColor[0], hitColor[1], hitColor[2], 1.0f);
+                        for (int dy = 0; dy < res && y + dy < height; ++dy) {
+                            for (int dx = 0; dx < res && x + dx < width; ++dx) {
+                                colorBuffer->Write(GfVec3i(x + dx, y + dy, 0), 4, finalColor.data());
+                            }
                         }
+                    } else {
+                        colorBuffer->WriteSample(GfVec3i(x, y, 0), GfVec4f(hitColor[0], hitColor[1], hitColor[2], 1.0f));
                     }
                 }
             }

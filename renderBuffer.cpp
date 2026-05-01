@@ -26,6 +26,8 @@ HdGeminiRenderBuffer::Allocate(GfVec3i const& dimensions,
     size_t size = _width * _height * HdDataSizeOfFormat(format);
     _buffer.resize(size);
     _renderBuffer.resize(size);
+    _accumBuffer.assign(_width * _height * 4, 0.0f);
+    _sampleCount.assign(_width * _height, 0);
     return true;
 }
 
@@ -37,6 +39,34 @@ HdGeminiRenderBuffer::_Deallocate()
     _format = HdFormatInvalid;
     _buffer.clear();
     _renderBuffer.clear();
+    _accumBuffer.clear();
+    _sampleCount.clear();
+}
+
+void
+HdGeminiRenderBuffer::WriteSample(GfVec3i const& pixel, GfVec4f const& color)
+{
+    if (pixel[0] < 0 || pixel[0] >= (int)_width ||
+        pixel[1] < 0 || pixel[1] >= (int)_height) {
+        return;
+    }
+
+    size_t idx = pixel[1] * _width + pixel[0];
+    _accumBuffer[idx * 4 + 0] += color[0];
+    _accumBuffer[idx * 4 + 1] += color[1];
+    _accumBuffer[idx * 4 + 2] += color[2];
+    _accumBuffer[idx * 4 + 3] += color[3];
+    _sampleCount[idx]++;
+
+    float invCount = 1.0f / _sampleCount[idx];
+    GfVec4f avgColor(
+        _accumBuffer[idx * 4 + 0] * invCount,
+        _accumBuffer[idx * 4 + 1] * invCount,
+        _accumBuffer[idx * 4 + 2] * invCount,
+        _accumBuffer[idx * 4 + 3] * invCount
+    );
+
+    Write(pixel, 4, avgColor.data());
 }
 
 void
@@ -116,6 +146,8 @@ HdGeminiRenderBuffer::Clear(size_t numComponents, float const* value)
         uint8_t *dst = &_renderBuffer[i * formatSize];
         _WriteOutput(_format, dst, numComponents, value);
     }
+    _accumBuffer.assign(_width * _height * 4, 0.0f);
+    _sampleCount.assign(_width * _height, 0);
 }
 
 void
@@ -126,4 +158,6 @@ HdGeminiRenderBuffer::Clear(size_t numComponents, int const* value)
         uint8_t *dst = &_renderBuffer[i * formatSize];
         _WriteOutput(_format, dst, numComponents, value);
     }
+    _accumBuffer.assign(_width * _height * 4, 0.0f);
+    _sampleCount.assign(_width * _height, 0);
 }

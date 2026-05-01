@@ -11,6 +11,7 @@ PXR_NAMESPACE_USING_DIRECTIVE
 HdGeminiMesh::HdGeminiMesh(SdfPath const& id)
     : HdMesh(id)
     , _visible(true)
+    , _bvhDirty(true)
 {
 }
 
@@ -62,10 +63,10 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
         HdMeshUtil meshUtil(&topology, id);
         VtIntArray trianglePrimitiveParams;
         meshUtil.ComputeTriangleIndices(&_triangulatedIndices, &trianglePrimitiveParams);
-        _bvh.Build(_points, _triangulatedIndices);
+        _bvhDirty = true;
     } else if (HdChangeTracker::IsPrimvarDirty(*dirtyBits, id, HdTokens->points)) {
         // If points changed but topology didn't, we still need to rebuild BVH
-        _bvh.Build(_points, _triangulatedIndices);
+        _bvhDirty = true;
     }
 
     *dirtyBits &= ~HdChangeTracker::AllSceneDirtyBits;

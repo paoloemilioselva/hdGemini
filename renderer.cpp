@@ -127,7 +127,7 @@ HdGeminiRenderer::_PrepareScene(HdRenderThread *renderThread, HdGeminiRenderDele
         if (renderThread->IsStopRequested()) return;
         
         HdGeminiMesh* mesh = item.second;
-        if (!mesh->IsVisible()) continue;
+        // if (!mesh->IsVisible()) continue;
 
         GfRange3f meshBounds = mesh->GetRange();
         if (meshBounds.IsEmpty()) continue;
@@ -157,6 +157,12 @@ HdGeminiRenderer::_PrepareScene(HdRenderThread *renderThread, HdGeminiRenderDele
         inst.bounds = TransformBounds(meshBounds, inst.transform);
         inst.centroid = (inst.bounds.GetMin() + inst.bounds.GetMax()) * 0.5f;
         _instances.push_back(inst);
+    }
+    
+    // Pre-build BVHs sequentially before parallel rendering
+    for (auto& inst : _instances) {
+        if (renderThread->IsStopRequested()) return;
+        inst.mesh->GetBVH();
     }
     
     _BuildTLAS(renderThread);

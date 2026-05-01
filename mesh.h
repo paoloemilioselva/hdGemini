@@ -32,7 +32,13 @@ public:
     const VtVec3iArray& GetIndices() const { return _triangulatedIndices; }
     const GfMatrix4f& GetTransform() const { return _transform; }
     const GfRange3f& GetRange() const { return _range; }
-    const BVH& GetBVH() const { return _bvh; }
+    BVH& GetBVH() { 
+        if (_bvhDirty) {
+            _bvh.Build(_points, _triangulatedIndices);
+            _bvhDirty = false;
+        }
+        return _bvh; 
+    }
     const SdfPath& GetInstancerId() const { return _instancerId; }
     bool IsVisible() const { return _visible; }
 
@@ -50,6 +56,7 @@ private:
     BVH _bvh;
     SdfPath _instancerId;
     bool _visible;
+    bool _bvhDirty;
 
     HdGeminiMesh(const HdGeminiMesh&) = delete;
     HdGeminiMesh &operator =(const HdGeminiMesh&) = delete;

@@ -297,7 +297,7 @@ HdGeminiRenderer::_RenderTiles(HdRenderThread *renderThread, HdGeminiRenderDeleg
     GfVec3f cameraPosWorld(_inverseViewMatrix.Transform(GfVec3f(0, 0, 0)));
 
     int res = _resolutionLevel;
-    const int bucketSize = 32;
+    const int bucketSize = 16;
     size_t numBucketsX = (width + bucketSize - 1) / bucketSize;
     size_t numBucketsY = (height + bucketSize - 1) / bucketSize;
     size_t numBuckets = numBucketsX * numBucketsY;

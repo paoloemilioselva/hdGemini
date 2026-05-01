@@ -32,7 +32,7 @@ public:
     void Render(HdRenderThread *renderThread, HdGeminiRenderDelegate* delegate);
     void Clear();
     void MarkAovBuffersUnconverged();
-    bool IsConverged() const { return _resolutionLevel <= 0; }
+    bool IsConverged() const { return false; } // Keep accumulating samples
 
 private:
     struct MeshInstance {

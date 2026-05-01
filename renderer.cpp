@@ -118,16 +118,13 @@ HdGeminiRenderer::Render(HdRenderThread *renderThread, HdGeminiRenderDelegate* d
         if (binding.renderBuffer) {
             auto* rb = static_cast<HdGeminiRenderBuffer*>(binding.renderBuffer);
             rb->Resolve();
-            if (_resolutionLevel <= 1) {
-                rb->SetConverged(true);
-            }
         }
     }
 
     if (_resolutionLevel > 1) {
         _resolutionLevel /= 2;
-    } else if (_resolutionLevel == 1) {
-        _resolutionLevel = 0; // Mark as converged
+    } else {
+        _resolutionLevel = 1;
     }
 }
 

@@ -291,56 +291,62 @@ bool HdGeminiRenderer::_IntersectTLAS(int nodeIdx, const GfVec3f& rayOrigin, con
     }
 }
 
-GfVec3f HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVec3f& rayDir, int depth, HdRenderThread* renderThread, const std::map<SdfPath, HdGeminiLight*>& lights) const
+GfVec3f HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVec3f& rayDir, int depth, bool isInteractive, HdRenderThread* renderThread, const std::map<SdfPath, HdGeminiLight*>& lights) const
 {
-    if (depth > 3 || renderThread->IsStopRequested()) return GfVec3f(0.0f);
+    if (depth > (isInteractive ? 0 : 3) || renderThread->IsStopRequested()) return GfVec3f(0.0f);
 
     HitRecord hit;
     if (!_IntersectTLAS(0, rayOrigin, rayDir, hit, renderThread)) {
-        // Sky gradient
+        // Sky gradient + Dome light
         float ndcY = rayDir[1];
-        float sky = 0.3f + 0.2f * ndcY;
-        return GfVec3f(sky * 0.8f, sky * 0.9f, sky);
+        GfVec3f sky(0.3f + 0.2f * ndcY);
+        sky[0] *= 0.8f; sky[1] *= 0.9f;
+
+        for (const auto& lightPair : lights) {
+            HdGeminiLight* light = lightPair.second;
+            if (light->GetLightType() == HdPrimTypeTokens->domeLight) {
+                return light->GetColor() * light->GetIntensity();
+            }
+        }
+        return sky;
     }
 
     GfVec3f diffuse(0.0f);
     GfVec3f hitPos = rayOrigin + rayDir * hit.t;
     GfVec3f shadowOrigin = hitPos + hit.normal * 1e-3f;
 
-    if (lights.empty()) {
-        float shade = std::abs(GfDot(hit.normal, -rayDir));
-        diffuse = GfVec3f(shade * 0.8f + 0.2f);
-    } else {
-        for (const auto& lightPair : lights) {
-            HdGeminiLight* light = lightPair.second;
-            GfVec3f lColor = light->GetColor() * light->GetIntensity();
-            GfVec3f lDir;
-            float lightDist = 1e30f;
+    for (const auto& lightPair : lights) {
+        HdGeminiLight* light = lightPair.second;
+        GfVec3f lColor = light->GetColor() * light->GetIntensity();
+        GfVec3f lDir;
+        float lightDist = 1e30f;
 
-            if (light->GetLightType() == HdPrimTypeTokens->distantLight) {
-                lDir = GfMatrix4f(light->GetTransform()).TransformDir(GfVec3f(0, 0, -1)).GetNormalized();
-            } else {
-                GfVec3f lPos = GfMatrix4f(light->GetTransform()).ExtractTranslation();
-                GfVec3f toLight = lPos - hitPos;
-                lightDist = toLight.GetLength();
-                lDir = toLight.GetNormalized();
-            }
-            
-            // Shadow ray
-            HitRecord shadowHit;
-            shadowHit.t = lightDist;
-            if (!_IntersectTLAS(0, shadowOrigin, lDir, shadowHit, renderThread)) {
-                float nDotL = std::max(0.0f, GfDot(hit.normal, lDir));
-                diffuse += lColor * nDotL;
-            }
+        if (light->GetLightType() == HdPrimTypeTokens->distantLight) {
+            lDir = GfMatrix4f(light->GetTransform()).TransformDir(GfVec3f(0, 0, -1)).GetNormalized();
+        } else if (light->GetLightType() == HdPrimTypeTokens->domeLight) {
+            // Very simple dome light shadow: sample one direction (Up)
+            lDir = GfVec3f(0, 1, 0); 
+        } else {
+            GfVec3f lPos = GfMatrix4f(light->GetTransform()).ExtractTranslation();
+            GfVec3f toLight = lPos - hitPos;
+            lightDist = toLight.GetLength();
+            lDir = toLight.GetNormalized();
+        }
+        
+        // Shadow ray
+        HitRecord shadowHit;
+        shadowHit.t = lightDist;
+        if (!_IntersectTLAS(0, shadowOrigin, lDir, shadowHit, renderThread)) {
+            float nDotL = std::max(0.0f, GfDot(hit.normal, lDir));
+            diffuse += lColor * nDotL;
         }
     }
 
-    // Indirect bounce (simple reflection for now to show multiple bounces)
+    // Indirect bounce
     GfVec3f indirect(0.0f);
-    if (depth < 3) {
+    if (!isInteractive && depth < 3) {
         GfVec3f reflectDir = rayDir - 2.0f * GfDot(rayDir, hit.normal) * hit.normal;
-        indirect = _TraceRay(shadowOrigin, reflectDir, depth + 1, renderThread, lights) * 0.3f;
+        indirect = _TraceRay(shadowOrigin, reflectDir, depth + 1, isInteractive, renderThread, lights) * 0.3f;
     }
 
     GfVec3f finalColor = GfVec3f(hit.baseColor[0] * (diffuse[0] + indirect[0] + 0.1f),
@@ -365,6 +371,7 @@ HdGeminiRenderer::_RenderTiles(HdRenderThread *renderThread, HdGeminiRenderDeleg
     const auto& lights = delegate->GetLights();
 
     int res = _resolutionLevel;
+    bool isInteractive = (res > 1);
     const int bucketSize = 16;
     size_t numBucketsX = (width + bucketSize - 1) / bucketSize;
     size_t numBucketsY = (height + bucketSize - 1) / bucketSize;
@@ -398,7 +405,7 @@ HdGeminiRenderer::_RenderTiles(HdRenderThread *renderThread, HdGeminiRenderDeleg
                     GfVec3f nearPlanePointWorld(_inverseViewMatrix.Transform(nearPlanePointCam));
                     GfVec3f rayDirWorld = (nearPlanePointWorld - cameraPosWorld).GetNormalized();
 
-                    GfVec3f hitColor = _TraceRay(cameraPosWorld, rayDirWorld, 0, renderThread, lights);
+                    GfVec3f hitColor = _TraceRay(cameraPosWorld, rayDirWorld, 0, isInteractive, renderThread, lights);
 
                     GfVec4f finalColor(hitColor[0], hitColor[1], hitColor[2], 1.0f);
 

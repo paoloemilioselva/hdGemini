@@ -26,6 +26,7 @@ const TfTokenVector HdGeminiRenderDelegate::SUPPORTED_SPRIM_TYPES =
     HdPrimTypeTokens->camera,
     HdPrimTypeTokens->distantLight,
     HdPrimTypeTokens->sphereLight,
+    HdPrimTypeTokens->domeLight,
 };
 
 const TfTokenVector HdGeminiRenderDelegate::SUPPORTED_BPRIM_TYPES =
@@ -165,7 +166,8 @@ HdGeminiRenderDelegate::CreateSprim(TfToken const& typeId,
     if (typeId == HdPrimTypeTokens->camera) {
         return new HdCamera(sprimId);
     } else if (typeId == HdPrimTypeTokens->distantLight ||
-               typeId == HdPrimTypeTokens->sphereLight) {
+               typeId == HdPrimTypeTokens->sphereLight ||
+               typeId == HdPrimTypeTokens->domeLight) {
         return new HdGeminiLight(sprimId, typeId);
     }
     return nullptr;
@@ -177,7 +179,8 @@ HdGeminiRenderDelegate::CreateFallbackSprim(TfToken const& typeId)
     if (typeId == HdPrimTypeTokens->camera) {
         return new HdCamera(SdfPath::EmptyPath());
     } else if (typeId == HdPrimTypeTokens->distantLight ||
-               typeId == HdPrimTypeTokens->sphereLight) {
+               typeId == HdPrimTypeTokens->sphereLight ||
+               typeId == HdPrimTypeTokens->domeLight) {
         return new HdGeminiLight(SdfPath::EmptyPath(), typeId);
     }
     return nullptr;

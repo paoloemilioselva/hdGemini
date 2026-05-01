@@ -82,6 +82,7 @@ private:
     int _envMapHeight = 0;
     std::vector<float> _envMapRowCdf;
     std::vector<float> _envMapColCdf;
+    float _envMapTotalLuminance = 0.0f;
 };
 
 #endif // HD_GEMINI_RENDERER_H

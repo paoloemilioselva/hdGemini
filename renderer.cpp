@@ -183,14 +183,14 @@ HdGeminiRenderer::_PrepareScene(HdRenderThread *renderThread, HdGeminiRenderDele
                     _envMapRowCdf.assign(_envMapHeight + 1, 0.0f);
                     _envMapColCdf.assign(_envMapHeight * (_envMapWidth + 1), 0.0f);
 
-                    float totalLuminance = 0.0f;
+                    _envMapTotalLuminance = 0.0f;
                     for (int y = 0; y < _envMapHeight; ++y) {
                         float rowLuminance = 0.0f;
                         float sinTheta = std::sin(M_PI * (float)(y + 0.5f) / (float)_envMapHeight);
                         for (int x = 0; x < _envMapWidth; ++x) {
                             size_t idx = (y * _envMapWidth + x) * 3;
                             float lum = 0.2126f * _envMapPixels[idx] + 0.7152f * _envMapPixels[idx+1] + 0.0722f * _envMapPixels[idx+2];
-                            lum *= sinTheta; // Account for area distortion
+                            lum *= sinTheta;
                             rowLuminance += lum;
                             _envMapColCdf[y * (_envMapWidth + 1) + x + 1] = _envMapColCdf[y * (_envMapWidth + 1) + x] + lum;
                         }
@@ -199,12 +199,12 @@ HdGeminiRenderer::_PrepareScene(HdRenderThread *renderThread, HdGeminiRenderDele
                                 _envMapColCdf[y * (_envMapWidth + 1) + x] /= rowLuminance;
                             }
                         }
-                        totalLuminance += rowLuminance;
+                        _envMapTotalLuminance += rowLuminance;
                         _envMapRowCdf[y + 1] = _envMapRowCdf[y] + rowLuminance;
                     }
-                    if (totalLuminance > 0) {
+                    if (_envMapTotalLuminance > 0) {
                         for (int y = 0; y <= _envMapHeight; ++y) {
-                            _envMapRowCdf[y] /= totalLuminance;
+                            _envMapRowCdf[y] /= _envMapTotalLuminance;
                         }
                     }
                 }
@@ -217,6 +217,7 @@ HdGeminiRenderer::_PrepareScene(HdRenderThread *renderThread, HdGeminiRenderDele
         _envMapWidth = _envMapHeight = 0;
         _envMapRowCdf.clear();
         _envMapColCdf.clear();
+        _envMapTotalLuminance = 0.0f;
     }
 
     for (auto const& item : meshes) {
@@ -410,6 +411,24 @@ GfVec3f HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVec3f& ray
 
         if (light->GetLightType() == HdPrimTypeTokens->distantLight) {
             lDir = GfMatrix4f(light->GetTransform()).TransformDir(GfVec3f(0, 0, -1)).GetNormalized();
+        } else if (light->GetLightType() == HdPrimTypeTokens->domeLight && !_envMapRowCdf.empty()) {
+            float u1 = RandomFloat(rng);
+            float u2 = RandomFloat(rng);
+            auto itY = std::lower_bound(_envMapRowCdf.begin(), _envMapRowCdf.end(), u1);
+            int y = std::clamp((int)std::distance(_envMapRowCdf.begin(), itY) - 1, 0, _envMapHeight - 1);
+            const float* colCdf = &_envMapColCdf[y * (_envMapWidth + 1)];
+            auto itX = std::lower_bound(colCdf, colCdf + _envMapWidth + 1, u2);
+            int x = std::clamp((int)std::distance(colCdf, itX) - 1, 0, _envMapWidth - 1);
+            float theta = M_PI * (float)(y + 0.5f) / (float)_envMapHeight;
+            float phi = 2.0f * M_PI * (float)(x + 0.5f) / (float)_envMapWidth;
+            lDir = GfVec3f(std::sin(theta) * std::cos(phi), std::cos(theta), std::sin(theta) * std::sin(phi));
+            size_t idx = (y * _envMapWidth + x) * 3;
+            float lum = 0.2126f * _envMapPixels[idx] + 0.7152f * _envMapPixels[idx+1] + 0.0722f * _envMapPixels[idx+2];
+            float sinTheta = std::sin(theta);
+            if (sinTheta > 1e-4f && _envMapTotalLuminance > 0) {
+                float pdf = lum * sinTheta / (_envMapTotalLuminance * (M_PI / _envMapHeight) * (2.0f * M_PI / _envMapWidth));
+                lightPdf *= pdf;
+            }
         } else if (light->GetLightType() == HdPrimTypeTokens->domeLight) {
             lDir = AlignToNormal(SampleCosineHemisphere(RandomFloat(rng), RandomFloat(rng)), hit.normal);
         } else {

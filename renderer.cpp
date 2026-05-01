@@ -179,7 +179,6 @@ HdGeminiRenderer::_PrepareScene(HdRenderThread *renderThread, HdGeminiRenderDele
                     image->Read(spec);
                     foundDome = true;
 
-                    // Build 2D CDF
                     _envMapRowCdf.assign(_envMapHeight + 1, 0.0f);
                     _envMapColCdf.assign(_envMapHeight * (_envMapWidth + 1), 0.0f);
 
@@ -422,13 +421,24 @@ GfVec3f HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVec3f& ray
             float theta = M_PI * (float)(y + 0.5f) / (float)_envMapHeight;
             float phi = 2.0f * M_PI * (float)(x + 0.5f) / (float)_envMapWidth;
             lDir = GfVec3f(std::sin(theta) * std::cos(phi), std::cos(theta), std::sin(theta) * std::sin(phi));
+
             size_t idx = (y * _envMapWidth + x) * 3;
-            float lum = 0.2126f * _envMapPixels[idx] + 0.7152f * _envMapPixels[idx+1] + 0.0722f * _envMapPixels[idx+2];
-            float sinTheta = std::sin(theta);
-            if (sinTheta > 1e-4f && _envMapTotalLuminance > 0) {
-                float pdf = lum * sinTheta / (_envMapTotalLuminance * (M_PI / _envMapHeight) * (2.0f * M_PI / _envMapWidth));
-                lightPdf *= pdf;
+            HitRecord shadowHit;
+            shadowHit.t = 1e30f;
+            if (!this->_IntersectTLAS(0, shadowOrigin, lDir, shadowHit, renderThread)) {
+                GfVec3f texColor(_envMapPixels[idx], _envMapPixels[idx+1], _envMapPixels[idx+2]);
+                GfVec3f lColor = GfCompMult(texColor, light->GetColor()) * light->GetIntensity();
+                float lum = 0.2126f * texColor[0] + 0.7152f * texColor[1] + 0.0722f * texColor[2];
+                if (_envMapTotalLuminance > 0) {
+                    float pdf = lum / (_envMapTotalLuminance * (M_PI / (float)_envMapHeight) * (2.0f * M_PI / (float)_envMapWidth));
+                    if (pdf > 1e-6f) {
+                        GfVec3f bsdf = hit.baseColor / (float)M_PI;
+                        float nDotL = std::max(0.0f, GfDot(hit.normal, lDir));
+                        result += GfCompMult(bsdf, lColor) * (nDotL / (lightPdf * pdf));
+                    }
+                }
             }
+            return result; // Early return for importance sampled light
         } else if (light->GetLightType() == HdPrimTypeTokens->domeLight) {
             lDir = AlignToNormal(SampleCosineHemisphere(RandomFloat(rng), RandomFloat(rng)), hit.normal);
         } else {

@@ -10,6 +10,7 @@ PXR_NAMESPACE_USING_DIRECTIVE
 
 HdGeminiMesh::HdGeminiMesh(SdfPath const& id)
     : HdMesh(id)
+    , _visible(true)
 {
 }
 
@@ -38,6 +39,10 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
 
     const SdfPath& id = GetId();
     _instancerId = sceneDelegate->GetInstancerId(id);
+    
+    if (HdChangeTracker::IsVisibilityDirty(*dirtyBits, id)) {
+        _visible = sceneDelegate->GetVisible(id);
+    }
     
     if (HdChangeTracker::IsTransformDirty(*dirtyBits, id)) {
         _transform = GfMatrix4f(sceneDelegate->GetTransform(id));

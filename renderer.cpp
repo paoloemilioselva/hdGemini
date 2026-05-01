@@ -127,6 +127,8 @@ HdGeminiRenderer::_PrepareScene(HdRenderThread *renderThread, HdGeminiRenderDele
         if (renderThread->IsStopRequested()) return;
         
         HdGeminiMesh* mesh = item.second;
+        if (!mesh->IsVisible()) continue;
+
         GfRange3f meshBounds = mesh->GetRange();
         if (meshBounds.IsEmpty()) continue;
         

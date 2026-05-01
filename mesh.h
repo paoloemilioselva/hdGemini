@@ -34,6 +34,7 @@ public:
     const GfRange3f& GetRange() const { return _range; }
     const BVH& GetBVH() const { return _bvh; }
     const SdfPath& GetInstancerId() const { return _instancerId; }
+    bool IsVisible() const { return _visible; }
 
 protected:
     virtual void _InitRepr(TfToken const &reprToken,
@@ -48,6 +49,7 @@ private:
     GfRange3f _range;
     BVH _bvh;
     SdfPath _instancerId;
+    bool _visible;
 
     HdGeminiMesh(const HdGeminiMesh&) = delete;
     HdGeminiMesh &operator =(const HdGeminiMesh&) = delete;

@@ -16,6 +16,7 @@ PXR_NAMESPACE_USING_DIRECTIVE
 class HdGeminiRenderParam;
 class HdGeminiMesh;
 class HdGeminiInstancer;
+class HdGeminiLight;
 
 class HdGeminiRenderDelegate final : public HdRenderDelegate
 {
@@ -65,6 +66,10 @@ public:
     void RemoveInstancer(const SdfPath& id);
     HdGeminiInstancer* GetInstancer(const SdfPath& id) const;
 
+    void AddLight(const SdfPath& id, HdGeminiLight* light);
+    void RemoveLight(const SdfPath& id);
+    const std::map<SdfPath, HdGeminiLight*>& GetLights() const { return _lights; }
+
     std::mutex& GetSceneLock() { return _sceneLock; }
 
 private:
@@ -86,6 +91,7 @@ private:
 
     std::map<SdfPath, HdGeminiMesh*> _meshes;
     std::map<SdfPath, HdGeminiInstancer*> _instancers;
+    std::map<SdfPath, HdGeminiLight*> _lights;
     std::mutex _sceneLock;
 
     HdGeminiRenderDelegate(const HdGeminiRenderDelegate &) = delete;

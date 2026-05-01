@@ -186,7 +186,10 @@ HdGeminiRenderDelegate::CreateFallbackSprim(TfToken const& typeId)
 void
 HdGeminiRenderDelegate::DestroySprim(HdSprim *sPrim)
 {
-    delete sPrim;
+    if (sPrim) {
+        RemoveLight(sPrim->GetId());
+        delete sPrim;
+    }
 }
 
 HdBprim *
@@ -243,6 +246,20 @@ HdGeminiRenderDelegate::RemoveMesh(const SdfPath& id)
 {
     std::lock_guard<std::mutex> lock(_sceneLock);
     _meshes.erase(id);
+}
+
+void
+HdGeminiRenderDelegate::AddLight(const SdfPath& id, HdGeminiLight* light)
+{
+    std::lock_guard<std::mutex> lock(_sceneLock);
+    _lights[id] = light;
+}
+
+void
+HdGeminiRenderDelegate::RemoveLight(const SdfPath& id)
+{
+    std::lock_guard<std::mutex> lock(_sceneLock);
+    _lights.erase(id);
 }
 
 void

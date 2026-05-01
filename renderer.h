@@ -16,6 +16,7 @@ PXR_NAMESPACE_USING_DIRECTIVE
 
 class HdGeminiRenderDelegate;
 class HdGeminiMesh;
+class HdGeminiLight;
 
 class HdGeminiRenderer final
 {
@@ -53,7 +54,7 @@ private:
     void _PrepareScene(HdRenderThread *renderThread, HdGeminiRenderDelegate* delegate);
     void _BuildTLAS(HdRenderThread *renderThread);
     void _SubdivideTLAS(int nodeIdx, int start, int end, HdRenderThread *renderThread);
-    bool _IntersectTLAS(int nodeIdx, const GfVec3f& rayOrigin, const GfVec3f& rayDir, float& t, GfVec3f& normal, GfVec3f& hitColor, HdRenderThread* renderThread) const;
+    bool _IntersectTLAS(int nodeIdx, const GfVec3f& rayOrigin, const GfVec3f& rayDir, float& t, GfVec3f& normal, GfVec3f& hitColor, HdRenderThread* renderThread, const std::map<SdfPath, HdGeminiLight*>& lights) const;
 
     HdRenderPassAovBindingVector _aovBindings;
     GfRect2i _dataWindow;

@@ -50,6 +50,9 @@ protected:
     virtual HdDirtyBits _PropagateDirtyBits(HdDirtyBits bits) const override;
 
 private:
+    void _UpdateComputedPrimvarSources(HdSceneDelegate* sceneDelegate,
+                                       HdDirtyBits dirtyBits);
+
     VtVec3fArray _points;
     VtVec3iArray _triangulatedIndices;
     GfMatrix4f _transform;

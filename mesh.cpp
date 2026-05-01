@@ -4,6 +4,7 @@
 #include "pxr/imaging/hd/meshUtil.h"
 #include "pxr/imaging/hd/sceneDelegate.h"
 #include "pxr/imaging/hd/tokens.h"
+#include "pxr/imaging/hd/extComputationUtils.h"
 #include "pxr/base/vt/value.h"
 
 PXR_NAMESPACE_USING_DIRECTIVE
@@ -29,6 +30,36 @@ HdGeminiMesh::GetInitialDirtyBitsMask() const
 }
 
 void
+HdGeminiMesh::_UpdateComputedPrimvarSources(HdSceneDelegate* sceneDelegate,
+                                            HdDirtyBits dirtyBits)
+{
+    const SdfPath& id = GetId();
+    HdExtComputationPrimvarDescriptorVector compPrimvars =
+        sceneDelegate->GetExtComputationPrimvarDescriptors(id, HdInterpolationVertex);
+
+    if (compPrimvars.empty()) return;
+
+    HdExtComputationUtils::ValueStore valueStore =
+        HdExtComputationUtils::GetComputedPrimvarValues(compPrimvars, sceneDelegate);
+
+    auto it = valueStore.find(HdTokens->points);
+    if (it != valueStore.end()) {
+        const VtValue& value = it->second;
+        if (value.IsHolding<VtVec3fArray>()) {
+            _points = value.UncheckedGet<VtVec3fArray>();
+            _bvhDirty = true;
+        } else if (value.IsHolding<VtVec3dArray>()) {
+            const VtVec3dArray& pointsd = value.UncheckedGet<VtVec3dArray>();
+            _points.resize(pointsd.size());
+            for (size_t i = 0; i < pointsd.size(); ++i) {
+                _points[i] = GfVec3f(pointsd[i]);
+            }
+            _bvhDirty = true;
+        }
+    }
+}
+
+void
 HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
                    HdRenderParam*   renderParam,
                    HdDirtyBits*     dirtyBits,
@@ -49,14 +80,28 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
         _transform = GfMatrix4f(sceneDelegate->GetTransform(id));
     }
 
+    // Process computed primvars first (e.g., CPU skinning)
+    _UpdateComputedPrimvarSources(sceneDelegate, *dirtyBits);
+
     if (HdChangeTracker::IsPrimvarDirty(*dirtyBits, id, HdTokens->points)) {
         VtValue value = sceneDelegate->Get(id, HdTokens->points);
         if (value.IsHolding<VtVec3fArray>()) {
             _points = value.UncheckedGet<VtVec3fArray>();
-            _range.SetEmpty();
-            for (const auto& p : _points) {
-                _range.ExtendBy(p);
+            _bvhDirty = true;
+        } else if (value.IsHolding<VtVec3dArray>()) {
+            const VtVec3dArray& pointsd = value.UncheckedGet<VtVec3dArray>();
+            _points.resize(pointsd.size());
+            for (size_t i = 0; i < pointsd.size(); ++i) {
+                _points[i] = GfVec3f(pointsd[i]);
             }
+            _bvhDirty = true;
+        }
+    }
+
+    if (_bvhDirty) {
+        _range.SetEmpty();
+        for (const auto& p : _points) {
+            _range.ExtendBy(p);
         }
     }
 
@@ -72,9 +117,6 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
         HdMeshUtil meshUtil(&topology, id);
         VtIntArray trianglePrimitiveParams;
         meshUtil.ComputeTriangleIndices(&_triangulatedIndices, &trianglePrimitiveParams);
-        _bvhDirty = true;
-    } else if (HdChangeTracker::IsPrimvarDirty(*dirtyBits, id, HdTokens->points)) {
-        // If points changed but topology didn't, we still need to rebuild BVH
         _bvhDirty = true;
     }
 

@@ -125,6 +125,7 @@ HdGeminiRenderer::Render(HdRenderThread *renderThread, HdGeminiRenderDelegate* d
         _resolutionLevel /= 2;
     } else {
         _resolutionLevel = 1;
+        _frameCount++;
     }
 }
 
@@ -427,7 +428,7 @@ HdGeminiRenderer::_RenderTiles(HdRenderThread *renderThread, HdGeminiRenderDeleg
                     if (renderThread->IsStopRequested()) return;
 
                     // Unique RNG state per pixel and resolution pass
-                    uint32_t rng = (uint32_t)(y * width + x) ^ (uint32_t)(res * 1000);
+                    uint32_t rng = (uint32_t)(y * width + x) ^ (uint32_t)(_frameCount * 12345);
 
                     float ndcX = (2.0f * (x + res * RandomFloat(rng)) / width) - 1.0f;
                     float ndcY = (2.0f * (y + res * RandomFloat(rng)) / height) - 1.0f;
@@ -461,6 +462,7 @@ void
 HdGeminiRenderer::Clear()
 {
     _resolutionLevel = 4;
+    _frameCount = 0;
     for (auto const& binding : _aovBindings) {
         if (binding.renderBuffer && !binding.clearValue.IsEmpty()) {
             HdGeminiRenderBuffer* rb = static_cast<HdGeminiRenderBuffer*>(binding.renderBuffer);

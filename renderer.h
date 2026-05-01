@@ -74,6 +74,7 @@ private:
     std::vector<TLASNode> _tlasNodes;
     std::vector<int> _tlasInstanceIndices;
     int _resolutionLevel;
+    int _frameCount;
 };
 
 #endif // HD_GEMINI_RENDERER_H

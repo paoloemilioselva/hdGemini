@@ -7,6 +7,7 @@
 #include "pxr/base/gf/vec4f.h"
 #include <vector>
 #include <atomic>
+#include <mutex>
 
 PXR_NAMESPACE_USING_DIRECTIVE
 
@@ -52,6 +53,7 @@ private:
     std::vector<float> _accumBuffer;
     std::vector<int> _sampleCount;
     std::atomic<bool> _converged;
+    std::mutex _bufferMutex;
 };
 
 #endif // HD_GEMINI_RENDER_BUFFER_H

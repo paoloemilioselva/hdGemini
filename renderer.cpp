@@ -166,47 +166,50 @@ HdGeminiRenderer::_PrepareScene(HdRenderThread *renderThread, HdGeminiRenderDele
         if (light->GetLightType() == HdPrimTypeTokens->domeLight) {
             SdfAssetPath texPath = light->GetTextureFile();
             if (!texPath.GetAssetPath().empty()) {
-                HioImageSharedPtr image = HioImage::OpenForReading(texPath.GetResolvedPath());
-                if (image) {
-                    _envMapWidth = image->GetWidth();
-                    _envMapHeight = image->GetHeight();
-                    _envMapPixels.assign(_envMapWidth * _envMapHeight * 3, 0.0f);
-                    HioImage::StorageSpec spec;
-                    spec.width = _envMapWidth;
-                    spec.height = _envMapHeight;
-                    spec.format = HioFormatFloat32Vec3;
-                    spec.data = _envMapPixels.data();
-                    image->Read(spec);
-                    foundDome = true;
+                if (texPath != _lastEnvMapPath) {
+                    HioImageSharedPtr image = HioImage::OpenForReading(texPath.GetResolvedPath());
+                    if (image) {
+                        _envMapWidth = image->GetWidth();
+                        _envMapHeight = image->GetHeight();
+                        _envMapPixels.assign(_envMapWidth * _envMapHeight * 3, 0.0f);
+                        HioImage::StorageSpec spec;
+                        spec.width = _envMapWidth;
+                        spec.height = _envMapHeight;
+                        spec.format = HioFormatFloat32Vec3;
+                        spec.data = _envMapPixels.data();
+                        image->Read(spec);
+                        _lastEnvMapPath = texPath;
 
-                    _envMapRowCdf.assign(_envMapHeight + 1, 0.0f);
-                    _envMapColCdf.assign(_envMapHeight * (_envMapWidth + 1), 0.0f);
+                        _envMapRowCdf.assign(_envMapHeight + 1, 0.0f);
+                        _envMapColCdf.assign(_envMapHeight * (_envMapWidth + 1), 0.0f);
 
-                    _envMapTotalLuminance = 0.0f;
-                    for (int y = 0; y < _envMapHeight; ++y) {
-                        float rowLuminance = 0.0f;
-                        float sinTheta = std::sin(M_PI * (float)(y + 0.5f) / (float)_envMapHeight);
-                        for (int x = 0; x < _envMapWidth; ++x) {
-                            size_t idx = (y * _envMapWidth + x) * 3;
-                            float lum = 0.2126f * _envMapPixels[idx] + 0.7152f * _envMapPixels[idx+1] + 0.0722f * _envMapPixels[idx+2];
-                            lum *= sinTheta;
-                            rowLuminance += lum;
-                            _envMapColCdf[y * (_envMapWidth + 1) + x + 1] = _envMapColCdf[y * (_envMapWidth + 1) + x] + lum;
-                        }
-                        if (rowLuminance > 0) {
-                            for (int x = 0; x <= _envMapWidth; ++x) {
-                                _envMapColCdf[y * (_envMapWidth + 1) + x] /= rowLuminance;
+                        _envMapTotalLuminance = 0.0f;
+                        for (int y = 0; y < _envMapHeight; ++y) {
+                            float rowLuminance = 0.0f;
+                            float sinTheta = std::sin(M_PI * (float)(y + 0.5f) / (float)_envMapHeight);
+                            for (int x = 0; x < _envMapWidth; ++x) {
+                                size_t idx = (y * _envMapWidth + x) * 3;
+                                float lum = 0.2126f * _envMapPixels[idx] + 0.7152f * _envMapPixels[idx+1] + 0.0722f * _envMapPixels[idx+2];
+                                lum *= sinTheta;
+                                rowLuminance += lum;
+                                _envMapColCdf[y * (_envMapWidth + 1) + x + 1] = _envMapColCdf[y * (_envMapWidth + 1) + x] + lum;
                             }
+                            if (rowLuminance > 0) {
+                                for (int x = 0; x <= _envMapWidth; ++x) {
+                                    _envMapColCdf[y * (_envMapWidth + 1) + x] /= rowLuminance;
+                                }
+                            }
+                            _envMapTotalLuminance += rowLuminance;
+                            _envMapRowCdf[y + 1] = _envMapRowCdf[y] + rowLuminance;
                         }
-                        _envMapTotalLuminance += rowLuminance;
-                        _envMapRowCdf[y + 1] = _envMapRowCdf[y] + rowLuminance;
-                    }
-                    if (_envMapTotalLuminance > 0) {
-                        for (int y = 0; y <= _envMapHeight; ++y) {
-                            _envMapRowCdf[y] /= _envMapTotalLuminance;
+                        if (_envMapTotalLuminance > 0) {
+                            for (int y = 0; y <= _envMapHeight; ++y) {
+                                _envMapRowCdf[y] /= _envMapTotalLuminance;
+                            }
                         }
                     }
                 }
+                foundDome = !_envMapPixels.empty();
             }
             break;
         }

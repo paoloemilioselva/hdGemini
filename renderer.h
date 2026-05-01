@@ -9,9 +9,10 @@
 #include "pxr/base/gf/rect2i.h"
 #include "pxr/base/gf/vec3f.h"
 #include "pxr/base/gf/range3f.h"
+#include "pxr/usd/sdf/assetPath.h"
 #include <vector>
 #include <atomic>
-
+#include <memory>
 PXR_NAMESPACE_USING_DIRECTIVE
 
 class HdGeminiRenderDelegate;
@@ -83,6 +84,7 @@ private:
     std::vector<float> _envMapRowCdf;
     std::vector<float> _envMapColCdf;
     float _envMapTotalLuminance = 0.0f;
+    SdfAssetPath _lastEnvMapPath;
 };
 
 #endif // HD_GEMINI_RENDERER_H

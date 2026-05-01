@@ -357,6 +357,9 @@ HdGeminiRenderer::_RenderTiles(HdRenderThread *renderThread, HdGeminiRenderDeleg
                     }
                 }
             }
+            if (!renderThread->IsStopRequested()) {
+                colorBuffer->ResolveBucket(startX, startY, endX, endY);
+            }
         }
     });
 }

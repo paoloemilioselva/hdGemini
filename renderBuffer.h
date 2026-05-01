@@ -28,6 +28,7 @@ public:
     virtual bool IsMapped() const override { return false; }
 
     virtual void Resolve() override;
+    void ResolveBucket(unsigned int startX, unsigned int startY, unsigned int endX, unsigned int endY);
     virtual bool IsConverged() const override { return _converged.load(); }
     void SetConverged(bool converged) { _converged.store(converged); }
 

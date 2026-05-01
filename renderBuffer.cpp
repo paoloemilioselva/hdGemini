@@ -43,8 +43,26 @@ void
 HdGeminiRenderBuffer::Resolve()
 {
     // Copy from background render buffer to front display buffer
-    if (_buffer.size() == _renderBuffer.size()) {
+    if (_buffer.size() == _renderBuffer.size() && !_buffer.empty()) {
         std::memcpy(_buffer.data(), _renderBuffer.data(), _buffer.size());
+    }
+}
+
+void
+HdGeminiRenderBuffer::ResolveBucket(unsigned int startX, unsigned int startY, unsigned int endX, unsigned int endY)
+{
+    if (_buffer.empty() || _buffer.size() != _renderBuffer.size()) return;
+    
+    endX = std::min(endX, _width);
+    endY = std::min(endY, _height);
+    if (startX >= endX || startY >= endY) return;
+
+    size_t formatSize = HdDataSizeOfFormat(_format);
+    size_t rowBytes = (endX - startX) * formatSize;
+
+    for (unsigned int y = startY; y < endY; ++y) {
+        size_t idx = (y * _width + startX) * formatSize;
+        std::memcpy(_buffer.data() + idx, _renderBuffer.data() + idx, rowBytes);
     }
 }
 

@@ -407,9 +407,11 @@ GfVec3f HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVec3f& ray
         GfVec3f lDir;
         float lightDist = 1e30f;
         float lightPdf = 1.0f / (float)lights.size();
+        GfVec3f lColor(0.0f);
 
         if (light->GetLightType() == HdPrimTypeTokens->distantLight) {
             lDir = GfMatrix4f(light->GetTransform()).TransformDir(GfVec3f(0, 0, -1)).GetNormalized();
+            lColor = light->GetColor() * light->GetIntensity();
         } else if (light->GetLightType() == HdPrimTypeTokens->domeLight && !_envMapRowCdf.empty()) {
             float u1 = RandomFloat(rng);
             float u2 = RandomFloat(rng);
@@ -421,41 +423,50 @@ GfVec3f HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVec3f& ray
             float theta = M_PI * (float)(y + 0.5f) / (float)_envMapHeight;
             float phi = 2.0f * M_PI * (float)(x + 0.5f) / (float)_envMapWidth;
             lDir = GfVec3f(std::sin(theta) * std::cos(phi), std::cos(theta), std::sin(theta) * std::sin(phi));
-
             size_t idx = (y * _envMapWidth + x) * 3;
-            HitRecord shadowHit;
-            shadowHit.t = 1e30f;
-            if (!this->_IntersectTLAS(0, shadowOrigin, lDir, shadowHit, renderThread)) {
-                GfVec3f texColor(_envMapPixels[idx], _envMapPixels[idx+1], _envMapPixels[idx+2]);
-                GfVec3f lColor = GfCompMult(texColor, light->GetColor()) * light->GetIntensity();
+            GfVec3f texColor(_envMapPixels[idx], _envMapPixels[idx+1], _envMapPixels[idx+2]);
+            lColor = GfCompMult(texColor, light->GetColor()) * light->GetIntensity();
+            if (_envMapTotalLuminance > 0) {
                 float lum = 0.2126f * texColor[0] + 0.7152f * texColor[1] + 0.0722f * texColor[2];
-                if (_envMapTotalLuminance > 0) {
-                    float pdf = lum / (_envMapTotalLuminance * (M_PI / (float)_envMapHeight) * (2.0f * M_PI / (float)_envMapWidth));
-                    if (pdf > 1e-6f) {
-                        GfVec3f bsdf = hit.baseColor / (float)M_PI;
-                        float nDotL = std::max(0.0f, GfDot(hit.normal, lDir));
-                        result += GfCompMult(bsdf, lColor) * (nDotL / (lightPdf * pdf));
-                    }
+                float pdf = lum / (_envMapTotalLuminance * (M_PI / (float)_envMapHeight) * (2.0f * M_PI / (float)_envMapWidth));
+                lightPdf *= std::max(pdf, 1e-6f);
+            }
+        } else if (light->GetLightType() == HdPrimTypeTokens->rectLight) {
+            float u = RandomFloat(rng) - 0.5f;
+            float v = RandomFloat(rng) - 0.5f;
+            GfVec3f lPosLocal(u * light->GetWidth(), v * light->GetHeight(), 0.0f);
+            GfVec3f lPosWorld = GfMatrix4f(light->GetTransform()).Transform(lPosLocal);
+            GfVec3f toLight = lPosWorld - hitPos;
+            lightDist = toLight.GetLength();
+            lDir = toLight / lightDist;
+            float area = light->GetWidth() * light->GetHeight();
+            if (area > 0) {
+                GfVec3f lNormal = GfMatrix4f(light->GetTransform()).TransformDir(GfVec3f(0, 0, 1)).GetNormalized();
+                float cosThetaL = std::max(0.0f, GfDot(lNormal, -lDir));
+                if (cosThetaL > 0) {
+                    lightPdf *= (lightDist * lightDist) / (area * cosThetaL);
+                    lColor = light->GetColor() * light->GetIntensity();
+                } else {
+                    lightDist = -1.0f; // mark as skipped
                 }
             }
-            return result; // Early return for importance sampled light
-        } else if (light->GetLightType() == HdPrimTypeTokens->domeLight) {
-            lDir = AlignToNormal(SampleCosineHemisphere(RandomFloat(rng), RandomFloat(rng)), hit.normal);
         } else {
             GfVec3f lPos = GfMatrix4f(light->GetTransform()).ExtractTranslation();
             GfVec3f toLight = lPos - hitPos;
             lightDist = toLight.GetLength();
             lDir = toLight / lightDist;
+            lColor = light->GetColor() * light->GetIntensity();
         }
 
-        float nDotL = std::max(0.0f, GfDot(hit.normal, lDir));
-        if (nDotL > 0) {
-            HitRecord shadowHit;
-            shadowHit.t = lightDist - 1e-3f;
-            if (!this->_IntersectTLAS(0, shadowOrigin, lDir, shadowHit, renderThread)) {
-                GfVec3f lColor = light->GetColor() * light->GetIntensity();
-                GfVec3f bsdf = hit.baseColor / (float)M_PI;
-                result += GfCompMult(bsdf, lColor) * (nDotL / lightPdf);
+        if (lightDist > 0) {
+            float nDotL = std::max(0.0f, GfDot(hit.normal, lDir));
+            if (nDotL > 0) {
+                HitRecord shadowHit;
+                shadowHit.t = lightDist - 1e-3f;
+                if (!this->_IntersectTLAS(0, shadowOrigin, lDir, shadowHit, renderThread)) {
+                    GfVec3f bsdf = hit.baseColor / (float)M_PI;
+                    result += GfCompMult(bsdf, lColor) * (nDotL / (lightPdf + 1e-6f));
+                }
             }
         }
     }

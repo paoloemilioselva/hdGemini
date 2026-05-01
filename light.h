@@ -25,6 +25,8 @@ public:
     const GfMatrix4d& GetTransform() const { return _transform; }
     const TfToken& GetLightType() const { return _lightType; }
     const SdfAssetPath& GetTextureFile() const { return _textureFile; }
+    float GetWidth() const { return _width; }
+    float GetHeight() const { return _height; }
 
 private:
     GfVec3f _color;
@@ -32,6 +34,8 @@ private:
     GfMatrix4d _transform;
     TfToken _lightType;
     SdfAssetPath _textureFile;
+    float _width;
+    float _height;
 };
 
 #endif // HD_GEMINI_LIGHT_H

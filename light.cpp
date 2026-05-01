@@ -42,6 +42,15 @@ HdGeminiLight::Sync(HdSceneDelegate *sceneDelegate,
             if (textureVal.IsHolding<SdfAssetPath>()) {
                 _textureFile = textureVal.UncheckedGet<SdfAssetPath>();
             }
+        } else if (_lightType == HdPrimTypeTokens->rectLight) {
+            VtValue widthVal = sceneDelegate->GetLightParamValue(id, HdLightTokens->width);
+            if (widthVal.IsHolding<float>()) {
+                _width = widthVal.UncheckedGet<float>();
+            }
+            VtValue heightVal = sceneDelegate->GetLightParamValue(id, HdLightTokens->height);
+            if (heightVal.IsHolding<float>()) {
+                _height = heightVal.UncheckedGet<float>();
+            }
         }
     }
 

@@ -38,6 +38,9 @@ std::mutex HdGeminiRenderDelegate::_mutexResourceRegistry;
 std::atomic_int HdGeminiRenderDelegate::_counterResourceRegistry;
 HdResourceRegistrySharedPtr HdGeminiRenderDelegate::_resourceRegistry;
 
+#include <thread>
+#include <chrono>
+
 static void _RenderCallback(HdGeminiRenderer *renderer,
                             HdRenderThread *renderThread,
                             HdGeminiRenderDelegate *delegate)
@@ -45,6 +48,8 @@ static void _RenderCallback(HdGeminiRenderer *renderer,
     renderer->Clear();
     while (!renderThread->IsStopRequested() && !renderer->IsConverged()) {
         renderer->Render(renderThread, delegate);
+        // Yield to allow UI thread to breathe
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
 }
 

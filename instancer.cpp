@@ -10,6 +10,7 @@
 #include "pxr/base/gf/quatf.h"
 #include "pxr/base/gf/quatd.h"
 #include "pxr/base/vt/value.h"
+#include <iostream>
 
 PXR_NAMESPACE_USING_DIRECTIVE
 
@@ -54,9 +55,12 @@ HdGeminiInstancer::ComputeInstanceTransforms(SdfPath const &prototypeId)
     }
 
     VtVec4fArray instancerRotations;
+    VtQuathArray instancerRotationsH;
     VtValue rotationsVal = delegate->Get(instancerId, HdInstancerTokens->instanceRotations);
     if (rotationsVal.IsHolding<VtVec4fArray>()) {
         instancerRotations = rotationsVal.UncheckedGet<VtVec4fArray>();
+    } else if (rotationsVal.IsHolding<VtQuathArray>()) {
+        instancerRotationsH = rotationsVal.UncheckedGet<VtQuathArray>();
     }
 
     VtVec3fArray instancerScales;
@@ -81,6 +85,12 @@ HdGeminiInstancer::ComputeInstanceTransforms(SdfPath const &prototypeId)
         if (!instancerRotations.empty() && index < instancerRotations.size()) {
             GfVec4f r = instancerRotations[index];
             GfQuatd quat(r[0], r[1], r[2], r[3]);
+            GfMatrix4d rotMat(1.0);
+            rotMat.SetRotate(quat);
+            transform = rotMat * transform;
+        } else if (!instancerRotationsH.empty() && index < instancerRotationsH.size()) {
+            GfQuath r = instancerRotationsH[index];
+            GfQuatd quat(r.GetReal(), r.GetImaginary()[0], r.GetImaginary()[1], r.GetImaginary()[2]);
             GfMatrix4d rotMat(1.0);
             rotMat.SetRotate(quat);
             transform = rotMat * transform;

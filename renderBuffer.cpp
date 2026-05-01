@@ -71,9 +71,12 @@ static void _WriteOutput(HdFormat format, uint8_t *dst,
 void
 HdGeminiRenderBuffer::Write(GfVec3i const& pixel, size_t numComponents, float const* value)
 {
-    if (pixel[0] >= (int)_width || pixel[1] >= (int)_height) return;
+    std::lock_guard<std::mutex> lock(_bufferMutex);
+    if (pixel[0] < 0 || pixel[0] >= (int)_width || 
+        pixel[1] < 0 || pixel[1] >= (int)_height) return;
     size_t idx = pixel[1] * _width + pixel[0];
     size_t formatSize = HdDataSizeOfFormat(_format);
+    if ((idx + 1) * formatSize > _renderBuffer.size()) return;
     uint8_t *dst = &_renderBuffer[idx * formatSize];
     _WriteOutput(_format, dst, numComponents, value);
 }
@@ -81,9 +84,12 @@ HdGeminiRenderBuffer::Write(GfVec3i const& pixel, size_t numComponents, float co
 void
 HdGeminiRenderBuffer::Write(GfVec3i const& pixel, size_t numComponents, int const* value)
 {
-    if (pixel[0] >= (int)_width || pixel[1] >= (int)_height) return;
+    std::lock_guard<std::mutex> lock(_bufferMutex);
+    if (pixel[0] < 0 || pixel[0] >= (int)_width || 
+        pixel[1] < 0 || pixel[1] >= (int)_height) return;
     size_t idx = pixel[1] * _width + pixel[0];
     size_t formatSize = HdDataSizeOfFormat(_format);
+    if ((idx + 1) * formatSize > _renderBuffer.size()) return;
     uint8_t *dst = &_renderBuffer[idx * formatSize];
     _WriteOutput(_format, dst, numComponents, value);
 }

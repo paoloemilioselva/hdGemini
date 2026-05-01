@@ -138,8 +138,8 @@ HdGeminiRenderer::_PrepareScene(HdGeminiRenderDelegate* delegate)
                     inst.centroid = (inst.bounds.GetMin() + inst.bounds.GetMax()) * 0.5f;
                     _instances.push_back(inst);
                 }
-                continue;
             }
+            continue;
         }
         
         // Non-instanced mesh

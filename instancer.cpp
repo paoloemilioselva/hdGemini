@@ -32,11 +32,7 @@ HdGeminiInstancer::ComputeInstanceTransforms(SdfPath const &prototypeId)
     HdSceneDelegate* delegate = GetDelegate();
     SdfPath const& instancerId = GetId();
 
-    VtIntArray instanceIndices;
-    VtValue indicesVal = delegate->Get(instancerId, HdInstancerTokens->instanceIndices);
-    if (indicesVal.IsHolding<VtIntArray>()) {
-        instanceIndices = indicesVal.UncheckedGet<VtIntArray>();
-    }
+    VtIntArray instanceIndices = delegate->GetInstanceIndices(instancerId, prototypeId);
 
     VtMatrix4dArray transforms;
     if (instanceIndices.empty()) {

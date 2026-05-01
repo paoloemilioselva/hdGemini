@@ -178,6 +178,35 @@ HdGeminiRenderer::_PrepareScene(HdRenderThread *renderThread, HdGeminiRenderDele
                     spec.data = _envMapPixels.data();
                     image->Read(spec);
                     foundDome = true;
+
+                    // Build 2D CDF
+                    _envMapRowCdf.assign(_envMapHeight + 1, 0.0f);
+                    _envMapColCdf.assign(_envMapHeight * (_envMapWidth + 1), 0.0f);
+
+                    float totalLuminance = 0.0f;
+                    for (int y = 0; y < _envMapHeight; ++y) {
+                        float rowLuminance = 0.0f;
+                        float sinTheta = std::sin(M_PI * (float)(y + 0.5f) / (float)_envMapHeight);
+                        for (int x = 0; x < _envMapWidth; ++x) {
+                            size_t idx = (y * _envMapWidth + x) * 3;
+                            float lum = 0.2126f * _envMapPixels[idx] + 0.7152f * _envMapPixels[idx+1] + 0.0722f * _envMapPixels[idx+2];
+                            lum *= sinTheta; // Account for area distortion
+                            rowLuminance += lum;
+                            _envMapColCdf[y * (_envMapWidth + 1) + x + 1] = _envMapColCdf[y * (_envMapWidth + 1) + x] + lum;
+                        }
+                        if (rowLuminance > 0) {
+                            for (int x = 0; x <= _envMapWidth; ++x) {
+                                _envMapColCdf[y * (_envMapWidth + 1) + x] /= rowLuminance;
+                            }
+                        }
+                        totalLuminance += rowLuminance;
+                        _envMapRowCdf[y + 1] = _envMapRowCdf[y] + rowLuminance;
+                    }
+                    if (totalLuminance > 0) {
+                        for (int y = 0; y <= _envMapHeight; ++y) {
+                            _envMapRowCdf[y] /= totalLuminance;
+                        }
+                    }
                 }
             }
             break;
@@ -186,6 +215,8 @@ HdGeminiRenderer::_PrepareScene(HdRenderThread *renderThread, HdGeminiRenderDele
     if (!foundDome) {
         _envMapPixels.clear();
         _envMapWidth = _envMapHeight = 0;
+        _envMapRowCdf.clear();
+        _envMapColCdf.clear();
     }
 
     for (auto const& item : meshes) {

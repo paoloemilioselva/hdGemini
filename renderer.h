@@ -80,6 +80,8 @@ private:
     std::vector<float> _envMapPixels;
     int _envMapWidth = 0;
     int _envMapHeight = 0;
+    std::vector<float> _envMapRowCdf;
+    std::vector<float> _envMapColCdf;
 };
 
 #endif // HD_GEMINI_RENDERER_H

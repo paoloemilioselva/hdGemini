@@ -121,6 +121,8 @@ HdGeminiRenderer::Render(HdRenderThread *renderThread, HdGeminiRenderDelegate* d
 
     if (_resolutionLevel > 1) {
         _resolutionLevel /= 2;
+    } else if (_resolutionLevel == 1) {
+        _resolutionLevel = 0; // Mark as converged
     }
 }
 
@@ -354,9 +356,6 @@ HdGeminiRenderer::_RenderTiles(HdRenderThread *renderThread, HdGeminiRenderDeleg
                         }
                     }
                 }
-            }
-            if (!renderThread->IsStopRequested()) {
-                colorBuffer->Resolve();
             }
         }
     });

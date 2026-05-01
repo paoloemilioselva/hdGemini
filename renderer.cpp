@@ -121,6 +121,8 @@ void
 HdGeminiRenderer::_PrepareScene(HdRenderThread *renderThread, HdGeminiRenderDelegate* delegate)
 {
     _instances.clear();
+    
+    std::lock_guard<std::mutex> lock(delegate->GetSceneLock());
     const auto& meshes = delegate->GetMeshes();
 
     for (auto const& item : meshes) {

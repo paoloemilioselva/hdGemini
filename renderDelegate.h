@@ -65,6 +65,8 @@ public:
     void RemoveInstancer(const SdfPath& id);
     HdGeminiInstancer* GetInstancer(const SdfPath& id) const;
 
+    std::mutex& GetSceneLock() { return _sceneLock; }
+
 private:
     static const TfTokenVector SUPPORTED_RPRIM_TYPES;
     static const TfTokenVector SUPPORTED_SPRIM_TYPES;
@@ -84,6 +86,7 @@ private:
 
     std::map<SdfPath, HdGeminiMesh*> _meshes;
     std::map<SdfPath, HdGeminiInstancer*> _instancers;
+    std::mutex _sceneLock;
 
     HdGeminiRenderDelegate(const HdGeminiRenderDelegate &) = delete;
     HdGeminiRenderDelegate &operator =(const HdGeminiRenderDelegate &) = delete;

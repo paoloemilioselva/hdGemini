@@ -232,30 +232,35 @@ HdGeminiRenderDelegate::GetDefaultAovDescriptor(TfToken const& name) const
 void
 HdGeminiRenderDelegate::AddMesh(const SdfPath& id, HdGeminiMesh* mesh)
 {
+    std::lock_guard<std::mutex> lock(_sceneLock);
     _meshes[id] = mesh;
 }
 
 void
 HdGeminiRenderDelegate::RemoveMesh(const SdfPath& id)
 {
+    std::lock_guard<std::mutex> lock(_sceneLock);
     _meshes.erase(id);
 }
 
 void
 HdGeminiRenderDelegate::AddInstancer(const SdfPath& id, HdGeminiInstancer* instancer)
 {
+    std::lock_guard<std::mutex> lock(_sceneLock);
     _instancers[id] = instancer;
 }
 
 void
 HdGeminiRenderDelegate::RemoveInstancer(const SdfPath& id)
 {
+    std::lock_guard<std::mutex> lock(_sceneLock);
     _instancers.erase(id);
 }
 
 HdGeminiInstancer*
 HdGeminiRenderDelegate::GetInstancer(const SdfPath& id) const
 {
+    // Usually called from _PrepareScene which already holds _sceneLock.
     auto it = _instancers.find(id);
     if (it != _instancers.end()) {
         return it->second;

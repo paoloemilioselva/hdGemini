@@ -247,17 +247,17 @@ void HdGeminiRenderer::_SubdivideTLAS(int nodeIdx, int start, int end, HdRenderT
     _SubdivideTLAS(leftChildIdx + 1, i, end, renderThread);
 }
 
-bool HdGeminiRenderer::_IntersectTLAS(int nodeIdx, const GfVec3f& rayOrigin, const GfVec3f& rayDir, float& t, GfVec3f& normal, GfVec3f& hitColor, HdRenderThread* renderThread, const std::map<SdfPath, HdGeminiLight*>& lights) const
+bool HdGeminiRenderer::_IntersectTLAS(int nodeIdx, const GfVec3f& rayOrigin, const GfVec3f& rayDir, HitRecord& hit, HdRenderThread* renderThread) const
 {
     if (_tlasNodes.empty() || renderThread->IsStopRequested()) return false;
 
     const TLASNode& node = _tlasNodes[nodeIdx];
     float tAabb;
     if (!IntersectAABB(rayOrigin, rayDir, node.bounds, tAabb)) return false;
-    if (tAabb > t) return false;
+    if (tAabb > hit.t) return false;
 
     if (node.leftChild < 0) {
-        bool hit = false;
+        bool wasHit = false;
         int start = -node.leftChild - 1;
         for (int i = 0; i < node.instanceCount; ++i) {
             if (renderThread->IsStopRequested()) return false;
@@ -266,58 +266,87 @@ bool HdGeminiRenderer::_IntersectTLAS(int nodeIdx, const GfVec3f& rayOrigin, con
             GfVec3f objRayOrigin = inst.invTransform.Transform(rayOrigin);
             GfVec3f objRayDir = inst.invTransform.TransformDir(rayDir);
             
-            float instT = t;
+            float instT = hit.t;
             GfVec3f instNormal;
             if (inst.mesh->GetBVH().Intersect(objRayOrigin, objRayDir, instT, instNormal)) {
-                if (instT < t) {
-                    t = instT;
-                    normal = inst.transform.TransformDir(instNormal).GetNormalized();
+                if (instT < hit.t) {
+                    hit.t = instT;
+                    hit.normal = inst.transform.TransformDir(instNormal).GetNormalized();
                     
-                    GfVec3f baseColor(1.0f);
+                    hit.baseColor = GfVec3f(1.0f);
                     const VtVec3fArray& colors = inst.mesh->GetColors();
                     if (!colors.empty()) {
-                        baseColor = colors[0];
+                        hit.baseColor = colors[0];
                     }
-                    
-                    GfVec3f diffuse(0.0f);
-                    GfVec3f hitPos = rayOrigin + rayDir * t;
-
-                    if (lights.empty()) {
-                        float shade = std::abs(GfDot(normal, -rayDir));
-                        diffuse = GfVec3f(shade * 0.8f + 0.2f);
-                    } else {
-                        for (const auto& lightPair : lights) {
-                            HdGeminiLight* light = lightPair.second;
-                            GfVec3f lColor = light->GetColor() * light->GetIntensity();
-                            GfVec3f lDir;
-
-                            if (light->GetLightType() == HdPrimTypeTokens->distantLight) {
-                                // Default direction is -Z
-                                lDir = GfMatrix4f(light->GetTransform()).TransformDir(GfVec3f(0, 0, -1)).GetNormalized();
-                            } else {
-                                // Assume point/sphere light
-                                GfVec3f lPos = GfMatrix4f(light->GetTransform()).ExtractTranslation();
-                                lDir = (lPos - hitPos).GetNormalized();
-                            }
-                            
-                            float nDotL = std::max(0.0f, GfDot(normal, lDir));
-                            diffuse += lColor * nDotL;
-                        }
-                        // Add some ambient light
-                        diffuse += GfVec3f(0.1f);
-                    }
-                    
-                    hitColor = GfVec3f(baseColor[0] * diffuse[0], baseColor[1] * diffuse[1], baseColor[2] * diffuse[2]);
-                    hit = true;
+                    hit.hit = true;
+                    wasHit = true;
                 }
             }
         }
-        return hit;
+        return wasHit;
     } else {
-        bool hitLeft = _IntersectTLAS(node.leftChild, rayOrigin, rayDir, t, normal, hitColor, renderThread, lights);
-        bool hitRight = _IntersectTLAS(node.leftChild + 1, rayOrigin, rayDir, t, normal, hitColor, renderThread, lights);
+        bool hitLeft = _IntersectTLAS(node.leftChild, rayOrigin, rayDir, hit, renderThread);
+        bool hitRight = _IntersectTLAS(node.leftChild + 1, rayOrigin, rayDir, hit, renderThread);
         return hitLeft || hitRight;
     }
+}
+
+GfVec3f HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVec3f& rayDir, int depth, HdRenderThread* renderThread, const std::map<SdfPath, HdGeminiLight*>& lights) const
+{
+    if (depth > 3 || renderThread->IsStopRequested()) return GfVec3f(0.0f);
+
+    HitRecord hit;
+    if (!_IntersectTLAS(0, rayOrigin, rayDir, hit, renderThread)) {
+        // Sky gradient
+        float ndcY = rayDir[1];
+        float sky = 0.3f + 0.2f * ndcY;
+        return GfVec3f(sky * 0.8f, sky * 0.9f, sky);
+    }
+
+    GfVec3f diffuse(0.0f);
+    GfVec3f hitPos = rayOrigin + rayDir * hit.t;
+    GfVec3f shadowOrigin = hitPos + hit.normal * 1e-3f;
+
+    if (lights.empty()) {
+        float shade = std::abs(GfDot(hit.normal, -rayDir));
+        diffuse = GfVec3f(shade * 0.8f + 0.2f);
+    } else {
+        for (const auto& lightPair : lights) {
+            HdGeminiLight* light = lightPair.second;
+            GfVec3f lColor = light->GetColor() * light->GetIntensity();
+            GfVec3f lDir;
+            float lightDist = 1e30f;
+
+            if (light->GetLightType() == HdPrimTypeTokens->distantLight) {
+                lDir = GfMatrix4f(light->GetTransform()).TransformDir(GfVec3f(0, 0, -1)).GetNormalized();
+            } else {
+                GfVec3f lPos = GfMatrix4f(light->GetTransform()).ExtractTranslation();
+                GfVec3f toLight = lPos - hitPos;
+                lightDist = toLight.GetLength();
+                lDir = toLight.GetNormalized();
+            }
+            
+            // Shadow ray
+            HitRecord shadowHit;
+            shadowHit.t = lightDist;
+            if (!_IntersectTLAS(0, shadowOrigin, lDir, shadowHit, renderThread)) {
+                float nDotL = std::max(0.0f, GfDot(hit.normal, lDir));
+                diffuse += lColor * nDotL;
+            }
+        }
+    }
+
+    // Indirect bounce (simple reflection for now to show multiple bounces)
+    GfVec3f indirect(0.0f);
+    if (depth < 3) {
+        GfVec3f reflectDir = rayDir - 2.0f * GfDot(rayDir, hit.normal) * hit.normal;
+        indirect = _TraceRay(shadowOrigin, reflectDir, depth + 1, renderThread, lights) * 0.3f;
+    }
+
+    GfVec3f finalColor = GfVec3f(hit.baseColor[0] * (diffuse[0] + indirect[0] + 0.1f),
+                                 hit.baseColor[1] * (diffuse[1] + indirect[1] + 0.1f),
+                                 hit.baseColor[2] * (diffuse[2] + indirect[2] + 0.1f));
+    return finalColor;
 }
 
 void
@@ -353,7 +382,6 @@ HdGeminiRenderer::_RenderTiles(HdRenderThread *renderThread, HdGeminiRenderDeleg
             size_t endX = std::min(startX + bucketSize, (size_t)width);
             size_t endY = std::min(startY + bucketSize, (size_t)height);
 
-            // Align start to resolution level to avoid tearing
             startX = (startX / res) * res;
             startY = (startY / res) * res;
 
@@ -363,7 +391,6 @@ HdGeminiRenderer::_RenderTiles(HdRenderThread *renderThread, HdGeminiRenderDeleg
                 for (size_t x = startX; x < endX; x += res) {
                     if (renderThread->IsStopRequested()) return;
 
-                    // Generate ray from center of the block
                     float ndcX = (2.0f * (x + res * 0.5f) / width) - 1.0f;
                     float ndcY = (2.0f * (y + res * 0.5f) / height) - 1.0f;
                     
@@ -371,24 +398,10 @@ HdGeminiRenderer::_RenderTiles(HdRenderThread *renderThread, HdGeminiRenderDeleg
                     GfVec3f nearPlanePointWorld(_inverseViewMatrix.Transform(nearPlanePointCam));
                     GfVec3f rayDirWorld = (nearPlanePointWorld - cameraPosWorld).GetNormalized();
 
-                    float t = 1e30f;
-                    GfVec3f hitColor(0.0f, 0.0f, 0.0f);
-                    GfVec3f normal;
-                    
-                    bool hit = false;
-                    if (!_tlasNodes.empty()) {
-                        hit = _IntersectTLAS(0, cameraPosWorld, rayDirWorld, t, normal, hitColor, renderThread, lights);
-                    }
+                    GfVec3f hitColor = _TraceRay(cameraPosWorld, rayDirWorld, 0, renderThread, lights);
 
-                    GfVec4f finalColor;
-                    if (hit) {
-                        finalColor = GfVec4f(hitColor[0], hitColor[1], hitColor[2], 1.0f);
-                    } else {
-                        float sky = 0.3f + 0.2f * ndcY;
-                        finalColor = GfVec4f(sky * 0.8f, sky * 0.9f, sky, 1.0f);
-                    }
+                    GfVec4f finalColor(hitColor[0], hitColor[1], hitColor[2], 1.0f);
 
-                    // Write to block
                     for (int dy = 0; dy < res && y + dy < height; ++dy) {
                         for (int dx = 0; dx < res && x + dx < width; ++dx) {
                             colorBuffer->Write(GfVec3i(x + dx, y + dy, 0), 4, finalColor.data());

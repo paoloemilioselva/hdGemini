@@ -49,12 +49,20 @@ private:
         int instanceCount;
     };
 
+    struct HitRecord {
+        float t = 1e30f;
+        GfVec3f normal;
+        GfVec3f baseColor = GfVec3f(1.0f);
+        bool hit = false;
+    };
+
     static GfVec4f _GetClearColor(VtValue const& clearValue);
     void _RenderTiles(HdRenderThread *renderThread, HdGeminiRenderDelegate* delegate);
     void _PrepareScene(HdRenderThread *renderThread, HdGeminiRenderDelegate* delegate);
     void _BuildTLAS(HdRenderThread *renderThread);
     void _SubdivideTLAS(int nodeIdx, int start, int end, HdRenderThread *renderThread);
-    bool _IntersectTLAS(int nodeIdx, const GfVec3f& rayOrigin, const GfVec3f& rayDir, float& t, GfVec3f& normal, GfVec3f& hitColor, HdRenderThread* renderThread, const std::map<SdfPath, HdGeminiLight*>& lights) const;
+    bool _IntersectTLAS(int nodeIdx, const GfVec3f& rayOrigin, const GfVec3f& rayDir, HitRecord& hit, HdRenderThread* renderThread) const;
+    GfVec3f _TraceRay(const GfVec3f& rayOrigin, const GfVec3f& rayDir, int depth, HdRenderThread* renderThread, const std::map<SdfPath, HdGeminiLight*>& lights) const;
 
     HdRenderPassAovBindingVector _aovBindings;
     GfRect2i _dataWindow;

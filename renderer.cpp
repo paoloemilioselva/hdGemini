@@ -11,9 +11,14 @@
 #include <pxr/base/gf/matrix4d.h>
 #include <pxr/base/vt/array.h>
 #include <pxr/imaging/hd/tokens.h>
+#include <pxr/imaging/hio/image.h>
+#include <pxr/imaging/hio/types.h>
 #include <iostream>
 #include <cmath>
 #include <algorithm>
+#include <random>
+#include <thread>
+#include <chrono>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846f
@@ -65,12 +70,31 @@ static GfRange3f TransformBounds(const GfRange3f& bounds, const GfMatrix4f& matr
     return result;
 }
 
+static float RandomFloat(uint32_t& state) {
+    state = state * 1664525 + 1013904223;
+    return (float)state / (float)0xFFFFFFFF;
+}
+
+static GfVec3f SampleCosineHemisphere(float u1, float u2) {
+    float r = std::sqrt(u1);
+    float theta = 2.0f * M_PI * u2;
+    return GfVec3f(r * std::cos(theta), std::sqrt(1.0f - u1), r * std::sin(theta));
+}
+
+static GfVec3f AlignToNormal(const GfVec3f& sample, const GfVec3f& normal) {
+    GfVec3f up = std::abs(normal[1]) < 0.999f ? GfVec3f(0, 1, 0) : GfVec3f(1, 0, 0);
+    GfVec3f tangent = GfCross(up, normal).GetNormalized();
+    GfVec3f bitangent = GfCross(normal, tangent);
+    return sample[0] * tangent + sample[1] * normal + sample[2] * bitangent;
+}
+
 HdGeminiRenderer::HdGeminiRenderer()
     : _viewMatrix(1.0)
     , _projMatrix(1.0)
     , _inverseViewMatrix(1.0)
     , _inverseProjMatrix(1.0)
     , _resolutionLevel(4)
+    , _frameCount(0)
 {
 }
 
@@ -100,7 +124,6 @@ HdGeminiRenderer::SetAovBindings(const HdRenderPassAovBindingVector& aovBindings
 void
 HdGeminiRenderer::Render(HdRenderThread *renderThread, HdGeminiRenderDelegate* delegate)
 {
-    // Mark buffers as unconverged while we render
     for (auto const& binding : _aovBindings) {
         if (binding.renderBuffer) {
             static_cast<HdGeminiRenderBuffer*>(binding.renderBuffer)->SetConverged(false);
@@ -113,7 +136,6 @@ HdGeminiRenderer::Render(HdRenderThread *renderThread, HdGeminiRenderDelegate* d
 
     if (renderThread->IsStopRequested()) return;
 
-    // Mark buffers as converged once finished and resolve
     for (auto const& binding : _aovBindings) {
         if (binding.renderBuffer) {
             auto* rb = static_cast<HdGeminiRenderBuffer*>(binding.renderBuffer);
@@ -136,13 +158,39 @@ HdGeminiRenderer::_PrepareScene(HdRenderThread *renderThread, HdGeminiRenderDele
     
     std::lock_guard<std::mutex> lock(delegate->GetSceneLock());
     const auto& meshes = delegate->GetMeshes();
+    const auto& lights = delegate->GetLights();
+
+    bool foundDome = false;
+    for (const auto& lightPair : lights) {
+        HdGeminiLight* light = lightPair.second;
+        if (light->GetLightType() == HdPrimTypeTokens->domeLight) {
+            SdfAssetPath texPath = light->GetTextureFile();
+            if (!texPath.GetAssetPath().empty()) {
+                HioImageSharedPtr image = HioImage::OpenForReading(texPath.GetResolvedPath());
+                if (image) {
+                    _envMapWidth = image->GetWidth();
+                    _envMapHeight = image->GetHeight();
+                    _envMapPixels.assign(_envMapWidth * _envMapHeight * 3, 0.0f);
+                    HioImage::StorageSpec spec;
+                    spec.width = _envMapWidth;
+                    spec.height = _envMapHeight;
+                    spec.format = HioFormatFloat32Vec3;
+                    spec.data = _envMapPixels.data();
+                    image->Read(spec);
+                    foundDome = true;
+                }
+            }
+            break;
+        }
+    }
+    if (!foundDome) {
+        _envMapPixels.clear();
+        _envMapWidth = _envMapHeight = 0;
+    }
 
     for (auto const& item : meshes) {
         if (renderThread->IsStopRequested()) return;
-        
         HdGeminiMesh* mesh = item.second;
-        // if (!mesh->IsVisible()) continue;
-
         GfRange3f meshBounds = mesh->GetRange();
         if (meshBounds.IsEmpty()) continue;
         
@@ -163,7 +211,6 @@ HdGeminiRenderer::_PrepareScene(HdRenderThread *renderThread, HdGeminiRenderDele
             continue;
         }
         
-        // Non-instanced mesh
         MeshInstance inst;
         inst.mesh = mesh;
         inst.transform = mesh->GetTransform();
@@ -173,7 +220,6 @@ HdGeminiRenderer::_PrepareScene(HdRenderThread *renderThread, HdGeminiRenderDele
         _instances.push_back(inst);
     }
     
-    // Pre-build BVHs sequentially before parallel rendering
     for (auto& inst : _instances) {
         if (renderThread->IsStopRequested()) return;
         inst.mesh->GetBVH();
@@ -194,7 +240,7 @@ void HdGeminiRenderer::_BuildTLAS(HdRenderThread *renderThread)
     }
 
     _tlasNodes.reserve(_instances.size() * 2);
-    _tlasNodes.push_back(TLASNode()); // Root
+    _tlasNodes.push_back(TLASNode());
     _SubdivideTLAS(0, 0, (int)_instances.size(), renderThread);
 }
 
@@ -210,7 +256,7 @@ void HdGeminiRenderer::_SubdivideTLAS(int nodeIdx, int start, int end, HdRenderT
     }
 
     int count = end - start;
-    if (count <= 2) { // leaf
+    if (count <= 2) {
         node.leftChild = -start - 1;
         node.instanceCount = count;
         return;
@@ -234,10 +280,7 @@ void HdGeminiRenderer::_SubdivideTLAS(int nodeIdx, int start, int end, HdRenderT
         }
     }
 
-    int leftCount = i - start;
-    if (leftCount == 0 || leftCount == count) {
-        i = start + count / 2;
-    }
+    if (i == start || i == end) i = start + count / 2;
 
     int leftChildIdx = (int)_tlasNodes.size();
     _tlasNodes.push_back(TLASNode());
@@ -264,22 +307,17 @@ bool HdGeminiRenderer::_IntersectTLAS(int nodeIdx, const GfVec3f& rayOrigin, con
         for (int i = 0; i < node.instanceCount; ++i) {
             if (renderThread->IsStopRequested()) return false;
             const auto& inst = _instances[_tlasInstanceIndices[start + i]];
-            
             GfVec3f objRayOrigin = inst.invTransform.Transform(rayOrigin);
             GfVec3f objRayDir = inst.invTransform.TransformDir(rayDir);
-            
             float instT = hit.t;
             GfVec3f instNormal;
             if (inst.mesh->GetBVH().Intersect(objRayOrigin, objRayDir, instT, instNormal)) {
                 if (instT < hit.t) {
                     hit.t = instT;
                     hit.normal = inst.transform.TransformDir(instNormal).GetNormalized();
-                    
                     hit.baseColor = GfVec3f(1.0f);
                     const VtVec3fArray& colors = inst.mesh->GetColors();
-                    if (!colors.empty()) {
-                        hit.baseColor = colors[0];
-                    }
+                    if (!colors.empty()) hit.baseColor = colors[0];
                     hit.hit = true;
                     wasHit = true;
                 }
@@ -293,24 +331,29 @@ bool HdGeminiRenderer::_IntersectTLAS(int nodeIdx, const GfVec3f& rayOrigin, con
     }
 }
 
-#include <random>
-
-static float RandomFloat(uint32_t& state) {
-    state = state * 1664525 + 1013904223;
-    return (float)state / (float)0xFFFFFFFF;
-}
-
-static GfVec3f SampleCosineHemisphere(float u1, float u2) {
-    float r = std::sqrt(u1);
-    float theta = 2.0f * M_PI * u2;
-    return GfVec3f(r * std::cos(theta), std::sqrt(1.0f - u1), r * std::sin(theta));
-}
-
-static GfVec3f AlignToNormal(const GfVec3f& sample, const GfVec3f& normal) {
-    GfVec3f up = std::abs(normal[1]) < 0.999f ? GfVec3f(0, 1, 0) : GfVec3f(1, 0, 0);
-    GfVec3f tangent = GfCross(up, normal).GetNormalized();
-    GfVec3f bitangent = GfCross(normal, tangent);
-    return sample[0] * tangent + sample[1] * normal + sample[2] * bitangent;
+GfVec3f HdGeminiRenderer::_SampleEnvironment(const GfVec3f& rayDir, const std::map<SdfPath, HdGeminiLight*>& lights) const
+{
+    if (_envMapPixels.empty()) {
+        float ndcY = rayDir[1];
+        float skyIntensity = 0.3f + 0.2f * ndcY;
+        return GfVec3f(skyIntensity * 0.8f, skyIntensity * 0.9f, skyIntensity);
+    }
+    float theta = std::acos(std::clamp(rayDir[1], -1.0f, 1.0f));
+    float phi = std::atan2(rayDir[2], rayDir[0]);
+    if (phi < 0) phi += 2.0f * M_PI;
+    float u = phi / (2.0f * M_PI);
+    float v = theta / M_PI;
+    int x = std::clamp((int)(u * _envMapWidth), 0, _envMapWidth - 1);
+    int y = std::clamp((int)(v * _envMapHeight), 0, _envMapHeight - 1);
+    size_t idx = (y * _envMapWidth + x) * 3;
+    GfVec3f color(_envMapPixels[idx], _envMapPixels[idx+1], _envMapPixels[idx+2]);
+    for (const auto& lightPair : lights) {
+        HdGeminiLight* light = lightPair.second;
+        if (light->GetLightType() == HdPrimTypeTokens->domeLight) {
+            return GfCompMult(color, light->GetColor()) * light->GetIntensity();
+        }
+    }
+    return color;
 }
 
 GfVec3f HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVec3f& rayDir, int depth, bool isInteractive, HdRenderThread* renderThread, const std::map<SdfPath, HdGeminiLight*>& lights, uint32_t& rng) const
@@ -319,28 +362,17 @@ GfVec3f HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVec3f& ray
 
     HitRecord hit;
     if (!this->_IntersectTLAS(0, rayOrigin, rayDir, hit, renderThread)) {
-        // Dome light background
-        for (const auto& lightPair : lights) {
-            HdGeminiLight* light = lightPair.second;
-            if (light->GetLightType() == HdPrimTypeTokens->domeLight) {
-                return light->GetColor() * light->GetIntensity();
-            }
-        }
-        float ndcY = rayDir[1];
-        float skyIntensity = 0.3f + 0.2f * ndcY;
-        return GfVec3f(skyIntensity * 0.8f, skyIntensity * 0.9f, skyIntensity);
+        return _SampleEnvironment(rayDir, lights);
     }
 
     GfVec3f hitPos = rayOrigin + rayDir * hit.t;
     GfVec3f shadowOrigin = hitPos + hit.normal * 1e-4f;
     GfVec3f result(0.0f);
 
-    // --- MIS: Direct Light Sampling ---
     if (!lights.empty()) {
         auto it = lights.begin();
         std::advance(it, (size_t)(RandomFloat(rng) * lights.size()));
         HdGeminiLight* light = it->second;
-
         GfVec3f lDir;
         float lightDist = 1e30f;
         float lightPdf = 1.0f / (float)lights.size();
@@ -368,12 +400,10 @@ GfVec3f HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVec3f& ray
         }
     }
 
-    // --- MIS: BSDF Sampling (Indirect) ---
     if (!isInteractive && depth < 3) {
         GfVec3f bounceDir = AlignToNormal(SampleCosineHemisphere(RandomFloat(rng), RandomFloat(rng)), hit.normal);
         float nDotL = std::max(0.0f, GfDot(hit.normal, bounceDir));
         float pdf = nDotL / (float)M_PI;
-        
         if (pdf > 1e-6f) {
             GfVec3f indirect = _TraceRay(shadowOrigin, bounceDir, depth + 1, isInteractive, renderThread, lights, rng);
             GfVec3f bsdf = hit.baseColor / (float)M_PI;
@@ -382,7 +412,6 @@ GfVec3f HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVec3f& ray
     } else if (isInteractive) {
         result += hit.baseColor * 0.2f;
     }
-
     return result;
 }
 
@@ -391,16 +420,11 @@ HdGeminiRenderer::_RenderTiles(HdRenderThread *renderThread, HdGeminiRenderDeleg
 {
     unsigned int width = _dataWindow.GetWidth();
     unsigned int height = _dataWindow.GetHeight();
-
     if (width == 0 || height == 0 || _aovBindings.empty()) return;
-
     HdGeminiRenderBuffer* colorBuffer = static_cast<HdGeminiRenderBuffer*>(_aovBindings[0].renderBuffer);
-
     GfVec3f cameraPosWorld(_inverseViewMatrix.Transform(GfVec3f(0, 0, 0)));
-
     std::lock_guard<std::mutex> lock(delegate->GetSceneLock());
     const auto& lights = delegate->GetLights();
-
     int res = _resolutionLevel;
     bool isInteractive = (res > 1);
     const int bucketSize = 16;
@@ -411,34 +435,22 @@ HdGeminiRenderer::_RenderTiles(HdRenderThread *renderThread, HdGeminiRenderDeleg
     WorkParallelForN(numBuckets, [&](size_t b_start, size_t b_end) {
         for (size_t b = b_start; b < b_end; ++b) {
             if (renderThread->IsStopRequested()) return;
-
             size_t bx = b % numBucketsX;
             size_t by = b / numBucketsX;
-
-            size_t startX = bx * bucketSize;
-            size_t startY = by * bucketSize;
+            size_t startX = (bx * bucketSize / res) * res;
+            size_t startY = (by * bucketSize / res) * res;
             size_t endX = std::min(startX + bucketSize, (size_t)width);
             size_t endY = std::min(startY + bucketSize, (size_t)height);
-
-            startX = (startX / res) * res;
-            startY = (startY / res) * res;
-
             for (size_t y = startY; y < endY; y += res) {
                 for (size_t x = startX; x < endX; x += res) {
                     if (renderThread->IsStopRequested()) return;
-
-                    // Unique RNG state per pixel and resolution pass
                     uint32_t rng = (uint32_t)(y * width + x) ^ (uint32_t)(_frameCount * 12345);
-
                     float ndcX = (2.0f * (x + res * RandomFloat(rng)) / width) - 1.0f;
                     float ndcY = (2.0f * (y + res * RandomFloat(rng)) / height) - 1.0f;
-                    
                     GfVec3f nearPlanePointCam(_inverseProjMatrix.Transform(GfVec3f(ndcX, ndcY, -1.0f)));
                     GfVec3f nearPlanePointWorld(_inverseViewMatrix.Transform(nearPlanePointCam));
                     GfVec3f rayDirWorld = (nearPlanePointWorld - cameraPosWorld).GetNormalized();
-
                     GfVec3f hitColor = _TraceRay(cameraPosWorld, rayDirWorld, 0, isInteractive, renderThread, lights, rng);
-
                     if (isInteractive) {
                         GfVec4f finalColor(hitColor[0], hitColor[1], hitColor[2], 1.0f);
                         for (int dy = 0; dy < res && y + dy < height; ++dy) {
@@ -452,9 +464,7 @@ HdGeminiRenderer::_RenderTiles(HdRenderThread *renderThread, HdGeminiRenderDeleg
                 }
                 std::this_thread::yield();
             }
-            if (!renderThread->IsStopRequested()) {
-                colorBuffer->ResolveBucket(startX, startY, endX, endY);
-            }
+            if (!renderThread->IsStopRequested()) colorBuffer->ResolveBucket(startX, startY, endX, endY);
         }
     });
 }
@@ -483,9 +493,8 @@ HdGeminiRenderer::Clear()
 GfVec4f
 HdGeminiRenderer::_GetClearColor(VtValue const& clearValue)
 {
-    if (clearValue.IsHolding<GfVec4f>()) {
-        return clearValue.UncheckedGet<GfVec4f>();
-    } else if (clearValue.IsHolding<GfVec3f>()) {
+    if (clearValue.IsHolding<GfVec4f>()) return clearValue.UncheckedGet<GfVec4f>();
+    if (clearValue.IsHolding<GfVec3f>()) {
         GfVec3f v = clearValue.UncheckedGet<GfVec3f>();
         return GfVec4f(v[0], v[1], v[2], 1.0f);
     }

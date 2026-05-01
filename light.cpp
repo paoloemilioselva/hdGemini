@@ -36,6 +36,13 @@ HdGeminiLight::Sync(HdSceneDelegate *sceneDelegate,
         if (intensityVal.IsHolding<float>()) {
             _intensity = intensityVal.UncheckedGet<float>();
         }
+
+        if (_lightType == HdPrimTypeTokens->domeLight) {
+            VtValue textureVal = sceneDelegate->GetLightParamValue(id, HdLightTokens->textureFile);
+            if (textureVal.IsHolding<SdfAssetPath>()) {
+                _textureFile = textureVal.UncheckedGet<SdfAssetPath>();
+            }
+        }
     }
 
     HdGeminiRenderParam *geminiRenderParam = static_cast<HdGeminiRenderParam*>(renderParam);

@@ -5,6 +5,7 @@
 #include "pxr/imaging/hd/light.h"
 #include "pxr/base/gf/vec3f.h"
 #include "pxr/base/gf/matrix4d.h"
+#include "pxr/usd/sdf/assetPath.h"
 
 PXR_NAMESPACE_USING_DIRECTIVE
 
@@ -23,12 +24,14 @@ public:
     float GetIntensity() const { return _intensity; }
     const GfMatrix4d& GetTransform() const { return _transform; }
     const TfToken& GetLightType() const { return _lightType; }
+    const SdfAssetPath& GetTextureFile() const { return _textureFile; }
 
 private:
     GfVec3f _color;
     float _intensity;
     GfMatrix4d _transform;
     TfToken _lightType;
+    SdfAssetPath _textureFile;
 };
 
 #endif // HD_GEMINI_LIGHT_H

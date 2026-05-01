@@ -63,6 +63,7 @@ private:
     void _SubdivideTLAS(int nodeIdx, int start, int end, HdRenderThread *renderThread);
     bool _IntersectTLAS(int nodeIdx, const GfVec3f& rayOrigin, const GfVec3f& rayDir, HitRecord& hit, HdRenderThread* renderThread) const;
     GfVec3f _TraceRay(const GfVec3f& rayOrigin, const GfVec3f& rayDir, int depth, bool isInteractive, HdRenderThread* renderThread, const std::map<SdfPath, HdGeminiLight*>& lights, uint32_t& rng) const;
+    GfVec3f _SampleEnvironment(const GfVec3f& rayDir, const std::map<SdfPath, HdGeminiLight*>& lights) const;
 
     HdRenderPassAovBindingVector _aovBindings;
     GfRect2i _dataWindow;
@@ -75,6 +76,10 @@ private:
     std::vector<int> _tlasInstanceIndices;
     int _resolutionLevel;
     int _frameCount;
+
+    std::vector<float> _envMapPixels;
+    int _envMapWidth = 0;
+    int _envMapHeight = 0;
 };
 
 #endif // HD_GEMINI_RENDERER_H

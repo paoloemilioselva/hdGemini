@@ -25,11 +25,25 @@ HdGeminiInstancer::Sync(HdSceneDelegate *sceneDelegate,
                         HdDirtyBits     *dirtyBits)
 {
     _UpdateInstancer(sceneDelegate, dirtyBits);
+    
+    if (HdChangeTracker::IsAnyPrimvarDirty(*dirtyBits, GetId()) ||
+        HdChangeTracker::IsTransformDirty(*dirtyBits, GetId())) {
+        std::lock_guard<std::mutex> lock(_cacheMutex);
+        _cachedTransforms.clear();
+    }
 }
 
 VtMatrix4dArray
 HdGeminiInstancer::ComputeInstanceTransforms(SdfPath const &prototypeId)
 {
+    {
+        std::lock_guard<std::mutex> lock(_cacheMutex);
+        auto it = _cachedTransforms.find(prototypeId);
+        if (it != _cachedTransforms.end()) {
+            return it->second;
+        }
+    }
+
     HdSceneDelegate* delegate = GetDelegate();
     SdfPath const& instancerId = GetId();
 
@@ -37,6 +51,8 @@ HdGeminiInstancer::ComputeInstanceTransforms(SdfPath const &prototypeId)
 
     VtMatrix4dArray transforms;
     if (instanceIndices.empty()) {
+        std::lock_guard<std::mutex> lock(_cacheMutex);
+        _cachedTransforms[prototypeId] = transforms;
         return transforms;
     }
     
@@ -125,6 +141,11 @@ HdGeminiInstancer::ComputeInstanceTransforms(SdfPath const &prototypeId)
             }
             transforms = newTransforms;
         }
+    }
+    
+    {
+        std::lock_guard<std::mutex> lock(_cacheMutex);
+        _cachedTransforms[prototypeId] = transforms;
     }
     return transforms;
 }

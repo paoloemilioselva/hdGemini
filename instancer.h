@@ -5,6 +5,8 @@
 #include "pxr/imaging/hd/instancer.h"
 #include "pxr/base/vt/array.h"
 #include "pxr/base/gf/matrix4d.h"
+#include <map>
+#include <mutex>
 
 PXR_NAMESPACE_USING_DIRECTIVE
 
@@ -18,6 +20,10 @@ public:
                       HdDirtyBits     *dirtyBits) override;
 
     VtMatrix4dArray ComputeInstanceTransforms(SdfPath const &prototypeId);
+
+private:
+    std::map<SdfPath, VtMatrix4dArray> _cachedTransforms;
+    std::mutex _cacheMutex;
 };
 
 #endif // HD_GEMINI_INSTANCER_H

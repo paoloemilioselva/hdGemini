@@ -49,9 +49,9 @@ private:
 
     static GfVec4f _GetClearColor(VtValue const& clearValue);
     void _RenderTiles(HdRenderThread *renderThread, HdGeminiRenderDelegate* delegate);
-    void _PrepareScene(HdGeminiRenderDelegate* delegate);
-    void _BuildTLAS();
-    void _SubdivideTLAS(int nodeIdx, int start, int end);
+    void _PrepareScene(HdRenderThread *renderThread, HdGeminiRenderDelegate* delegate);
+    void _BuildTLAS(HdRenderThread *renderThread);
+    void _SubdivideTLAS(int nodeIdx, int start, int end, HdRenderThread *renderThread);
     bool _IntersectTLAS(int nodeIdx, const GfVec3f& rayOrigin, const GfVec3f& rayDir, float& t, GfVec3f& normal, GfVec3f& hitColor, HdRenderThread* renderThread) const;
 
     HdRenderPassAovBindingVector _aovBindings;

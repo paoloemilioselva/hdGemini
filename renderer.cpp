@@ -101,8 +101,11 @@ HdGeminiRenderer::Render(HdRenderThread *renderThread, HdGeminiRenderDelegate* d
         }
     }
 
-    _PrepareScene(delegate);
+    _PrepareScene(renderThread, delegate);
+    if (renderThread->IsStopRequested()) return;
     _RenderTiles(renderThread, delegate);
+
+    if (renderThread->IsStopRequested()) return;
 
     // Mark buffers as converged once finished and resolve
     for (auto const& binding : _aovBindings) {
@@ -115,12 +118,14 @@ HdGeminiRenderer::Render(HdRenderThread *renderThread, HdGeminiRenderDelegate* d
 }
 
 void
-HdGeminiRenderer::_PrepareScene(HdGeminiRenderDelegate* delegate)
+HdGeminiRenderer::_PrepareScene(HdRenderThread *renderThread, HdGeminiRenderDelegate* delegate)
 {
     _instances.clear();
     const auto& meshes = delegate->GetMeshes();
 
     for (auto const& item : meshes) {
+        if (renderThread->IsStopRequested()) return;
+        
         HdGeminiMesh* mesh = item.second;
         GfRange3f meshBounds = mesh->GetRange();
         if (meshBounds.IsEmpty()) continue;
@@ -152,14 +157,14 @@ HdGeminiRenderer::_PrepareScene(HdGeminiRenderDelegate* delegate)
         _instances.push_back(inst);
     }
     
-    _BuildTLAS();
+    _BuildTLAS(renderThread);
 }
 
-void HdGeminiRenderer::_BuildTLAS()
+void HdGeminiRenderer::_BuildTLAS(HdRenderThread *renderThread)
 {
     _tlasNodes.clear();
     _tlasInstanceIndices.clear();
-    if (_instances.empty()) return;
+    if (_instances.empty() || renderThread->IsStopRequested()) return;
 
     _tlasInstanceIndices.resize(_instances.size());
     for (size_t i = 0; i < _instances.size(); ++i) {
@@ -168,11 +173,13 @@ void HdGeminiRenderer::_BuildTLAS()
 
     _tlasNodes.reserve(_instances.size() * 2);
     _tlasNodes.push_back(TLASNode()); // Root
-    _SubdivideTLAS(0, 0, (int)_instances.size());
+    _SubdivideTLAS(0, 0, (int)_instances.size(), renderThread);
 }
 
-void HdGeminiRenderer::_SubdivideTLAS(int nodeIdx, int start, int end)
+void HdGeminiRenderer::_SubdivideTLAS(int nodeIdx, int start, int end, HdRenderThread *renderThread)
 {
+    if (renderThread->IsStopRequested()) return;
+
     TLASNode& node = _tlasNodes[nodeIdx];
     node.bounds.SetEmpty();
     for (int i = start; i < end; ++i) {
@@ -216,8 +223,8 @@ void HdGeminiRenderer::_SubdivideTLAS(int nodeIdx, int start, int end)
     node.leftChild = leftChildIdx;
     node.instanceCount = 0;
 
-    _SubdivideTLAS(leftChildIdx, start, i);
-    _SubdivideTLAS(leftChildIdx + 1, i, end);
+    _SubdivideTLAS(leftChildIdx, start, i, renderThread);
+    _SubdivideTLAS(leftChildIdx + 1, i, end, renderThread);
 }
 
 bool HdGeminiRenderer::_IntersectTLAS(int nodeIdx, const GfVec3f& rayOrigin, const GfVec3f& rayDir, float& t, GfVec3f& normal, GfVec3f& hitColor, HdRenderThread* renderThread) const

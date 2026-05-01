@@ -47,6 +47,7 @@ set (_usd_libs
     usd_usdRi
     usd_usdUI
     usd_usdShade
+    usd_usdSkel
     usd_usdGeom
     usd_usd
     usd_usdUtils

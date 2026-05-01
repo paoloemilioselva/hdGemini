@@ -439,7 +439,7 @@ GfVec3f HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVec3f& ray
             lDir = toLight / lightDist;
             float area = light->GetWidth() * light->GetHeight();
             if (area > 0) {
-                GfVec3f lNormal = GfMatrix4f(light->GetTransform()).TransformDir(GfVec3f(0, 0, 1)).GetNormalized();
+                GfVec3f lNormal = GfMatrix4f(light->GetTransform()).TransformDir(GfVec3f(0, 0, -1)).GetNormalized();
                 float cosThetaL = std::max(0.0f, GfDot(lNormal, -lDir));
                 if (cosThetaL > 0) {
                     lightPdf *= (lightDist * lightDist) / (area * cosThetaL);

@@ -65,6 +65,7 @@ HdGeminiRenderer::HdGeminiRenderer()
     , _projMatrix(1.0)
     , _inverseViewMatrix(1.0)
     , _inverseProjMatrix(1.0)
+    , _resolutionLevel(4)
 {
 }
 
@@ -112,8 +113,14 @@ HdGeminiRenderer::Render(HdRenderThread *renderThread, HdGeminiRenderDelegate* d
         if (binding.renderBuffer) {
             auto* rb = static_cast<HdGeminiRenderBuffer*>(binding.renderBuffer);
             rb->Resolve();
-            rb->SetConverged(true);
+            if (_resolutionLevel <= 1) {
+                rb->SetConverged(true);
+            }
         }
+    }
+
+    if (_resolutionLevel > 1) {
+        _resolutionLevel /= 2;
     }
 }
 
@@ -287,14 +294,20 @@ HdGeminiRenderer::_RenderTiles(HdRenderThread *renderThread, HdGeminiRenderDeleg
 
     GfVec3f cameraPosWorld(_inverseViewMatrix.Transform(GfVec3f(0, 0, 0)));
 
-    WorkParallelForN(height, [&](size_t y_start, size_t y_end) {
-        for (size_t y = y_start; y < y_end; ++y) {
-            for (size_t x = 0; x < width; ++x) {
+    int res = _resolutionLevel;
+    size_t numBlockRows = (height + res - 1) / res;
+
+    WorkParallelForN(numBlockRows, [&](size_t by_start, size_t by_end) {
+        for (size_t by = by_start; by < by_end; ++by) {
+            size_t y = by * res;
+            if (renderThread->IsStopRequested()) return;
+
+            for (size_t x = 0; x < width; x += res) {
                 if (renderThread->IsStopRequested()) return;
 
-                // Generate ray
-                float ndcX = (2.0f * (x + 0.5f) / width) - 1.0f;
-                float ndcY = (2.0f * (y + 0.5f) / height) - 1.0f;
+                // Generate ray from center of the block
+                float ndcX = (2.0f * (x + res * 0.5f) / width) - 1.0f;
+                float ndcY = (2.0f * (y + res * 0.5f) / height) - 1.0f;
                 
                 GfVec3f nearPlanePointCam(_inverseProjMatrix.Transform(GfVec3f(ndcX, ndcY, -1.0f)));
                 GfVec3f nearPlanePointWorld(_inverseViewMatrix.Transform(nearPlanePointCam));
@@ -309,18 +322,23 @@ HdGeminiRenderer::_RenderTiles(HdRenderThread *renderThread, HdGeminiRenderDeleg
                     hit = _IntersectTLAS(0, cameraPosWorld, rayDirWorld, t, normal, hitColor, renderThread);
                 }
 
+                GfVec4f finalColor;
                 if (hit) {
-                    GfVec4f finalColor(hitColor[0], hitColor[1], hitColor[2], 1.0f);
-                    colorBuffer->Write(GfVec3i(x, y, 0), 4, finalColor.data());
+                    finalColor = GfVec4f(hitColor[0], hitColor[1], hitColor[2], 1.0f);
                 } else {
-                    // Sky gradient
                     float sky = 0.3f + 0.2f * ndcY;
-                    GfVec4f bgColor(sky * 0.8f, sky * 0.9f, sky, 1.0f);
-                    colorBuffer->Write(GfVec3i(x, y, 0), 4, bgColor.data());
+                    finalColor = GfVec4f(sky * 0.8f, sky * 0.9f, sky, 1.0f);
+                }
+
+                // Write to block
+                for (int dy = 0; dy < res && y + dy < height; ++dy) {
+                    for (int dx = 0; dx < res && x + dx < width; ++dx) {
+                        colorBuffer->Write(GfVec3i(x + dx, y + dy, 0), 4, finalColor.data());
+                    }
                 }
             }
             // Progressive resolve every 32 rows
-            if (y % 32 == 0 && !renderThread->IsStopRequested()) {
+            if (by % 32 == 0 && !renderThread->IsStopRequested()) {
                 colorBuffer->Resolve();
             }
         }
@@ -330,6 +348,7 @@ HdGeminiRenderer::_RenderTiles(HdRenderThread *renderThread, HdGeminiRenderDeleg
 void
 HdGeminiRenderer::Clear()
 {
+    _resolutionLevel = 4;
     for (auto const& binding : _aovBindings) {
         if (binding.renderBuffer && !binding.clearValue.IsEmpty()) {
             HdGeminiRenderBuffer* rb = static_cast<HdGeminiRenderBuffer*>(binding.renderBuffer);

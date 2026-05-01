@@ -63,6 +63,7 @@ private:
     std::vector<MeshInstance> _instances;
     std::vector<TLASNode> _tlasNodes;
     std::vector<int> _tlasInstanceIndices;
+    int _resolutionLevel;
 };
 
 #endif // HD_GEMINI_RENDERER_H

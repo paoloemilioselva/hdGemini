@@ -16,6 +16,50 @@
 
 PXR_NAMESPACE_USING_DIRECTIVE
 
+static bool
+IntersectAABB(const GfVec3f& rayOrigin, const GfVec3f& rayDir, const GfRange3f& range, float& tMinHit)
+{
+    if (range.IsEmpty()) return false;
+    const GfVec3f& min = range.GetMin();
+    const GfVec3f& max = range.GetMax();
+
+    float tmin = -1e30f;
+    float tmax = 1e30f;
+
+    for (int i = 0; i < 3; ++i) {
+        if (std::abs(rayDir[i]) < 1e-8) {
+            if (rayOrigin[i] < min[i] || rayOrigin[i] > max[i]) return false;
+        } else {
+            float invDir = 1.0f / rayDir[i];
+            float t1 = (min[i] - rayOrigin[i]) * invDir;
+            float t2 = (max[i] - rayOrigin[i]) * invDir;
+            if (t1 > t2) std::swap(t1, t2);
+            tmin = std::max(tmin, t1);
+            tmax = std::min(tmax, t2);
+            if (tmin > tmax) return false;
+        }
+    }
+    tMinHit = tmin;
+    return tmax > 0 && tmax > 1e-4;
+}
+
+static GfRange3f TransformBounds(const GfRange3f& bounds, const GfMatrix4f& matrix) {
+    if (bounds.IsEmpty()) return bounds;
+    GfVec3f min = bounds.GetMin();
+    GfVec3f max = bounds.GetMax();
+    GfVec3f corners[8] = {
+        GfVec3f(min[0], min[1], min[2]), GfVec3f(max[0], min[1], min[2]),
+        GfVec3f(min[0], max[1], min[2]), GfVec3f(max[0], max[1], min[2]),
+        GfVec3f(min[0], min[1], max[2]), GfVec3f(max[0], min[1], max[2]),
+        GfVec3f(min[0], max[1], max[2]), GfVec3f(max[0], max[1], max[2])
+    };
+    GfRange3f result;
+    for (int i = 0; i < 8; ++i) {
+        result.ExtendBy(matrix.Transform(corners[i]));
+    }
+    return result;
+}
+
 HdGeminiRenderer::HdGeminiRenderer()
     : _viewMatrix(1.0)
     , _projMatrix(1.0)
@@ -78,6 +122,8 @@ HdGeminiRenderer::_PrepareScene(HdGeminiRenderDelegate* delegate)
 
     for (auto const& item : meshes) {
         HdGeminiMesh* mesh = item.second;
+        GfRange3f meshBounds = mesh->GetRange();
+        if (meshBounds.IsEmpty()) continue;
         
         if (!mesh->GetInstancerId().IsEmpty()) {
             HdGeminiInstancer* instancer = delegate->GetInstancer(mesh->GetInstancerId());
@@ -88,6 +134,8 @@ HdGeminiRenderer::_PrepareScene(HdGeminiRenderDelegate* delegate)
                     inst.mesh = mesh;
                     inst.transform = GfMatrix4f(t) * mesh->GetTransform();
                     inst.invTransform = inst.transform.GetInverse();
+                    inst.bounds = TransformBounds(meshBounds, inst.transform);
+                    inst.centroid = (inst.bounds.GetMin() + inst.bounds.GetMax()) * 0.5f;
                     _instances.push_back(inst);
                 }
                 continue;
@@ -99,7 +147,114 @@ HdGeminiRenderer::_PrepareScene(HdGeminiRenderDelegate* delegate)
         inst.mesh = mesh;
         inst.transform = mesh->GetTransform();
         inst.invTransform = inst.transform.GetInverse();
+        inst.bounds = TransformBounds(meshBounds, inst.transform);
+        inst.centroid = (inst.bounds.GetMin() + inst.bounds.GetMax()) * 0.5f;
         _instances.push_back(inst);
+    }
+    
+    _BuildTLAS();
+}
+
+void HdGeminiRenderer::_BuildTLAS()
+{
+    _tlasNodes.clear();
+    _tlasInstanceIndices.clear();
+    if (_instances.empty()) return;
+
+    _tlasInstanceIndices.resize(_instances.size());
+    for (size_t i = 0; i < _instances.size(); ++i) {
+        _tlasInstanceIndices[i] = (int)i;
+    }
+
+    _tlasNodes.reserve(_instances.size() * 2);
+    _tlasNodes.push_back(TLASNode()); // Root
+    _SubdivideTLAS(0, 0, (int)_instances.size());
+}
+
+void HdGeminiRenderer::_SubdivideTLAS(int nodeIdx, int start, int end)
+{
+    TLASNode& node = _tlasNodes[nodeIdx];
+    node.bounds.SetEmpty();
+    for (int i = start; i < end; ++i) {
+        node.bounds.ExtendBy(_instances[_tlasInstanceIndices[i]].bounds.GetMin());
+        node.bounds.ExtendBy(_instances[_tlasInstanceIndices[i]].bounds.GetMax());
+    }
+
+    int count = end - start;
+    if (count <= 2) { // leaf
+        node.leftChild = -start - 1;
+        node.instanceCount = count;
+        return;
+    }
+
+    GfVec3f size = node.bounds.GetSize();
+    int axis = 0;
+    if (size[1] > size[0]) axis = 1;
+    if (size[2] > size[axis]) axis = 2;
+
+    float splitPos = node.bounds.GetMin()[axis] + size[axis] * 0.5f;
+
+    int i = start;
+    int j = end - 1;
+    while (i <= j) {
+        if (_instances[_tlasInstanceIndices[i]].centroid[axis] < splitPos) {
+            i++;
+        } else {
+            std::swap(_tlasInstanceIndices[i], _tlasInstanceIndices[j]);
+            j--;
+        }
+    }
+
+    int leftCount = i - start;
+    if (leftCount == 0 || leftCount == count) {
+        i = start + count / 2;
+    }
+
+    int leftChildIdx = (int)_tlasNodes.size();
+    _tlasNodes.push_back(TLASNode());
+    _tlasNodes.push_back(TLASNode());
+    node.leftChild = leftChildIdx;
+    node.instanceCount = 0;
+
+    _SubdivideTLAS(leftChildIdx, start, i);
+    _SubdivideTLAS(leftChildIdx + 1, i, end);
+}
+
+bool HdGeminiRenderer::_IntersectTLAS(int nodeIdx, const GfVec3f& rayOrigin, const GfVec3f& rayDir, float& t, GfVec3f& normal, GfVec3f& hitColor, HdRenderThread* renderThread) const
+{
+    if (_tlasNodes.empty() || renderThread->IsStopRequested()) return false;
+
+    const TLASNode& node = _tlasNodes[nodeIdx];
+    float tAabb;
+    if (!IntersectAABB(rayOrigin, rayDir, node.bounds, tAabb)) return false;
+    if (tAabb > t) return false;
+
+    if (node.leftChild < 0) {
+        bool hit = false;
+        int start = -node.leftChild - 1;
+        for (int i = 0; i < node.instanceCount; ++i) {
+            if (renderThread->IsStopRequested()) return false;
+            const auto& inst = _instances[_tlasInstanceIndices[start + i]];
+            
+            GfVec3f objRayOrigin = inst.invTransform.Transform(rayOrigin);
+            GfVec3f objRayDir = inst.invTransform.TransformDir(rayDir);
+            
+            float instT = t;
+            GfVec3f instNormal;
+            if (inst.mesh->GetBVH().Intersect(objRayOrigin, objRayDir, instT, instNormal)) {
+                if (instT < t) {
+                    t = instT;
+                    normal = inst.transform.TransformDir(instNormal).GetNormalized();
+                    hitColor = GfVec3f(std::abs(GfDot(normal, -rayDir)) * 0.8f + 0.2f);
+                    hit = true;
+                }
+            }
+        }
+        return hit;
+    } else {
+        bool hitLeft = _IntersectTLAS(node.leftChild, rayOrigin, rayDir, t, normal, hitColor, renderThread);
+        bool hitRight = _IntersectTLAS(node.leftChild + 1, rayOrigin, rayDir, t, normal, hitColor, renderThread);
+        return hitLeft || hitRight;
     }
 }
 
@@ -128,27 +283,13 @@ HdGeminiRenderer::_RenderTiles(HdRenderThread *renderThread, HdGeminiRenderDeleg
                 GfVec3f nearPlanePointWorld(_inverseViewMatrix.Transform(nearPlanePointCam));
                 GfVec3f rayDirWorld = (nearPlanePointWorld - cameraPosWorld).GetNormalized();
 
-                float minT = 1e30f;
+                float t = 1e30f;
                 GfVec3f hitColor(0.0f, 0.0f, 0.0f);
+                GfVec3f normal;
+                
                 bool hit = false;
-
-                for (const auto& inst : _instances) {
-                    // Transform ray to object space
-                    GfVec3f objRayOrigin = inst.invTransform.Transform(cameraPosWorld);
-                    GfVec3f objRayDir = inst.invTransform.TransformDir(rayDirWorld);
-
-                    float t = minT;
-                    GfVec3f normal;
-                    if (inst.mesh->GetBVH().Intersect(objRayOrigin, objRayDir, t, normal)) {
-                        if (t < minT) {
-                            minT = t;
-                            hit = true;
-                            // Transform normal to world space
-                            GfVec3f worldN = inst.transform.TransformDir(normal).GetNormalized();
-                            float shade = std::abs(GfDot(worldN, -rayDirWorld));
-                            hitColor = GfVec3f(shade * 0.8f + 0.2f);
-                        }
-                    }
+                if (!_tlasNodes.empty()) {
+                    hit = _IntersectTLAS(0, cameraPosWorld, rayDirWorld, t, normal, hitColor, renderThread);
                 }
 
                 if (hit) {
@@ -162,7 +303,7 @@ HdGeminiRenderer::_RenderTiles(HdRenderThread *renderThread, HdGeminiRenderDeleg
                 }
             }
             // Progressive resolve every 32 rows
-            if (y % 32 == 0) {
+            if (y % 32 == 0 && !renderThread->IsStopRequested()) {
                 colorBuffer->Resolve();
             }
         }

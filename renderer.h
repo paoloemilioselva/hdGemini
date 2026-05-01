@@ -8,6 +8,7 @@
 #include "pxr/base/gf/matrix4f.h"
 #include "pxr/base/gf/rect2i.h"
 #include "pxr/base/gf/vec3f.h"
+#include "pxr/base/gf/range3f.h"
 #include <vector>
 #include <atomic>
 
@@ -36,11 +37,22 @@ private:
         HdGeminiMesh* mesh;
         GfMatrix4f transform;
         GfMatrix4f invTransform;
+        GfRange3f bounds;
+        GfVec3f centroid;
+    };
+
+    struct TLASNode {
+        GfRange3f bounds;
+        int leftChild;
+        int instanceCount;
     };
 
     static GfVec4f _GetClearColor(VtValue const& clearValue);
     void _RenderTiles(HdRenderThread *renderThread, HdGeminiRenderDelegate* delegate);
     void _PrepareScene(HdGeminiRenderDelegate* delegate);
+    void _BuildTLAS();
+    void _SubdivideTLAS(int nodeIdx, int start, int end);
+    bool _IntersectTLAS(int nodeIdx, const GfVec3f& rayOrigin, const GfVec3f& rayDir, float& t, GfVec3f& normal, GfVec3f& hitColor, HdRenderThread* renderThread) const;
 
     HdRenderPassAovBindingVector _aovBindings;
     GfRect2i _dataWindow;
@@ -49,6 +61,8 @@ private:
     GfMatrix4d _inverseViewMatrix;
     GfMatrix4d _inverseProjMatrix;
     std::vector<MeshInstance> _instances;
+    std::vector<TLASNode> _tlasNodes;
+    std::vector<int> _tlasInstanceIndices;
 };
 
 #endif // HD_GEMINI_RENDERER_H

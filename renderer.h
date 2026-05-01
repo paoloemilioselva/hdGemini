@@ -31,6 +31,7 @@ public:
     void Render(HdRenderThread *renderThread, HdGeminiRenderDelegate* delegate);
     void Clear();
     void MarkAovBuffersUnconverged();
+    bool IsConverged() const { return _resolutionLevel <= 1; }
 
 private:
     struct MeshInstance {

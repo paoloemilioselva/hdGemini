@@ -42,7 +42,9 @@ static void _RenderCallback(HdGeminiRenderer *renderer,
                             HdGeminiRenderDelegate *delegate)
 {
     renderer->Clear();
-    renderer->Render(renderThread, delegate);
+    while (!renderThread->IsStopRequested() && !renderer->IsConverged()) {
+        renderer->Render(renderThread, delegate);
+    }
 }
 
 HdGeminiRenderDelegate::HdGeminiRenderDelegate()

@@ -295,50 +295,67 @@ HdGeminiRenderer::_RenderTiles(HdRenderThread *renderThread, HdGeminiRenderDeleg
     GfVec3f cameraPosWorld(_inverseViewMatrix.Transform(GfVec3f(0, 0, 0)));
 
     int res = _resolutionLevel;
-    size_t numBlockRows = (height + res - 1) / res;
+    const int bucketSize = 32;
+    size_t numBucketsX = (width + bucketSize - 1) / bucketSize;
+    size_t numBucketsY = (height + bucketSize - 1) / bucketSize;
+    size_t numBuckets = numBucketsX * numBucketsY;
 
-    WorkParallelForN(numBlockRows, [&](size_t by_start, size_t by_end) {
-        for (size_t by = by_start; by < by_end; ++by) {
-            size_t y = by * res;
+    WorkParallelForN(numBuckets, [&](size_t b_start, size_t b_end) {
+        for (size_t b = b_start; b < b_end; ++b) {
             if (renderThread->IsStopRequested()) return;
 
-            for (size_t x = 0; x < width; x += res) {
+            size_t bx = b % numBucketsX;
+            size_t by = b / numBucketsX;
+
+            size_t startX = bx * bucketSize;
+            size_t startY = by * bucketSize;
+            size_t endX = std::min(startX + bucketSize, (size_t)width);
+            size_t endY = std::min(startY + bucketSize, (size_t)height);
+
+            // Align start to resolution level to avoid tearing
+            startX = (startX / res) * res;
+            startY = (startY / res) * res;
+
+            for (size_t y = startY; y < endY; y += res) {
                 if (renderThread->IsStopRequested()) return;
 
-                // Generate ray from center of the block
-                float ndcX = (2.0f * (x + res * 0.5f) / width) - 1.0f;
-                float ndcY = (2.0f * (y + res * 0.5f) / height) - 1.0f;
-                
-                GfVec3f nearPlanePointCam(_inverseProjMatrix.Transform(GfVec3f(ndcX, ndcY, -1.0f)));
-                GfVec3f nearPlanePointWorld(_inverseViewMatrix.Transform(nearPlanePointCam));
-                GfVec3f rayDirWorld = (nearPlanePointWorld - cameraPosWorld).GetNormalized();
+                for (size_t x = startX; x < endX; x += res) {
+                    if (renderThread->IsStopRequested()) return;
 
-                float t = 1e30f;
-                GfVec3f hitColor(0.0f, 0.0f, 0.0f);
-                GfVec3f normal;
-                
-                bool hit = false;
-                if (!_tlasNodes.empty()) {
-                    hit = _IntersectTLAS(0, cameraPosWorld, rayDirWorld, t, normal, hitColor, renderThread);
-                }
+                    // Generate ray from center of the block
+                    float ndcX = (2.0f * (x + res * 0.5f) / width) - 1.0f;
+                    float ndcY = (2.0f * (y + res * 0.5f) / height) - 1.0f;
+                    
+                    GfVec3f nearPlanePointCam(_inverseProjMatrix.Transform(GfVec3f(ndcX, ndcY, -1.0f)));
+                    GfVec3f nearPlanePointWorld(_inverseViewMatrix.Transform(nearPlanePointCam));
+                    GfVec3f rayDirWorld = (nearPlanePointWorld - cameraPosWorld).GetNormalized();
 
-                GfVec4f finalColor;
-                if (hit) {
-                    finalColor = GfVec4f(hitColor[0], hitColor[1], hitColor[2], 1.0f);
-                } else {
-                    float sky = 0.3f + 0.2f * ndcY;
-                    finalColor = GfVec4f(sky * 0.8f, sky * 0.9f, sky, 1.0f);
-                }
+                    float t = 1e30f;
+                    GfVec3f hitColor(0.0f, 0.0f, 0.0f);
+                    GfVec3f normal;
+                    
+                    bool hit = false;
+                    if (!_tlasNodes.empty()) {
+                        hit = _IntersectTLAS(0, cameraPosWorld, rayDirWorld, t, normal, hitColor, renderThread);
+                    }
 
-                // Write to block
-                for (int dy = 0; dy < res && y + dy < height; ++dy) {
-                    for (int dx = 0; dx < res && x + dx < width; ++dx) {
-                        colorBuffer->Write(GfVec3i(x + dx, y + dy, 0), 4, finalColor.data());
+                    GfVec4f finalColor;
+                    if (hit) {
+                        finalColor = GfVec4f(hitColor[0], hitColor[1], hitColor[2], 1.0f);
+                    } else {
+                        float sky = 0.3f + 0.2f * ndcY;
+                        finalColor = GfVec4f(sky * 0.8f, sky * 0.9f, sky, 1.0f);
+                    }
+
+                    // Write to block
+                    for (int dy = 0; dy < res && y + dy < height; ++dy) {
+                        for (int dx = 0; dx < res && x + dx < width; ++dx) {
+                            colorBuffer->Write(GfVec3i(x + dx, y + dy, 0), 4, finalColor.data());
+                        }
                     }
                 }
             }
-            // Progressive resolve every 32 rows
-            if (by % 32 == 0 && !renderThread->IsStopRequested()) {
+            if (!renderThread->IsStopRequested()) {
                 colorBuffer->Resolve();
             }
         }

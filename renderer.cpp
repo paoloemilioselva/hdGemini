@@ -450,6 +450,7 @@ HdGeminiRenderer::_RenderTiles(HdRenderThread *renderThread, HdGeminiRenderDeleg
                         colorBuffer->WriteSample(GfVec3i(x, y, 0), GfVec4f(hitColor[0], hitColor[1], hitColor[2], 1.0f));
                     }
                 }
+                std::this_thread::yield();
             }
             if (!renderThread->IsStopRequested()) {
                 colorBuffer->ResolveBucket(startX, startY, endX, endY);

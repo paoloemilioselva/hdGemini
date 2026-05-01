@@ -365,9 +365,7 @@ bool HdGeminiRenderer::_IntersectTLAS(int nodeIdx, const GfVec3f& rayOrigin, con
 GfVec3f HdGeminiRenderer::_SampleEnvironment(const GfVec3f& rayDir, const std::map<SdfPath, HdGeminiLight*>& lights) const
 {
     if (_envMapPixels.empty()) {
-        float ndcY = rayDir[1];
-        float skyIntensity = 0.3f + 0.2f * ndcY;
-        return GfVec3f(skyIntensity * 0.8f, skyIntensity * 0.9f, skyIntensity);
+        return GfVec3f(0.0f);
     }
     float theta = std::acos(std::clamp(rayDir[1], -1.0f, 1.0f));
     float phi = std::atan2(rayDir[2], rayDir[0]);

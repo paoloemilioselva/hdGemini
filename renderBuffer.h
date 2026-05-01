@@ -4,6 +4,7 @@
 #include "pxr/pxr.h"
 #include "pxr/imaging/hd/renderBuffer.h"
 #include <vector>
+#include <atomic>
 
 PXR_NAMESPACE_USING_DIRECTIVE
 
@@ -26,8 +27,9 @@ public:
     virtual void Unmap() override {}
     virtual bool IsMapped() const override { return false; }
 
-    virtual void Resolve() override {}
-    virtual bool IsConverged() const override { return true; }
+    virtual void Resolve() override;
+    virtual bool IsConverged() const override { return _converged.load(); }
+    void SetConverged(bool converged) { _converged.store(converged); }
 
     void Write(GfVec3i const& pixel, size_t numComponents, float const* value);
     void Write(GfVec3i const& pixel, size_t numComponents, int const* value);
@@ -42,6 +44,8 @@ private:
     HdFormat _format;
     bool _multiSampled;
     std::vector<uint8_t> _buffer;
+    std::vector<uint8_t> _renderBuffer;
+    std::atomic<bool> _converged;
 };
 
 #endif // HD_GEMINI_RENDER_BUFFER_H

@@ -37,6 +37,7 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
     geminiRenderParam->GetRenderDelegate()->AddMesh(GetId(), this);
 
     const SdfPath& id = GetId();
+    _instancerId = sceneDelegate->GetInstancerId(id);
     
     if (HdChangeTracker::IsTransformDirty(*dirtyBits, id)) {
         _transform = GfMatrix4f(sceneDelegate->GetTransform(id));
@@ -45,6 +46,10 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
     if (HdChangeTracker::IsPrimvarDirty(*dirtyBits, id, HdTokens->points)) {
         VtValue value = sceneDelegate->Get(id, HdTokens->points);
         _points = value.Get<VtVec3fArray>();
+        _range.SetEmpty();
+        for (const auto& p : _points) {
+            _range.ExtendBy(p);
+        }
     }
 
     if (HdChangeTracker::IsTopologyDirty(*dirtyBits, id)) {
@@ -52,6 +57,10 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
         HdMeshUtil meshUtil(&topology, id);
         VtIntArray trianglePrimitiveParams;
         meshUtil.ComputeTriangleIndices(&_triangulatedIndices, &trianglePrimitiveParams);
+        _bvh.Build(_points, _triangulatedIndices);
+    } else if (HdChangeTracker::IsPrimvarDirty(*dirtyBits, id, HdTokens->points)) {
+        // If points changed but topology didn't, we still need to rebuild BVH
+        _bvh.Build(_points, _triangulatedIndices);
     }
 
     *dirtyBits &= ~HdChangeTracker::AllSceneDirtyBits;

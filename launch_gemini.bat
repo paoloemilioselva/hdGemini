@@ -19,5 +19,8 @@ SET PATH=%USDROOT%\lib;%USDEXTRA%\lib;%RMANTREE%\lib;%PATH%
 
 SET PXR_DEBUG=*
 
-echo Launching usdview with Gemini renderer...
-usdview scene.usda --renderer Gemini
+SET SCENE_FILE=%1
+IF "%SCENE_FILE%"=="" SET SCENE_FILE=scene.usda
+
+echo Launching usdview with Gemini renderer and scene: %SCENE_FILE%
+usdview %SCENE_FILE% --renderer Gemini

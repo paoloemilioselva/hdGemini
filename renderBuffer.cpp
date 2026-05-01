@@ -11,6 +11,7 @@ HdGeminiRenderBuffer::HdGeminiRenderBuffer(SdfPath const& id)
     : HdRenderBuffer(id)
     , _width(0), _height(0), _format(HdFormatInvalid), _multiSampled(false)
 {
+    _converged.store(false);
 }
 
 bool
@@ -22,7 +23,9 @@ HdGeminiRenderBuffer::Allocate(GfVec3i const& dimensions,
     _height = dimensions[1];
     _format = format;
     _multiSampled = multiSampled;
-    _buffer.resize(_width * _height * HdDataSizeOfFormat(format));
+    size_t size = _width * _height * HdDataSizeOfFormat(format);
+    _buffer.resize(size);
+    _renderBuffer.resize(size);
     return true;
 }
 
@@ -33,6 +36,16 @@ HdGeminiRenderBuffer::_Deallocate()
     _height = 0;
     _format = HdFormatInvalid;
     _buffer.clear();
+    _renderBuffer.clear();
+}
+
+void
+HdGeminiRenderBuffer::Resolve()
+{
+    // Copy from background render buffer to front display buffer
+    if (_buffer.size() == _renderBuffer.size()) {
+        std::memcpy(_buffer.data(), _renderBuffer.data(), _buffer.size());
+    }
 }
 
 template<typename T>
@@ -63,7 +76,7 @@ HdGeminiRenderBuffer::Write(GfVec3i const& pixel, size_t numComponents, float co
     if (pixel[0] >= (int)_width || pixel[1] >= (int)_height) return;
     size_t idx = pixel[1] * _width + pixel[0];
     size_t formatSize = HdDataSizeOfFormat(_format);
-    uint8_t *dst = &_buffer[idx * formatSize];
+    uint8_t *dst = &_renderBuffer[idx * formatSize];
     _WriteOutput(_format, dst, numComponents, value);
 }
 
@@ -73,7 +86,7 @@ HdGeminiRenderBuffer::Write(GfVec3i const& pixel, size_t numComponents, int cons
     if (pixel[0] >= (int)_width || pixel[1] >= (int)_height) return;
     size_t idx = pixel[1] * _width + pixel[0];
     size_t formatSize = HdDataSizeOfFormat(_format);
-    uint8_t *dst = &_buffer[idx * formatSize];
+    uint8_t *dst = &_renderBuffer[idx * formatSize];
     _WriteOutput(_format, dst, numComponents, value);
 }
 
@@ -82,7 +95,7 @@ HdGeminiRenderBuffer::Clear(size_t numComponents, float const* value)
 {
     size_t formatSize = HdDataSizeOfFormat(_format);
     for (size_t i = 0; i < _width * _height; ++i) {
-        uint8_t *dst = &_buffer[i * formatSize];
+        uint8_t *dst = &_renderBuffer[i * formatSize];
         _WriteOutput(_format, dst, numComponents, value);
     }
 }
@@ -92,7 +105,7 @@ HdGeminiRenderBuffer::Clear(size_t numComponents, int const* value)
 {
     size_t formatSize = HdDataSizeOfFormat(_format);
     for (size_t i = 0; i < _width * _height; ++i) {
-        uint8_t *dst = &_buffer[i * formatSize];
+        uint8_t *dst = &_renderBuffer[i * formatSize];
         _WriteOutput(_format, dst, numComponents, value);
     }
 }

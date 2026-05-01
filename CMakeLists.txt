@@ -64,6 +64,8 @@ add_library( ${DELEGATE_NAME} SHARED
     light.h
     renderer.cpp
     renderer.h
+    bvh.cpp
+    bvh.h
     renderParam.h
     implicitSurfaceSceneIndexPlugin.cpp
     implicitSurfaceSceneIndexPlugin.h

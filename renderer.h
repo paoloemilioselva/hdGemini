@@ -5,6 +5,7 @@
 #include "pxr/imaging/hd/renderThread.h"
 #include "pxr/imaging/hd/aov.h"
 #include "pxr/base/gf/matrix4d.h"
+#include "pxr/base/gf/matrix4f.h"
 #include "pxr/base/gf/rect2i.h"
 #include "pxr/base/gf/vec3f.h"
 #include <vector>
@@ -13,6 +14,7 @@
 PXR_NAMESPACE_USING_DIRECTIVE
 
 class HdGeminiRenderDelegate;
+class HdGeminiMesh;
 
 class HdGeminiRenderer final
 {
@@ -30,8 +32,15 @@ public:
     void MarkAovBuffersUnconverged();
 
 private:
+    struct MeshInstance {
+        HdGeminiMesh* mesh;
+        GfMatrix4f transform;
+        GfMatrix4f invTransform;
+    };
+
     static GfVec4f _GetClearColor(VtValue const& clearValue);
     void _RenderTiles(HdRenderThread *renderThread, HdGeminiRenderDelegate* delegate);
+    void _PrepareScene(HdGeminiRenderDelegate* delegate);
 
     HdRenderPassAovBindingVector _aovBindings;
     GfRect2i _dataWindow;
@@ -39,6 +48,7 @@ private:
     GfMatrix4d _projMatrix;
     GfMatrix4d _inverseViewMatrix;
     GfMatrix4d _inverseProjMatrix;
+    std::vector<MeshInstance> _instances;
 };
 
 #endif // HD_GEMINI_RENDERER_H

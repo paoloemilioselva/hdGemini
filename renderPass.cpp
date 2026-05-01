@@ -34,6 +34,16 @@ HdGeminiRenderPass::~HdGeminiRenderPass()
 bool
 HdGeminiRenderPass::IsConverged() const
 {
+    if (_aovBindings.empty()) {
+        return true;
+    }
+
+    for (size_t i = 0; i < _aovBindings.size(); ++i) {
+        if (_aovBindings[i].renderBuffer &&
+            !_aovBindings[i].renderBuffer->IsConverged()) {
+            return false;
+        }
+    }
     return true;
 }
 

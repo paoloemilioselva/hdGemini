@@ -15,6 +15,7 @@ PXR_NAMESPACE_USING_DIRECTIVE
 
 class HdGeminiRenderParam;
 class HdGeminiMesh;
+class HdGeminiInstancer;
 
 class HdGeminiRenderDelegate final : public HdRenderDelegate
 {
@@ -60,6 +61,10 @@ public:
     void RemoveMesh(const SdfPath& id);
     const std::map<SdfPath, HdGeminiMesh*>& GetMeshes() const { return _meshes; }
 
+    void AddInstancer(const SdfPath& id, HdGeminiInstancer* instancer);
+    void RemoveInstancer(const SdfPath& id);
+    HdGeminiInstancer* GetInstancer(const SdfPath& id) const;
+
 private:
     static const TfTokenVector SUPPORTED_RPRIM_TYPES;
     static const TfTokenVector SUPPORTED_SPRIM_TYPES;
@@ -78,6 +83,7 @@ private:
     std::atomic<int> _sceneVersion;
 
     std::map<SdfPath, HdGeminiMesh*> _meshes;
+    std::map<SdfPath, HdGeminiInstancer*> _instancers;
 
     HdGeminiRenderDelegate(const HdGeminiRenderDelegate &) = delete;
     HdGeminiRenderDelegate &operator =(const HdGeminiRenderDelegate &) = delete;

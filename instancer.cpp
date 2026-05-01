@@ -1,4 +1,6 @@
 #include "instancer.h"
+#include "pxr/imaging/hd/sceneDelegate.h"
+#include "pxr/imaging/hd/renderIndex.h"
 #include "pxr/base/vt/array.h"
 #include "pxr/base/gf/matrix4d.h"
 
@@ -20,5 +22,23 @@ HdGeminiInstancer::Sync(HdSceneDelegate *sceneDelegate,
 VtMatrix4dArray
 HdGeminiInstancer::ComputeInstanceTransforms(SdfPath const &prototypeId)
 {
-    return VtMatrix4dArray();
+    VtMatrix4dArray transforms = GetDelegate()->GetInstancerInstanceTransforms(GetId(), prototypeId);
+    
+    SdfPath parentInstancerId = GetParentId();
+    if (!parentInstancerId.IsEmpty()) {
+        HdGeminiInstancer* parentInstancer = static_cast<HdGeminiInstancer*>(
+            GetDelegate()->GetRenderIndex().GetInstancer(parentInstancerId));
+        if (parentInstancer) {
+            VtMatrix4dArray parentTransforms = parentInstancer->ComputeInstanceTransforms(GetId());
+            VtMatrix4dArray newTransforms;
+            newTransforms.reserve(transforms.size() * parentTransforms.size());
+            for (const auto& pt : parentTransforms) {
+                for (const auto& t : transforms) {
+                    newTransforms.push_back(t * pt);
+                }
+            }
+            transforms = newTransforms;
+        }
+    }
+    return transforms;
 }

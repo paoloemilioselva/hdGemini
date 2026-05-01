@@ -2,6 +2,7 @@
 #include "renderDelegate.h"
 #include "renderBuffer.h"
 #include "mesh.h"
+#include "instancer.h"
 #include <pxr/base/work/loops.h>
 #include <pxr/base/gf/vec3f.h>
 #include <pxr/base/gf/vec3i.h>
@@ -46,31 +47,60 @@ HdGeminiRenderer::SetAovBindings(const HdRenderPassAovBindingVector& aovBindings
     _aovBindings = aovBindings;
 }
 
-static bool 
-IntersectTriangle(const GfVec3f& rayOrigin, const GfVec3f& rayDir,
-                  const GfVec3f& v0, const GfVec3f& v1, const GfVec3f& v2,
-                  float& t)
-{
-    GfVec3f edge1 = v1 - v0;
-    GfVec3f edge2 = v2 - v0;
-    GfVec3f pvec = GfCross(rayDir, edge2);
-    float det = GfDot(edge1, pvec);
-    if (std::abs(det) < 1e-8) return false;
-    float invDet = 1.0f / det;
-    GfVec3f tvec = rayOrigin - v0;
-    float u = GfDot(tvec, pvec) * invDet;
-    if (u < 0.0f || u > 1.0f) return false;
-    GfVec3f qvec = GfCross(tvec, edge1);
-    float v = GfDot(rayDir, qvec) * invDet;
-    if (v < 0.0f || u + v > 1.0f) return false;
-    t = GfDot(edge2, qvec) * invDet;
-    return (t > 1e-4);
-}
-
 void
 HdGeminiRenderer::Render(HdRenderThread *renderThread, HdGeminiRenderDelegate* delegate)
 {
+    // Mark buffers as unconverged while we render
+    for (auto const& binding : _aovBindings) {
+        if (binding.renderBuffer) {
+            static_cast<HdGeminiRenderBuffer*>(binding.renderBuffer)->SetConverged(false);
+        }
+    }
+
+    _PrepareScene(delegate);
     _RenderTiles(renderThread, delegate);
+
+    // Mark buffers as converged once finished and resolve
+    for (auto const& binding : _aovBindings) {
+        if (binding.renderBuffer) {
+            auto* rb = static_cast<HdGeminiRenderBuffer*>(binding.renderBuffer);
+            rb->Resolve();
+            rb->SetConverged(true);
+        }
+    }
+}
+
+void
+HdGeminiRenderer::_PrepareScene(HdGeminiRenderDelegate* delegate)
+{
+    _instances.clear();
+    const auto& meshes = delegate->GetMeshes();
+
+    for (auto const& item : meshes) {
+        HdGeminiMesh* mesh = item.second;
+        
+        if (!mesh->GetInstancerId().IsEmpty()) {
+            HdGeminiInstancer* instancer = delegate->GetInstancer(mesh->GetInstancerId());
+            if (instancer) {
+                VtMatrix4dArray transforms = instancer->ComputeInstanceTransforms(mesh->GetId());
+                for (const auto& t : transforms) {
+                    MeshInstance inst;
+                    inst.mesh = mesh;
+                    inst.transform = GfMatrix4f(t) * mesh->GetTransform();
+                    inst.invTransform = inst.transform.GetInverse();
+                    _instances.push_back(inst);
+                }
+                continue;
+            }
+        }
+        
+        // Non-instanced mesh
+        MeshInstance inst;
+        inst.mesh = mesh;
+        inst.transform = mesh->GetTransform();
+        inst.invTransform = inst.transform.GetInverse();
+        _instances.push_back(inst);
+    }
 }
 
 void
@@ -83,8 +113,6 @@ HdGeminiRenderer::_RenderTiles(HdRenderThread *renderThread, HdGeminiRenderDeleg
 
     HdGeminiRenderBuffer* colorBuffer = static_cast<HdGeminiRenderBuffer*>(_aovBindings[0].renderBuffer);
 
-    const auto& meshes = delegate->GetMeshes();
-
     GfVec3f cameraPosWorld(_inverseViewMatrix.Transform(GfVec3f(0, 0, 0)));
 
     WorkParallelForN(height, [&](size_t y_start, size_t y_end) {
@@ -93,9 +121,8 @@ HdGeminiRenderer::_RenderTiles(HdRenderThread *renderThread, HdGeminiRenderDeleg
                 if (renderThread->IsStopRequested()) return;
 
                 // Generate ray
-                // Standard mapping: x=0 -> ndcX=-1 (left), y=0 -> ndcY=1 (top)
                 float ndcX = (2.0f * (x + 0.5f) / width) - 1.0f;
-                float ndcY = 1.0f - (2.0f * (y + 0.5f) / height);
+                float ndcY = (2.0f * (y + 0.5f) / height) - 1.0f;
                 
                 GfVec3f nearPlanePointCam(_inverseProjMatrix.Transform(GfVec3f(ndcX, ndcY, -1.0f)));
                 GfVec3f nearPlanePointWorld(_inverseViewMatrix.Transform(nearPlanePointCam));
@@ -105,39 +132,25 @@ HdGeminiRenderer::_RenderTiles(HdRenderThread *renderThread, HdGeminiRenderDeleg
                 GfVec3f hitColor(0.0f, 0.0f, 0.0f);
                 bool hit = false;
 
-                for (auto const& item : meshes) {
-                    HdGeminiMesh* mesh = item.second;
-                    const GfMatrix4f& transform = mesh->GetTransform();
-                    const VtVec3fArray& points = mesh->GetPoints();
-                    const VtVec3iArray& indices = mesh->GetIndices();
-
-                    if (points.empty() || indices.empty()) continue;
-
+                for (const auto& inst : _instances) {
                     // Transform ray to object space
-                    GfMatrix4f invTransform = transform.GetInverse();
-                    GfVec3f objRayOrigin = invTransform.Transform(cameraPosWorld);
-                    GfVec3f objRayDir = invTransform.TransformDir(rayDirWorld);
+                    GfVec3f objRayOrigin = inst.invTransform.Transform(cameraPosWorld);
+                    GfVec3f objRayDir = inst.invTransform.TransformDir(rayDirWorld);
 
-                    for (const auto& tri : indices) {
-                        float t;
-                        if (IntersectTriangle(objRayOrigin, objRayDir, points[tri[0]], points[tri[1]], points[tri[2]], t)) {
-                            if (t < minT) {
-                                minT = t;
-                                hit = true;
-                                GfVec3f v0 = points[tri[0]];
-                                GfVec3f v1 = points[tri[1]];
-                                GfVec3f v2 = points[tri[2]];
-                                GfVec3f n = GfCross(v1 - v0, v2 - v0).GetNormalized();
-                                // Transform normal to world space
-                                GfVec3f worldN = transform.TransformDir(n).GetNormalized();
-                                float shade = std::abs(GfDot(worldN, -rayDirWorld));
-                                hitColor = GfVec3f(shade * 0.8f + 0.2f);
-                            }
+                    float t = minT;
+                    GfVec3f normal;
+                    if (inst.mesh->GetBVH().Intersect(objRayOrigin, objRayDir, t, normal)) {
+                        if (t < minT) {
+                            minT = t;
+                            hit = true;
+                            // Transform normal to world space
+                            GfVec3f worldN = inst.transform.TransformDir(normal).GetNormalized();
+                            float shade = std::abs(GfDot(worldN, -rayDirWorld));
+                            hitColor = GfVec3f(shade * 0.8f + 0.2f);
                         }
                     }
                 }
 
-                // Write to buffer directly using (x, y)
                 if (hit) {
                     GfVec4f finalColor(hitColor[0], hitColor[1], hitColor[2], 1.0f);
                     colorBuffer->Write(GfVec3i(x, y, 0), 4, finalColor.data());
@@ -147,6 +160,10 @@ HdGeminiRenderer::_RenderTiles(HdRenderThread *renderThread, HdGeminiRenderDeleg
                     GfVec4f bgColor(sky * 0.8f, sky * 0.9f, sky, 1.0f);
                     colorBuffer->Write(GfVec3i(x, y, 0), 4, bgColor.data());
                 }
+            }
+            // Progressive resolve every 32 rows
+            if (y % 32 == 0) {
+                colorBuffer->Resolve();
             }
         }
     });
@@ -158,6 +175,7 @@ HdGeminiRenderer::Clear()
     for (auto const& binding : _aovBindings) {
         if (binding.renderBuffer && !binding.clearValue.IsEmpty()) {
             HdGeminiRenderBuffer* rb = static_cast<HdGeminiRenderBuffer*>(binding.renderBuffer);
+            rb->SetConverged(false);
             if (binding.aovName == HdAovTokens->color) {
                 GfVec4f clearColor = _GetClearColor(binding.clearValue);
                 rb->Clear(4, clearColor.data());
@@ -165,6 +183,7 @@ HdGeminiRenderer::Clear()
                 float clearValue = binding.clearValue.Get<float>();
                 rb->Clear(1, &clearValue);
             }
+            rb->Resolve();
         }
     }
 }
@@ -184,4 +203,9 @@ HdGeminiRenderer::_GetClearColor(VtValue const& clearValue)
 void
 HdGeminiRenderer::MarkAovBuffersUnconverged()
 {
+    for (auto const& binding : _aovBindings) {
+        if (binding.renderBuffer) {
+            static_cast<HdGeminiRenderBuffer*>(binding.renderBuffer)->SetConverged(false);
+        }
+    }
 }

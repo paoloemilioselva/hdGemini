@@ -7,6 +7,7 @@
 #include "pxr/base/gf/matrix4f.h"
 #include "pxr/base/gf/vec3f.h"
 #include "pxr/base/gf/vec3i.h"
+#include "bvh.h"
 #include <string>
 #include <vector>
 #include <memory>
@@ -30,6 +31,9 @@ public:
     const VtVec3fArray& GetPoints() const { return _points; }
     const VtVec3iArray& GetIndices() const { return _triangulatedIndices; }
     const GfMatrix4f& GetTransform() const { return _transform; }
+    const GfRange3f& GetRange() const { return _range; }
+    const BVH& GetBVH() const { return _bvh; }
+    const SdfPath& GetInstancerId() const { return _instancerId; }
 
 protected:
     virtual void _InitRepr(TfToken const &reprToken,
@@ -41,6 +45,9 @@ private:
     VtVec3fArray _points;
     VtVec3iArray _triangulatedIndices;
     GfMatrix4f _transform;
+    GfRange3f _range;
+    BVH _bvh;
+    SdfPath _instancerId;
 
     HdGeminiMesh(const HdGeminiMesh&) = delete;
     HdGeminiMesh &operator =(const HdGeminiMesh&) = delete;

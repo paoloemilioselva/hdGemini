@@ -128,12 +128,15 @@ HdInstancer *
 HdGeminiRenderDelegate::CreateInstancer(HdSceneDelegate *delegate,
                                         SdfPath const& id)
 {
-    return new HdGeminiInstancer(delegate, id);
+    HdGeminiInstancer* instancer = new HdGeminiInstancer(delegate, id);
+    AddInstancer(id, instancer);
+    return instancer;
 }
 
 void
 HdGeminiRenderDelegate::DestroyInstancer(HdInstancer *instancer)
 {
+    RemoveInstancer(instancer->GetId());
     delete instancer;
 }
 
@@ -236,4 +239,26 @@ void
 HdGeminiRenderDelegate::RemoveMesh(const SdfPath& id)
 {
     _meshes.erase(id);
+}
+
+void
+HdGeminiRenderDelegate::AddInstancer(const SdfPath& id, HdGeminiInstancer* instancer)
+{
+    _instancers[id] = instancer;
+}
+
+void
+HdGeminiRenderDelegate::RemoveInstancer(const SdfPath& id)
+{
+    _instancers.erase(id);
+}
+
+HdGeminiInstancer*
+HdGeminiRenderDelegate::GetInstancer(const SdfPath& id) const
+{
+    auto it = _instancers.find(id);
+    if (it != _instancers.end()) {
+        return it->second;
+    }
+    return nullptr;
 }

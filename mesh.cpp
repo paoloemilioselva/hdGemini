@@ -58,6 +58,13 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
         }
     }
 
+    if (HdChangeTracker::IsPrimvarDirty(*dirtyBits, id, HdTokens->displayColor)) {
+        VtValue value = sceneDelegate->Get(id, HdTokens->displayColor);
+        if (value.IsHolding<VtVec3fArray>()) {
+            _colors = value.UncheckedGet<VtVec3fArray>();
+        }
+    }
+
     if (HdChangeTracker::IsTopologyDirty(*dirtyBits, id)) {
         HdMeshTopology topology = GetMeshTopology(sceneDelegate);
         HdMeshUtil meshUtil(&topology, id);

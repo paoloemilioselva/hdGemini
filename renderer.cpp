@@ -271,7 +271,15 @@ bool HdGeminiRenderer::_IntersectTLAS(int nodeIdx, const GfVec3f& rayOrigin, con
                 if (instT < t) {
                     t = instT;
                     normal = inst.transform.TransformDir(instNormal).GetNormalized();
-                    hitColor = GfVec3f(std::abs(GfDot(normal, -rayDir)) * 0.8f + 0.2f);
+                    
+                    GfVec3f baseColor(1.0f);
+                    const VtVec3fArray& colors = inst.mesh->GetColors();
+                    if (!colors.empty()) {
+                        baseColor = colors[0];
+                    }
+                    
+                    float shade = std::abs(GfDot(normal, -rayDir));
+                    hitColor = baseColor * (shade * 0.8f + 0.2f);
                     hit = true;
                 }
             }

@@ -41,6 +41,7 @@ public:
     }
     const SdfPath& GetInstancerId() const { return _instancerId; }
     bool IsVisible() const { return _visible; }
+    const VtVec3fArray& GetColors() const { return _colors; }
 
 protected:
     virtual void _InitRepr(TfToken const &reprToken,
@@ -57,6 +58,7 @@ private:
     SdfPath _instancerId;
     bool _visible;
     bool _bvhDirty;
+    VtVec3fArray _colors;
 
     HdGeminiMesh(const HdGeminiMesh&) = delete;
     HdGeminiMesh &operator =(const HdGeminiMesh&) = delete;

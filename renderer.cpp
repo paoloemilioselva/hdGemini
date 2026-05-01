@@ -408,7 +408,7 @@ GfVec3f HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVec3f& ray
         GfVec3f lColor(0.0f);
 
         if (light->GetLightType() == HdPrimTypeTokens->distantLight) {
-            lDir = GfMatrix4f(light->GetTransform()).TransformDir(GfVec3f(0, 0, -1)).GetNormalized();
+            lDir = GfMatrix4f(light->GetTransform()).TransformDir(GfVec3f(0, 0, 1)).GetNormalized();
             lColor = light->GetColor() * light->GetIntensity();
         } else if (light->GetLightType() == HdPrimTypeTokens->domeLight && !_envMapRowCdf.empty()) {
             float u1 = RandomFloat(rng);

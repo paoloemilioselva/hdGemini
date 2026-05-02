@@ -69,6 +69,10 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
                    TfToken const   &reprToken)
 {
     HdGeminiRenderParam *geminiRenderParam = static_cast<HdGeminiRenderParam*>(renderParam);
+    
+    // Lock the global scene lock to ensure thread-safe updates to the mesh and the delegate's mesh map.
+    std::lock_guard<std::mutex> lock(geminiRenderParam->GetRenderDelegate()->GetSceneLock());
+    
     geminiRenderParam->AcquireSceneForEdit();
     geminiRenderParam->GetRenderDelegate()->AddMesh(GetId(), this);
 
@@ -112,15 +116,6 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
         }
     }
 
-    if (_bvhDirty) {
-        _range.SetEmpty();
-        if (!_points.empty()) {
-            for (const auto& p : _points) {
-                _range.ExtendBy(p);
-            }
-        }
-    }
-
     if (HdChangeTracker::IsPrimvarDirty(*dirtyBits, id, HdTokens->displayColor)) {
         VtValue value = sceneDelegate->Get(id, HdTokens->displayColor);
         if (value.IsHolding<VtVec3fArray>()) {
@@ -134,6 +129,17 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
         VtIntArray trianglePrimitiveParams;
         meshUtil.ComputeTriangleIndices(&_triangulatedIndices, &trianglePrimitiveParams);
         _bvhDirty = true;
+    }
+
+    if (_bvhDirty) {
+        _range.SetEmpty();
+        if (!_points.empty()) {
+            for (const auto& p : _points) {
+                _range.ExtendBy(p);
+            }
+            _bvh.Build(_points, _triangulatedIndices);
+        }
+        _bvhDirty = false;
     }
 
     *dirtyBits &= ~HdChangeTracker::AllSceneDirtyBits;

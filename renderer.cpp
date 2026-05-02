@@ -227,7 +227,7 @@ HdGeminiRenderer::_PrepareScene(HdRenderThread *renderThread, HdGeminiRenderDele
         HdGeminiMesh* mesh = item.second;
         GfRange3f meshBounds = mesh->GetRange();
         if (meshBounds.IsEmpty()) continue;
-        
+
         if (!mesh->GetInstancerId().IsEmpty()) {
             HdGeminiInstancer* instancer = delegate->GetInstancer(mesh->GetInstancerId());
             if (instancer) {
@@ -244,7 +244,7 @@ HdGeminiRenderer::_PrepareScene(HdRenderThread *renderThread, HdGeminiRenderDele
             }
             continue;
         }
-        
+
         MeshInstance inst;
         inst.mesh = mesh;
         inst.transform = mesh->GetTransform();
@@ -253,12 +253,7 @@ HdGeminiRenderer::_PrepareScene(HdRenderThread *renderThread, HdGeminiRenderDele
         inst.centroid = (inst.bounds.GetMin() + inst.bounds.GetMax()) * 0.5f;
         _instances.push_back(inst);
     }
-    
-    for (auto& inst : _instances) {
-        if (renderThread->IsStopRequested()) return;
-        inst.mesh->GetBVH();
-    }
-    
+
     _BuildTLAS(renderThread);
 }
 

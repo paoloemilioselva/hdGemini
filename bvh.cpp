@@ -55,7 +55,7 @@ IntersectAABB(const GfVec3f& rayOrigin, const GfVec3f& rayDir, const GfRange3f& 
 void BVH::Build(const VtVec3fArray& points, const VtVec3iArray& indices) {
     _triangles.clear();
     _nodes.clear();
-    if (indices.empty()) return;
+    if (indices.empty() || points.empty()) return;
 
     _triangles.reserve(indices.size());
     for (const auto& triIdx : indices) {

@@ -29,7 +29,7 @@ HdGeminiMesh::GetInitialDirtyBitsMask() const
     return HdChangeTracker::AllSceneDirtyBits;
 }
 
-void
+bool
 HdGeminiMesh::_UpdateComputedPrimvarSources(HdSceneDelegate* sceneDelegate,
                                             HdDirtyBits dirtyBits)
 {
@@ -37,7 +37,7 @@ HdGeminiMesh::_UpdateComputedPrimvarSources(HdSceneDelegate* sceneDelegate,
     HdExtComputationPrimvarDescriptorVector compPrimvars =
         sceneDelegate->GetExtComputationPrimvarDescriptors(id, HdInterpolationVertex);
 
-    if (compPrimvars.empty()) return;
+    if (compPrimvars.empty()) return false;
 
     HdExtComputationUtils::ValueStore valueStore =
         HdExtComputationUtils::GetComputedPrimvarValues(compPrimvars, sceneDelegate);
@@ -48,6 +48,7 @@ HdGeminiMesh::_UpdateComputedPrimvarSources(HdSceneDelegate* sceneDelegate,
         if (value.IsHolding<VtVec3fArray>()) {
             _points = value.UncheckedGet<VtVec3fArray>();
             _bvhDirty = true;
+            return true;
         } else if (value.IsHolding<VtVec3dArray>()) {
             const VtVec3dArray& pointsd = value.UncheckedGet<VtVec3dArray>();
             _points.resize(pointsd.size());
@@ -55,8 +56,10 @@ HdGeminiMesh::_UpdateComputedPrimvarSources(HdSceneDelegate* sceneDelegate,
                 _points[i] = GfVec3f(pointsd[i]);
             }
             _bvhDirty = true;
+            return true;
         }
     }
+    return false;
 }
 
 void
@@ -81,9 +84,10 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
     }
 
     // Process computed primvars first (e.g., CPU skinning)
-    _UpdateComputedPrimvarSources(sceneDelegate, *dirtyBits);
+    bool pointsUpdatedByComputation = _UpdateComputedPrimvarSources(sceneDelegate, *dirtyBits);
 
-    if (HdChangeTracker::IsPrimvarDirty(*dirtyBits, id, HdTokens->points)) {
+    if (!pointsUpdatedByComputation && 
+        HdChangeTracker::IsPrimvarDirty(*dirtyBits, id, HdTokens->points)) {
         VtValue value = sceneDelegate->Get(id, HdTokens->points);
         if (value.IsHolding<VtVec3fArray>()) {
             _points = value.UncheckedGet<VtVec3fArray>();
@@ -98,7 +102,7 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
         }
     }
 
-    if (_bvhDirty) {
+    if (_bvhDirty && !_points.empty()) {
         _range.SetEmpty();
         for (const auto& p : _points) {
             _range.ExtendBy(p);

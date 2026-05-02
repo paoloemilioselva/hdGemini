@@ -50,7 +50,7 @@ protected:
     virtual HdDirtyBits _PropagateDirtyBits(HdDirtyBits bits) const override;
 
 private:
-    void _UpdateComputedPrimvarSources(HdSceneDelegate* sceneDelegate,
+    bool _UpdateComputedPrimvarSources(HdSceneDelegate* sceneDelegate,
                                        HdDirtyBits dirtyBits);
 
     VtVec3fArray _points;

@@ -99,6 +99,16 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
                 _points[i] = GfVec3f(pointsd[i]);
             }
             _bvhDirty = true;
+        } else if (_points.empty()) {
+            // Fallback: If points are still empty, try to get them from a related prim path
+            // some setups might have a "skeleton prim mesh" or similar
+            // This is a heuristic based on user advice.
+            SdfPath skeletonPath = id.AppendChild(TfToken("skeleton"));
+            VtValue skelValue = sceneDelegate->Get(skeletonPath, HdTokens->points);
+            if (skelValue.IsHolding<VtVec3fArray>()) {
+                _points = skelValue.UncheckedGet<VtVec3fArray>();
+                _bvhDirty = true;
+            }
         }
     }
 

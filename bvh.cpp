@@ -59,9 +59,9 @@ void BVH::Build(const VtVec3fArray& points, const VtVec3iArray& indices) {
 
     _triangles.reserve(indices.size());
     for (const auto& triIdx : indices) {
-        if (triIdx[0] >= (int)points.size() || 
-            triIdx[1] >= (int)points.size() || 
-            triIdx[2] >= (int)points.size()) continue;
+        if (triIdx[0] < 0 || triIdx[0] >= (int)points.size() || 
+            triIdx[1] < 0 || triIdx[1] >= (int)points.size() || 
+            triIdx[2] < 0 || triIdx[2] >= (int)points.size()) continue;
         
         BVHTriangle tri;
         tri.v0 = points[triIdx[0]];
@@ -122,8 +122,8 @@ void BVH::_Subdivide(int nodeIdx, int start, int end) {
     int leftChildIdx = (int)_nodes.size();
     _nodes.push_back(BVHNode());
     _nodes.push_back(BVHNode());
-    node.leftChild = leftChildIdx;
-    node.triangleCount = 0;
+    _nodes[nodeIdx].leftChild = leftChildIdx;
+    _nodes[nodeIdx].triangleCount = 0;
 
     _Subdivide(leftChildIdx, start, i);
     _Subdivide(leftChildIdx + 1, i, end);

@@ -45,8 +45,8 @@ protected:
     virtual HdDirtyBits _PropagateDirtyBits(HdDirtyBits bits) const override;
 
 private:
-    bool _UpdateComputedPrimvarSources(HdSceneDelegate* sceneDelegate,
-                                       HdDirtyBits dirtyBits);
+    TfTokenVector _UpdateComputedPrimvarSources(HdSceneDelegate* sceneDelegate,
+                                                HdDirtyBits dirtyBits);
 
     VtVec3fArray _points;
     VtVec3iArray _triangulatedIndices;

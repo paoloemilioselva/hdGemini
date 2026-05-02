@@ -155,28 +155,31 @@ HdGeminiRenderer::Render(HdRenderThread *renderThread, HdGeminiRenderDelegate* d
 void
 HdGeminiRenderer::_PrepareScene(HdRenderThread *renderThread, HdGeminiRenderDelegate* delegate)
 {
+    std::cout << "[Gemini] _PrepareScene START" << std::endl;
     _instances.clear();
     
     std::lock_guard<std::recursive_mutex> lock(delegate->GetSceneLock());
     const auto& meshes = delegate->GetMeshes();
     const auto& lights = delegate->GetLights();
+    std::cout << "[Gemini]   Processing " << meshes.size() << " meshes and " << lights.size() << " lights" << std::endl;
 
     bool foundDome = false;
     for (const auto& lightPair : lights) {
         HdGeminiLight* light = lightPair.second;
         if (light->GetLightType() == HdPrimTypeTokens->domeLight) {
-            SdfAssetPath texPath = light->GetTextureFile();
-            if (!texPath.GetAssetPath().empty()) {
-                if (texPath != _lastEnvMapPath) {
+            if (light->GetTextureFile() != _lastEnvMapPath) {
+                std::cout << "[Gemini]   Found dome light with env map: " << light->GetTextureFile().GetAssetPath() << std::endl;
+                SdfAssetPath texPath = light->GetTextureFile();
+                if (!texPath.GetAssetPath().empty()) {
                     HioImageSharedPtr image = HioImage::OpenForReading(texPath.GetResolvedPath());
                     if (image) {
                         _envMapWidth = image->GetWidth();
                         _envMapHeight = image->GetHeight();
                         _envMapPixels.assign(_envMapWidth * _envMapHeight * 3, 0.0f);
                         HioImage::StorageSpec spec;
+                        spec.format = HioFormatFloat32Vec3;
                         spec.width = _envMapWidth;
                         spec.height = _envMapHeight;
-                        spec.format = HioFormatFloat32Vec3;
                         spec.data = _envMapPixels.data();
                         image->Read(spec);
                         _lastEnvMapPath = texPath;
@@ -211,23 +214,31 @@ HdGeminiRenderer::_PrepareScene(HdRenderThread *renderThread, HdGeminiRenderDele
                     }
                 }
                 foundDome = !_envMapPixels.empty();
+            } else {
+                foundDome = true;
             }
             break;
         }
     }
     if (!foundDome) {
+        if (!_envMapPixels.empty()) std::cout << "[Gemini]   Dome light removed. Clearing env map." << std::endl;
         _envMapPixels.clear();
         _envMapWidth = _envMapHeight = 0;
         _envMapRowCdf.clear();
         _envMapColCdf.clear();
         _envMapTotalLuminance = 0.0f;
+        _lastEnvMapPath = SdfAssetPath();
     }
 
     for (auto const& item : meshes) {
         if (renderThread->IsStopRequested()) return;
         HdGeminiMesh* mesh = item.second;
+        if (!mesh->IsVisible()) continue;
+
         GfRange3f meshBounds = mesh->GetRange();
-        if (meshBounds.IsEmpty()) continue;
+        if (meshBounds.IsEmpty()) {
+            continue;
+        }
 
         HdGeminiMaterial* material = nullptr;
         if (!mesh->GetMaterialId().IsEmpty()) {
@@ -262,7 +273,9 @@ HdGeminiRenderer::_PrepareScene(HdRenderThread *renderThread, HdGeminiRenderDele
         _instances.push_back(inst);
     }
 
+    std::cout << "[Gemini]   Building TLAS with " << _instances.size() << " instances" << std::endl;
     _BuildTLAS(renderThread);
+    std::cout << "[Gemini] _PrepareScene END" << std::endl;
 }
 
 void HdGeminiRenderer::_BuildTLAS(HdRenderThread *renderThread)
@@ -285,26 +298,31 @@ void HdGeminiRenderer::_SubdivideTLAS(int nodeIdx, int start, int end, HdRenderT
 {
     if (renderThread->IsStopRequested()) return;
 
-    TLASNode& node = _tlasNodes[nodeIdx];
-    node.bounds.SetEmpty();
+    int leftChildIdx = (int)_tlasNodes.size();
+    _tlasNodes.push_back(TLASNode());
+    _tlasNodes.push_back(TLASNode());
+    _tlasNodes[nodeIdx].leftChild = leftChildIdx;
+    _tlasNodes[nodeIdx].instanceCount = 0;
+
+    _tlasNodes[nodeIdx].bounds.SetEmpty();
     for (int i = start; i < end; ++i) {
-        node.bounds.ExtendBy(_instances[_tlasInstanceIndices[i]].bounds.GetMin());
-        node.bounds.ExtendBy(_instances[_tlasInstanceIndices[i]].bounds.GetMax());
+        _tlasNodes[nodeIdx].bounds.ExtendBy(_instances[_tlasInstanceIndices[i]].bounds.GetMin());
+        _tlasNodes[nodeIdx].bounds.ExtendBy(_instances[_tlasInstanceIndices[i]].bounds.GetMax());
     }
 
     int count = end - start;
     if (count <= 2) {
-        node.leftChild = -start - 1;
-        node.instanceCount = count;
+        _tlasNodes[nodeIdx].leftChild = -start - 1;
+        _tlasNodes[nodeIdx].instanceCount = count;
         return;
     }
 
-    GfVec3f size = node.bounds.GetSize();
+    GfVec3f size = _tlasNodes[nodeIdx].bounds.GetSize();
     int axis = 0;
     if (size[1] > size[0]) axis = 1;
     if (size[2] > size[axis]) axis = 2;
 
-    float splitPos = node.bounds.GetMin()[axis] + size[axis] * 0.5f;
+    float splitPos = _tlasNodes[nodeIdx].bounds.GetMin()[axis] + size[axis] * 0.5f;
 
     int i = start;
     int j = end - 1;
@@ -318,12 +336,6 @@ void HdGeminiRenderer::_SubdivideTLAS(int nodeIdx, int start, int end, HdRenderT
     }
 
     if (i == start || i == end) i = start + count / 2;
-
-    int leftChildIdx = (int)_tlasNodes.size();
-    _tlasNodes.push_back(TLASNode());
-    _tlasNodes.push_back(TLASNode());
-    node.leftChild = leftChildIdx;
-    node.instanceCount = 0;
 
     _SubdivideTLAS(leftChildIdx, start, i, renderThread);
     _SubdivideTLAS(leftChildIdx + 1, i, end, renderThread);
@@ -501,7 +513,16 @@ HdGeminiRenderer::_RenderTiles(HdRenderThread *renderThread, HdGeminiRenderDeleg
     unsigned int width = _dataWindow.GetWidth();
     unsigned int height = _dataWindow.GetHeight();
     if (width == 0 || height == 0 || _aovBindings.empty()) return;
-    HdGeminiRenderBuffer* colorBuffer = static_cast<HdGeminiRenderBuffer*>(_aovBindings[0].renderBuffer);
+    
+    HdGeminiRenderBuffer* colorBuffer = nullptr;
+    for (auto const& binding : _aovBindings) {
+        if (binding.aovName == HdAovTokens->color) {
+            colorBuffer = static_cast<HdGeminiRenderBuffer*>(binding.renderBuffer);
+            break;
+        }
+    }
+    
+    if (!colorBuffer) return;
     GfVec3f cameraPosWorld(_inverseViewMatrix.Transform(GfVec3f(0, 0, 0)));
     std::lock_guard<std::recursive_mutex> lock(delegate->GetSceneLock());
     const auto& lights = delegate->GetLights();

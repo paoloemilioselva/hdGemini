@@ -62,6 +62,8 @@ add_library( ${DELEGATE_NAME} SHARED
     instancer.h
     light.cpp
     light.h
+    material.cpp
+    material.h
     renderer.cpp
     renderer.h
     bvh.cpp

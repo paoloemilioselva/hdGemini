@@ -34,6 +34,7 @@ public:
     const GfRange3f& GetRange() const { return _range; }
     const BVH& GetBVH() const { return _bvh; }
     const SdfPath& GetInstancerId() const { return _instancerId; }
+    const SdfPath& GetMaterialId() const { return _materialId; }
     bool IsVisible() const { return _visible; }
     const VtVec3fArray& GetColors() const { return _colors; }
 
@@ -53,6 +54,7 @@ private:
     GfRange3f _range;
     BVH _bvh;
     SdfPath _instancerId;
+    SdfPath _materialId;
     bool _visible;
     bool _bvhDirty;
     VtVec3fArray _colors;

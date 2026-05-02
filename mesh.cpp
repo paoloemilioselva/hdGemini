@@ -78,6 +78,7 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
 
     const SdfPath& id = GetId();
     _instancerId = sceneDelegate->GetInstancerId(id);
+    _materialId = sceneDelegate->GetMaterialId(id);
     
     if (HdChangeTracker::IsVisibilityDirty(*dirtyBits, id)) {
         _visible = sceneDelegate->GetVisible(id);

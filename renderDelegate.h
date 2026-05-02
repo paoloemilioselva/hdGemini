@@ -17,6 +17,7 @@ class HdGeminiRenderParam;
 class HdGeminiMesh;
 class HdGeminiInstancer;
 class HdGeminiLight;
+class HdGeminiMaterial;
 
 class HdGeminiRenderDelegate final : public HdRenderDelegate
 {
@@ -66,6 +67,10 @@ public:
     void RemoveInstancer(const SdfPath& id);
     HdGeminiInstancer* GetInstancer(const SdfPath& id) const;
 
+    void AddMaterial(const SdfPath& id, HdGeminiMaterial* material);
+    void RemoveMaterial(const SdfPath& id);
+    HdGeminiMaterial* GetMaterial(const SdfPath& id) const;
+
     void AddLight(const SdfPath& id, HdGeminiLight* light);
     void RemoveLight(const SdfPath& id);
     const std::map<SdfPath, HdGeminiLight*>& GetLights() const { return _lights; }
@@ -92,6 +97,7 @@ private:
     std::map<SdfPath, HdGeminiMesh*> _meshes;
     std::map<SdfPath, HdGeminiInstancer*> _instancers;
     std::map<SdfPath, HdGeminiLight*> _lights;
+    std::map<SdfPath, HdGeminiMaterial*> _materials;
     std::recursive_mutex _sceneLock;
 
     HdGeminiRenderDelegate(const HdGeminiRenderDelegate &) = delete;

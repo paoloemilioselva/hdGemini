@@ -5,6 +5,7 @@
 #include "camera.h"
 #include "instancer.h"
 #include "light.h"
+#include "material.h"
 #include "renderBuffer.h"
 
 #include "pxr/imaging/hd/camera.h"
@@ -24,6 +25,7 @@ const TfTokenVector HdGeminiRenderDelegate::SUPPORTED_RPRIM_TYPES =
 const TfTokenVector HdGeminiRenderDelegate::SUPPORTED_SPRIM_TYPES =
 {
     HdPrimTypeTokens->camera,
+    HdPrimTypeTokens->material,
     HdPrimTypeTokens->distantLight,
     HdPrimTypeTokens->sphereLight,
     HdPrimTypeTokens->domeLight,
@@ -171,6 +173,10 @@ HdGeminiRenderDelegate::CreateSprim(TfToken const& typeId,
 {
     if (typeId == HdPrimTypeTokens->camera) {
         return new HdCamera(sprimId);
+    } else if (typeId == HdPrimTypeTokens->material) {
+        HdGeminiMaterial* mat = new HdGeminiMaterial(sprimId);
+        AddMaterial(sprimId, mat);
+        return mat;
     } else if (typeId == HdPrimTypeTokens->distantLight ||
                typeId == HdPrimTypeTokens->sphereLight ||
                typeId == HdPrimTypeTokens->domeLight ||
@@ -185,6 +191,10 @@ HdGeminiRenderDelegate::CreateFallbackSprim(TfToken const& typeId)
 {
     if (typeId == HdPrimTypeTokens->camera) {
         return new HdCamera(SdfPath::EmptyPath());
+    } else if (typeId == HdPrimTypeTokens->material) {
+        HdGeminiMaterial* mat = new HdGeminiMaterial(SdfPath::EmptyPath());
+        AddMaterial(SdfPath::EmptyPath(), mat);
+        return mat;
     } else if (typeId == HdPrimTypeTokens->distantLight ||
                typeId == HdPrimTypeTokens->sphereLight ||
                typeId == HdPrimTypeTokens->domeLight ||
@@ -198,7 +208,11 @@ void
 HdGeminiRenderDelegate::DestroySprim(HdSprim *sPrim)
 {
     if (sPrim) {
-        RemoveLight(sPrim->GetId());
+        if (sPrim->GetId().IsEmpty() || GetMaterial(sPrim->GetId())) {
+            RemoveMaterial(sPrim->GetId());
+        } else {
+            RemoveLight(sPrim->GetId());
+        }
         delete sPrim;
     }
 }
@@ -290,9 +304,32 @@ HdGeminiRenderDelegate::RemoveInstancer(const SdfPath& id)
 HdGeminiInstancer*
 HdGeminiRenderDelegate::GetInstancer(const SdfPath& id) const
 {
-    // Usually called from _PrepareScene which already holds _sceneLock.
     auto it = _instancers.find(id);
     if (it != _instancers.end()) {
+        return it->second;
+    }
+    return nullptr;
+}
+
+void
+HdGeminiRenderDelegate::AddMaterial(const SdfPath& id, HdGeminiMaterial* material)
+{
+    std::lock_guard<std::recursive_mutex> lock(_sceneLock);
+    _materials[id] = material;
+}
+
+void
+HdGeminiRenderDelegate::RemoveMaterial(const SdfPath& id)
+{
+    std::lock_guard<std::recursive_mutex> lock(_sceneLock);
+    _materials.erase(id);
+}
+
+HdGeminiMaterial*
+HdGeminiRenderDelegate::GetMaterial(const SdfPath& id) const
+{
+    auto it = _materials.find(id);
+    if (it != _materials.end()) {
         return it->second;
     }
     return nullptr;

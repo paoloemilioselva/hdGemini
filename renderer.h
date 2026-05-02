@@ -18,6 +18,7 @@ PXR_NAMESPACE_USING_DIRECTIVE
 class HdGeminiRenderDelegate;
 class HdGeminiMesh;
 class HdGeminiLight;
+class HdGeminiMaterial;
 
 class HdGeminiRenderer final
 {
@@ -38,6 +39,7 @@ public:
 private:
     struct MeshInstance {
         HdGeminiMesh* mesh;
+        HdGeminiMaterial* material = nullptr;
         GfMatrix4f transform;
         GfMatrix4f invTransform;
         GfRange3f bounds;
@@ -54,6 +56,8 @@ private:
         float t = 1e30f;
         GfVec3f normal;
         GfVec3f baseColor = GfVec3f(1.0f);
+        float metallic = 0.0f;
+        float roughness = 0.5f;
         bool hit = false;
     };
 

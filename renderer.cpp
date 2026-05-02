@@ -4,6 +4,7 @@
 #include "mesh.h"
 #include "instancer.h"
 #include "light.h"
+#include "material.h"
 #include <pxr/base/work/loops.h>
 #include <pxr/base/gf/vec3f.h>
 #include <pxr/base/gf/vec3i.h>
@@ -228,6 +229,11 @@ HdGeminiRenderer::_PrepareScene(HdRenderThread *renderThread, HdGeminiRenderDele
         GfRange3f meshBounds = mesh->GetRange();
         if (meshBounds.IsEmpty()) continue;
 
+        HdGeminiMaterial* material = nullptr;
+        if (!mesh->GetMaterialId().IsEmpty()) {
+            material = delegate->GetMaterial(mesh->GetMaterialId());
+        }
+
         if (!mesh->GetInstancerId().IsEmpty()) {
             HdGeminiInstancer* instancer = delegate->GetInstancer(mesh->GetInstancerId());
             if (instancer) {
@@ -235,6 +241,7 @@ HdGeminiRenderer::_PrepareScene(HdRenderThread *renderThread, HdGeminiRenderDele
                 for (const auto& t : transforms) {
                     MeshInstance inst;
                     inst.mesh = mesh;
+                    inst.material = material;
                     inst.transform = GfMatrix4f(t) * mesh->GetTransform();
                     inst.invTransform = inst.transform.GetInverse();
                     inst.bounds = TransformBounds(meshBounds, inst.transform);
@@ -247,6 +254,7 @@ HdGeminiRenderer::_PrepareScene(HdRenderThread *renderThread, HdGeminiRenderDele
 
         MeshInstance inst;
         inst.mesh = mesh;
+        inst.material = material;
         inst.transform = mesh->GetTransform();
         inst.invTransform = inst.transform.GetInverse();
         inst.bounds = TransformBounds(meshBounds, inst.transform);
@@ -347,6 +355,11 @@ bool HdGeminiRenderer::_IntersectTLAS(int nodeIdx, const GfVec3f& rayOrigin, con
                     hit.baseColor = GfVec3f(1.0f);
                     const VtVec3fArray& colors = inst.mesh->GetColors();
                     if (!colors.empty()) hit.baseColor = colors[0];
+                    if (inst.material) {
+                        hit.baseColor = GfCompMult(hit.baseColor, inst.material->GetDiffuseColor());
+                        hit.metallic = inst.material->GetMetallic();
+                        hit.roughness = inst.material->GetRoughness();
+                    }
                     hit.hit = true;
                     wasHit = true;
                 }

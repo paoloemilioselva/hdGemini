@@ -87,7 +87,7 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
     bool pointsUpdatedByComputation = _UpdateComputedPrimvarSources(sceneDelegate, *dirtyBits);
 
     if (!pointsUpdatedByComputation && 
-        HdChangeTracker::IsPrimvarDirty(*dirtyBits, id, HdTokens->points)) {
+        (HdChangeTracker::IsPrimvarDirty(*dirtyBits, id, HdTokens->points) || _points.empty())) {
         VtValue value = sceneDelegate->Get(id, HdTokens->points);
         if (value.IsHolding<VtVec3fArray>()) {
             _points = value.UncheckedGet<VtVec3fArray>();
@@ -102,10 +102,12 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
         }
     }
 
-    if (_bvhDirty && !_points.empty()) {
+    if (_bvhDirty) {
         _range.SetEmpty();
-        for (const auto& p : _points) {
-            _range.ExtendBy(p);
+        if (!_points.empty()) {
+            for (const auto& p : _points) {
+                _range.ExtendBy(p);
+            }
         }
     }
 

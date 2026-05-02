@@ -59,6 +59,10 @@ void BVH::Build(const VtVec3fArray& points, const VtVec3iArray& indices) {
 
     _triangles.reserve(indices.size());
     for (const auto& triIdx : indices) {
+        if (triIdx[0] >= (int)points.size() || 
+            triIdx[1] >= (int)points.size() || 
+            triIdx[2] >= (int)points.size()) continue;
+        
         BVHTriangle tri;
         tri.v0 = points[triIdx[0]];
         tri.v1 = points[triIdx[1]];
@@ -66,6 +70,8 @@ void BVH::Build(const VtVec3fArray& points, const VtVec3iArray& indices) {
         tri.centroid = (tri.v0 + tri.v1 + tri.v2) / 3.0f;
         _triangles.push_back(tri);
     }
+
+    if (_triangles.empty()) return;
 
     _nodes.reserve(indices.size() * 2);
     _nodes.push_back(BVHNode()); // Root

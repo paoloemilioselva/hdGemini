@@ -26,6 +26,7 @@ public:
     BVH() = default;
     void Build(const VtVec3fArray& points, const VtVec3iArray& indices);
     bool Intersect(const GfVec3f& rayOrigin, const GfVec3f& rayDir, float& t, GfVec3f& normal) const;
+    bool IsEmpty() const { return _nodes.empty(); }
 
 private:
     struct BuildItem {

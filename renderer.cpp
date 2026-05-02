@@ -156,7 +156,7 @@ HdGeminiRenderer::_PrepareScene(HdRenderThread *renderThread, HdGeminiRenderDele
 {
     _instances.clear();
     
-    std::lock_guard<std::mutex> lock(delegate->GetSceneLock());
+    std::lock_guard<std::recursive_mutex> lock(delegate->GetSceneLock());
     const auto& meshes = delegate->GetMeshes();
     const auto& lights = delegate->GetLights();
 
@@ -490,7 +490,7 @@ HdGeminiRenderer::_RenderTiles(HdRenderThread *renderThread, HdGeminiRenderDeleg
     if (width == 0 || height == 0 || _aovBindings.empty()) return;
     HdGeminiRenderBuffer* colorBuffer = static_cast<HdGeminiRenderBuffer*>(_aovBindings[0].renderBuffer);
     GfVec3f cameraPosWorld(_inverseViewMatrix.Transform(GfVec3f(0, 0, 0)));
-    std::lock_guard<std::mutex> lock(delegate->GetSceneLock());
+    std::lock_guard<std::recursive_mutex> lock(delegate->GetSceneLock());
     const auto& lights = delegate->GetLights();
     int res = _resolutionLevel;
     bool isInteractive = (res > 1);

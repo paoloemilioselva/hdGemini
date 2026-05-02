@@ -71,7 +71,7 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
     HdGeminiRenderParam *geminiRenderParam = static_cast<HdGeminiRenderParam*>(renderParam);
     
     // Lock the global scene lock to ensure thread-safe updates to the mesh and the delegate's mesh map.
-    std::lock_guard<std::mutex> lock(geminiRenderParam->GetRenderDelegate()->GetSceneLock());
+    std::lock_guard<std::recursive_mutex> lock(geminiRenderParam->GetRenderDelegate()->GetSceneLock());
     
     geminiRenderParam->AcquireSceneForEdit();
     geminiRenderParam->GetRenderDelegate()->AddMesh(GetId(), this);

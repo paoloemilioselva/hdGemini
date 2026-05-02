@@ -70,7 +70,7 @@ public:
     void RemoveLight(const SdfPath& id);
     const std::map<SdfPath, HdGeminiLight*>& GetLights() const { return _lights; }
 
-    std::mutex& GetSceneLock() { return _sceneLock; }
+    std::recursive_mutex& GetSceneLock() { return _sceneLock; }
 
 private:
     static const TfTokenVector SUPPORTED_RPRIM_TYPES;
@@ -92,7 +92,7 @@ private:
     std::map<SdfPath, HdGeminiMesh*> _meshes;
     std::map<SdfPath, HdGeminiInstancer*> _instancers;
     std::map<SdfPath, HdGeminiLight*> _lights;
-    std::mutex _sceneLock;
+    std::recursive_mutex _sceneLock;
 
     HdGeminiRenderDelegate(const HdGeminiRenderDelegate &) = delete;
     HdGeminiRenderDelegate &operator =(const HdGeminiRenderDelegate &) = delete;

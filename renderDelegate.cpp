@@ -248,42 +248,42 @@ HdGeminiRenderDelegate::GetDefaultAovDescriptor(TfToken const& name) const
 void
 HdGeminiRenderDelegate::AddMesh(const SdfPath& id, HdGeminiMesh* mesh)
 {
-    std::lock_guard<std::mutex> lock(_sceneLock);
+    std::lock_guard<std::recursive_mutex> lock(_sceneLock);
     _meshes[id] = mesh;
 }
 
 void
 HdGeminiRenderDelegate::RemoveMesh(const SdfPath& id)
 {
-    std::lock_guard<std::mutex> lock(_sceneLock);
+    std::lock_guard<std::recursive_mutex> lock(_sceneLock);
     _meshes.erase(id);
 }
 
 void
 HdGeminiRenderDelegate::AddLight(const SdfPath& id, HdGeminiLight* light)
 {
-    std::lock_guard<std::mutex> lock(_sceneLock);
+    std::lock_guard<std::recursive_mutex> lock(_sceneLock);
     _lights[id] = light;
 }
 
 void
 HdGeminiRenderDelegate::RemoveLight(const SdfPath& id)
 {
-    std::lock_guard<std::mutex> lock(_sceneLock);
+    std::lock_guard<std::recursive_mutex> lock(_sceneLock);
     _lights.erase(id);
 }
 
 void
 HdGeminiRenderDelegate::AddInstancer(const SdfPath& id, HdGeminiInstancer* instancer)
 {
-    std::lock_guard<std::mutex> lock(_sceneLock);
+    std::lock_guard<std::recursive_mutex> lock(_sceneLock);
     _instancers[id] = instancer;
 }
 
 void
 HdGeminiRenderDelegate::RemoveInstancer(const SdfPath& id)
 {
-    std::lock_guard<std::mutex> lock(_sceneLock);
+    std::lock_guard<std::recursive_mutex> lock(_sceneLock);
     _instancers.erase(id);
 }
 

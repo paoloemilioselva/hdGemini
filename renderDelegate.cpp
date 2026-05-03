@@ -29,54 +29,15 @@ public:
     }
 };
 
-class HdGeminiSkeleton final : public HdSkeleton {
-public:
-    HdGeminiSkeleton(SdfPath const& id) : HdSkeleton(id) {}
-    void Sync(HdSceneDelegate *sceneDelegate,
-              HdRenderParam   *renderParam,
-              HdDirtyBits     *dirtyBits) override {
-        // std::cout << "[Gemini] Syncing Skeleton: " << GetId().GetText() << " (dirty: " << *dirtyBits << ")" << std::endl;
-    }
-};
-
-class HdGeminiSkelAnimation final : public HdSkelAnimation {
-public:
-    HdGeminiSkelAnimation(SdfPath const& id) : HdSkelAnimation(id) {}
-    void Sync(HdSceneDelegate *sceneDelegate,
-              HdRenderParam   *renderParam,
-              HdDirtyBits     *dirtyBits) override {
-        // std::cout << "[Gemini] Syncing SkelAnimation: " << GetId().GetText() << " (dirty: " << *dirtyBits << ")" << std::endl;
-    }
-};
-
-class HdGeminiSkelRoot final : public HdRprim {
-public:
-    HdGeminiSkelRoot(SdfPath const& id) : HdRprim(id) {}
-    void Sync(HdSceneDelegate *sceneDelegate,
-              HdRenderParam   *renderParam,
-              HdDirtyBits     *dirtyBits,
-              TfToken const   &reprToken) override {
-        std::cout << "[Gemini] Syncing SkelRoot: " << GetId().GetText() << " (dirty: " << *dirtyBits << ")" << std::endl;
-        *dirtyBits = 0;
-    }
-    HdDirtyBits GetInitialDirtyBitsMask() const override { return HdChangeTracker::AllSceneDirtyBits; }
-protected:
-    void _InitRepr(TfToken const &reprToken, HdDirtyBits *dirtyBits) override {}
-    HdDirtyBits _PropagateDirtyBits(HdDirtyBits bits) const override { return bits; }
-};
-
 const TfTokenVector HdGeminiRenderDelegate::SUPPORTED_RPRIM_TYPES =
 {
     HdPrimTypeTokens->mesh,
-    HdPrimTypeTokens->skelRoot,
 };
 
 const TfTokenVector HdGeminiRenderDelegate::SUPPORTED_SPRIM_TYPES =
 {
     HdPrimTypeTokens->camera,
     HdPrimTypeTokens->extComputation,
-    HdPrimTypeTokens->skeleton,
-    HdPrimTypeTokens->skelAnimation,
     HdPrimTypeTokens->material,
     HdPrimTypeTokens->distantLight,
     HdPrimTypeTokens->sphereLight,
@@ -210,8 +171,6 @@ HdGeminiRenderDelegate::CreateRprim(TfToken const& typeId,
     std::cout << "[Gemini] CreateRprim: " << typeId.GetText() << " " << rprimId.GetText() << std::endl;
     if (typeId == HdPrimTypeTokens->mesh) {
         return new HdGeminiMesh(rprimId);
-    } else if (typeId == HdPrimTypeTokens->skelRoot) {
-        return new HdGeminiSkelRoot(rprimId);
     }
     return nullptr;
 }
@@ -234,10 +193,6 @@ HdGeminiRenderDelegate::CreateSprim(TfToken const& typeId,
         return new HdCamera(sprimId);
     } else if (typeId == HdPrimTypeTokens->extComputation) {
         return new HdGeminiExtComputation(sprimId);
-    } else if (typeId == HdPrimTypeTokens->skeleton) {
-        return new HdGeminiSkeleton(sprimId);
-    } else if (typeId == HdPrimTypeTokens->skelAnimation) {
-        return new HdGeminiSkelAnimation(sprimId);
     } else if (typeId == HdPrimTypeTokens->material) {
         HdGeminiMaterial* mat = new HdGeminiMaterial(sprimId);
         AddMaterial(sprimId, mat);
@@ -259,10 +214,6 @@ HdGeminiRenderDelegate::CreateFallbackSprim(TfToken const& typeId)
         return new HdCamera(SdfPath::EmptyPath());
     } else if (typeId == HdPrimTypeTokens->extComputation) {
         return new HdGeminiExtComputation(SdfPath::EmptyPath());
-    } else if (typeId == HdPrimTypeTokens->skeleton) {
-        return new HdGeminiSkeleton(SdfPath::EmptyPath());
-    } else if (typeId == HdPrimTypeTokens->skelAnimation) {
-        return new HdGeminiSkelAnimation(SdfPath::EmptyPath());
     } else if (typeId == HdPrimTypeTokens->material) {
         HdGeminiMaterial* mat = new HdGeminiMaterial(SdfPath::EmptyPath());
         AddMaterial(SdfPath::EmptyPath(), mat);

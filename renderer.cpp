@@ -89,6 +89,19 @@ static GfVec3f AlignToNormal(const GfVec3f& sample, const GfVec3f& normal) {
     return sample[0] * tangent + sample[1] * normal + sample[2] * bitangent;
 }
 
+static float FresnelDielectric(float cosThetaI, float ior) {
+    cosThetaI = std::clamp(cosThetaI, -1.0f, 1.0f);
+    float etaI = 1.0f, etaT = ior;
+    if (cosThetaI > 0) std::swap(etaI, etaT);
+    float sinThetaT = etaI / etaT * std::sqrt(std::max(0.0f, 1.0f - cosThetaI * cosThetaI));
+    if (sinThetaT >= 1.0f) return 1.0f;
+    float cosThetaT = std::sqrt(std::max(0.0f, 1.0f - sinThetaT * sinThetaT));
+    cosThetaI = std::abs(cosThetaI);
+    float rParl = ((etaT * cosThetaI) - (etaI * cosThetaT)) / ((etaT * cosThetaI) + (etaI * cosThetaT));
+    float rPerp = ((etaI * cosThetaI) - (etaT * cosThetaT)) / ((etaI * cosThetaI) + (etaT * cosThetaT));
+    return (rParl * rParl + rPerp * rPerp) / 2.0f;
+}
+
 HdGeminiRenderer::HdGeminiRenderer()
     : _viewMatrix(1.0)
     , _projMatrix(1.0)
@@ -357,10 +370,12 @@ bool HdGeminiRenderer::_IntersectTLAS(int nodeIdx, const GfVec3f& rayOrigin, con
             float instT = hit.t;
             GfVec3f instNormal;
             GfVec2f instUv;
-            if (inst.mesh->GetBVH().Intersect(objRayOrigin, objRayDir, instT, instNormal, instUv)) {
+            GfVec3f instSmoothNormal;
+            if (inst.mesh->GetBVH().Intersect(objRayOrigin, objRayDir, instT, instNormal, instUv, instSmoothNormal)) {
                 if (instT < hit.t) {
                     hit.t = instT;
                     hit.normal = inst.transform.TransformDir(instNormal).GetNormalized();
+                    hit.smoothNormal = inst.transform.TransformDir(instSmoothNormal).GetNormalized();
                     hit.uv = instUv;
                     hit.baseColor = GfVec3f(1.0f);
                     const VtVec3fArray& colors = inst.mesh->GetColors();
@@ -370,6 +385,8 @@ bool HdGeminiRenderer::_IntersectTLAS(int nodeIdx, const GfVec3f& rayOrigin, con
                         hit.metallic = inst.material->GetMetallic();
                         hit.roughness = inst.material->GetRoughness();
                         hit.opacity = inst.material->GetOpacity();
+                        hit.ior = inst.material->GetIor();
+                        hit.transmission = inst.material->GetTransmission();
                         hit.emission = inst.material->GetEmissionColor() * inst.material->GetEmission();
                         hit.diffuseTexture = inst.material->GetDiffuseTexture();
                     }
@@ -492,7 +509,7 @@ GfVec3f HdGeminiRenderer::_SampleTextureData(const TextureData& data, const GfVe
 
 GfVec3f HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVec3f& rayDir, int depth, bool isInteractive, HdRenderThread* renderThread, const std::map<SdfPath, HdGeminiLight*>& lights, uint32_t& rng) const
 {
-    if (depth > (isInteractive ? 0 : 3) || renderThread->IsStopRequested()) return GfVec3f(0.0f);
+    if (depth > (isInteractive ? 1 : 5) || renderThread->IsStopRequested()) return GfVec3f(0.0f);
 
     HitRecord hit;
     if (!this->_IntersectTLAS(0, rayOrigin, rayDir, hit, renderThread)) {
@@ -510,9 +527,51 @@ GfVec3f HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVec3f& ray
         return _TraceRay(hitPos + rayDir * 1e-4f, rayDir, depth, isInteractive, renderThread, lights, rng);
     }
 
-    GfVec3f shadowOrigin = hitPos + hit.normal * 1e-4f;
+    GfVec3f shadingNormal = hit.smoothNormal;
+    if (GfDot(shadingNormal, rayDir) > 0) shadingNormal = -shadingNormal;
+
+    GfVec3f shadowOrigin = hitPos + shadingNormal * 1e-4f;
     GfVec3f result = hit.emission;
 
+    // Advanced Material Logic: Reflections and Refractions
+    float fresnel = FresnelDielectric(GfDot(rayDir, shadingNormal), hit.ior);
+    float reflectProb = fresnel;
+    if (hit.metallic > 0.0f) reflectProb = std::max(reflectProb, hit.metallic);
+
+    if (RandomFloat(rng) < reflectProb) {
+        // Reflection
+        GfVec3f reflectDir = (rayDir - 2.0f * GfDot(rayDir, shadingNormal) * shadingNormal).GetNormalized();
+        // Perturb by roughness
+        if (hit.roughness > 0.0f) {
+            reflectDir = AlignToNormal(SampleCosineHemisphere(RandomFloat(rng), RandomFloat(rng)), reflectDir);
+            // Re-check if we went under the surface
+            if (GfDot(reflectDir, shadingNormal) < 0) reflectDir = (reflectDir - 2.0f * GfDot(reflectDir, shadingNormal) * shadingNormal).GetNormalized();
+        }
+        return result + _TraceRay(hitPos + shadingNormal * 1e-4f, reflectDir, depth + 1, isInteractive, renderThread, lights, rng);
+    } 
+
+    if (hit.transmission > 0.0f && RandomFloat(rng) < hit.transmission) {
+        // Refraction
+        float etaI = 1.0f, etaT = hit.ior;
+        GfVec3f n = shadingNormal;
+        float cosThetaI = GfDot(rayDir, n);
+        if (cosThetaI > 0) {
+            std::swap(etaI, etaT);
+            n = -n;
+            cosThetaI = -cosThetaI;
+        }
+        float eta = etaI / etaT;
+        float k = 1.0f - eta * eta * (1.0f - cosThetaI * cosThetaI);
+        if (k >= 0) {
+            GfVec3f refractDir = (eta * rayDir - (eta * cosThetaI + std::sqrt(k)) * n).GetNormalized();
+            return result + GfCompMult(hit.baseColor, _TraceRay(hitPos - shadingNormal * 1e-4f, refractDir, depth + 1, isInteractive, renderThread, lights, rng));
+        }
+        // Total Internal Reflection
+        GfVec3f reflectDir = (rayDir - 2.0f * GfDot(rayDir, shadingNormal) * shadingNormal).GetNormalized();
+        return result + _TraceRay(hitPos + shadingNormal * 1e-4f, reflectDir, depth + 1, isInteractive, renderThread, lights, rng);
+    }
+
+    // Diffuse path
     if (!lights.empty()) {
         auto it = lights.begin();
         std::advance(it, (size_t)(RandomFloat(rng) * lights.size()));
@@ -599,7 +658,7 @@ GfVec3f HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVec3f& ray
         }
 
         if (lightDist > 0 && (lColor[0] > 0 || lColor[1] > 0 || lColor[2] > 0)) {
-            float nDotL = std::max(0.0f, GfDot(hit.normal, lDir));
+            float nDotL = std::max(0.0f, GfDot(shadingNormal, lDir));
             if (nDotL > 0) {
                 HitRecord shadowHit;
                 shadowHit.t = lightDist - 1e-3f;
@@ -612,8 +671,8 @@ GfVec3f HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVec3f& ray
     }
 
     if (!isInteractive && depth < 3) {
-        GfVec3f bounceDir = AlignToNormal(SampleCosineHemisphere(RandomFloat(rng), RandomFloat(rng)), hit.normal);
-        float nDotL = std::max(0.0f, GfDot(hit.normal, bounceDir));
+        GfVec3f bounceDir = AlignToNormal(SampleCosineHemisphere(RandomFloat(rng), RandomFloat(rng)), shadingNormal);
+        float nDotL = std::max(0.0f, GfDot(shadingNormal, bounceDir));
         float pdf = nDotL / (float)M_PI;
         if (pdf > 1e-6f) {
             GfVec3f indirect = _TraceRay(shadowOrigin, bounceDir, depth + 1, isInteractive, renderThread, lights, rng);

@@ -58,11 +58,14 @@ private:
     struct HitRecord {
         float t = 1e30f;
         GfVec3f normal;
+        GfVec3f smoothNormal;
         GfVec2f uv = GfVec2f(0.0f);
         GfVec3f baseColor = GfVec3f(1.0f);
         float metallic = 0.0f;
         float roughness = 0.5f;
         float opacity = 1.0f;
+        float ior = 1.5f;
+        float transmission = 0.0f;
         GfVec3f emission = GfVec3f(0.0f);
         SdfAssetPath diffuseTexture;
         bool hit = false;

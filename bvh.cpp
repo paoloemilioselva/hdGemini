@@ -54,7 +54,7 @@ IntersectAABB(const GfVec3f& rayOrigin, const GfVec3f& rayDir, const GfRange3f& 
     return tmax > 0 && tmax > 1e-4;
 }
 
-void BVH::Build(const VtVec3fArray& points, const VtVec3iArray& indices, const VtVec2fArray& uvs) {
+void BVH::Build(const VtVec3fArray& points, const VtVec3iArray& indices, const VtVec2fArray& uvs, const VtVec3fArray& normals) {
     _triangles.clear();
     _nodes.clear();
     if (indices.empty() || points.empty()) return;
@@ -85,6 +85,22 @@ void BVH::Build(const VtVec3fArray& points, const VtVec3iArray& indices, const V
             }
         } else {
             tri.uv0 = tri.uv1 = tri.uv2 = GfVec2f(0.0f);
+        }
+
+        if (!normals.empty()) {
+            if (normals.size() == indices.size() * 3) {
+                // Face-varying (triangulated) Normals
+                tri.n0 = normals[i * 3 + 0];
+                tri.n1 = normals[i * 3 + 1];
+                tri.n2 = normals[i * 3 + 2];
+            } else {
+                // Vertex-indexed Normals
+                tri.n0 = (triIdx[0] < (int)normals.size()) ? normals[triIdx[0]] : GfVec3f(0.0f, 1.0f, 0.0f);
+                tri.n1 = (triIdx[1] < (int)normals.size()) ? normals[triIdx[1]] : GfVec3f(0.0f, 1.0f, 0.0f);
+                tri.n2 = (triIdx[2] < (int)normals.size()) ? normals[triIdx[2]] : GfVec3f(0.0f, 1.0f, 0.0f);
+            }
+        } else {
+            tri.n0 = tri.n1 = tri.n2 = GfVec3f(0.0f, 0.0f, 0.0f);
         }
 
         tri.centroid = (tri.v0 + tri.v1 + tri.v2) / 3.0f;
@@ -149,12 +165,12 @@ void BVH::_Subdivide(int nodeIdx, int start, int end) {
     _Subdivide(leftChildIdx + 1, i, end);
 }
 
-bool BVH::Intersect(const GfVec3f& rayOrigin, const GfVec3f& rayDir, float& t, GfVec3f& normal, GfVec2f& uv) const {
+bool BVH::Intersect(const GfVec3f& rayOrigin, const GfVec3f& rayDir, float& t, GfVec3f& normal, GfVec2f& uv, GfVec3f& smoothNormal) const {
     if (_nodes.empty()) return false;
-    return _IntersectNode(0, rayOrigin, rayDir, t, normal, uv);
+    return _IntersectNode(0, rayOrigin, rayDir, t, normal, uv, smoothNormal);
 }
 
-bool BVH::_IntersectNode(int nodeIdx, const GfVec3f& rayOrigin, const GfVec3f& rayDir, float& t, GfVec3f& normal, GfVec2f& uv) const {
+bool BVH::_IntersectNode(int nodeIdx, const GfVec3f& rayOrigin, const GfVec3f& rayDir, float& t, GfVec3f& normal, GfVec2f& uv, GfVec3f& smoothNormal) const {
     const BVHNode& node = _nodes[nodeIdx];
     float tAabb;
     if (!IntersectAABB(rayOrigin, rayDir, node.bounds, tAabb)) return false;
@@ -170,15 +186,22 @@ bool BVH::_IntersectNode(int nodeIdx, const GfVec3f& rayOrigin, const GfVec3f& r
                 if (triT < t) {
                     t = triT;
                     normal = GfCross(tri.v1 - tri.v0, tri.v2 - tri.v0).GetNormalized();
-                    uv = tri.uv0 * (1.0f - triU - triV) + tri.uv1 * triU + tri.uv2 * triV;
+                    float w = 1.0f - triU - triV;
+                    uv = tri.uv0 * w + tri.uv1 * triU + tri.uv2 * triV;
+                    
+                    if (tri.n0.GetLengthSq() > 1e-6f) {
+                        smoothNormal = (tri.n0 * w + tri.n1 * triU + tri.n2 * triV).GetNormalized();
+                    } else {
+                        smoothNormal = normal;
+                    }
                     hit = true;
                 }
             }
         }
         return hit;
     } else {
-        bool hitLeft = _IntersectNode(node.leftChild, rayOrigin, rayDir, t, normal, uv);
-        bool hitRight = _IntersectNode(node.leftChild + 1, rayOrigin, rayDir, t, normal, uv);
+        bool hitLeft = _IntersectNode(node.leftChild, rayOrigin, rayDir, t, normal, uv, smoothNormal);
+        bool hitRight = _IntersectNode(node.leftChild + 1, rayOrigin, rayDir, t, normal, uv, smoothNormal);
         return hitLeft || hitRight;
     }
 }

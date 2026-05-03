@@ -314,6 +314,54 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
         }
     }
 
+    // --- NORMAL UPDATING ---
+    TfToken normalToken = HdTokens->normals;
+    bool normalsDirty = HdChangeTracker::IsPrimvarDirty(*dirtyBits, id, normalToken) || _normals.empty();
+    if (normalsDirty) {
+        HdInterpolation normalInterp = HdInterpolationVertex;
+        bool found = false;
+        for (int i = 0; i < HdInterpolationCount; ++i) {
+            HdPrimvarDescriptorVector pvs = sceneDelegate->GetPrimvarDescriptors(id, (HdInterpolation)i);
+            for (const auto& pv : pvs) {
+                if (pv.name == normalToken) {
+                    normalInterp = pv.interpolation;
+                    found = true;
+                    break;
+                }
+            }
+            if (found) break;
+        }
+
+        VtIntArray normalIndices;
+        VtValue val = sceneDelegate->GetIndexedPrimvar(id, normalToken, &normalIndices);
+        if (val.IsEmpty()) val = sceneDelegate->Get(id, normalToken);
+
+        if (!val.IsEmpty() && val.IsHolding<VtVec3fArray>()) {
+            VtVec3fArray normals = val.UncheckedGet<VtVec3fArray>();
+            if (!normalIndices.empty()) {
+                VtVec3fArray flattened(normalIndices.size());
+                for (size_t i = 0; i < normalIndices.size(); ++i) {
+                    flattened[i] = normals[normalIndices[i]];
+                }
+                normals = flattened;
+            }
+
+            if (normalInterp == HdInterpolationFaceVarying) {
+                HdMeshTopology topology = GetMeshTopology(sceneDelegate);
+                HdMeshUtil meshUtil(&topology, id);
+                VtValue triangulated;
+                meshUtil.ComputeTriangulatedFaceVaryingPrimvar(normals.data(), (int)normals.size(), HdTypeFloatVec3, &triangulated);
+                if (!triangulated.IsEmpty() && triangulated.IsHolding<VtVec3fArray>()) {
+                    _normals = triangulated.Get<VtVec3fArray>();
+                } else {
+                    _normals = normals;
+                }
+            } else {
+                _normals = normals;
+            }
+        }
+    }
+
     if (HdChangeTracker::IsTopologyDirty(*dirtyBits, id)) {
         HdMeshTopology topology = GetMeshTopology(sceneDelegate);
         HdMeshUtil meshUtil(&topology, id);
@@ -328,9 +376,9 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
             for (const auto& p : _points) {
                 _range.ExtendBy(p);
             }
-            _bvh.Build(_points, _triangulatedIndices, _uvs);
+            _bvh.Build(_points, _triangulatedIndices, _uvs, _normals);
         } else {
-            _bvh.Build(VtVec3fArray(), VtVec3iArray(), VtVec2fArray());
+            _bvh.Build(VtVec3fArray(), VtVec3iArray(), VtVec2fArray(), VtVec3fArray());
         }
         _bvhDirty = false;
     }

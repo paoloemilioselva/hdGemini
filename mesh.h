@@ -38,6 +38,7 @@ public:
     bool IsVisible() const { return _visible; }
     const VtVec3fArray& GetColors() const { return _colors; }
     const VtVec2fArray& GetUVs() const { return _uvs; }
+    const VtVec3fArray& GetNormals() const { return _normals; }
 
 protected:
     virtual void _InitRepr(TfToken const &reprToken,
@@ -60,6 +61,7 @@ private:
     bool _bvhDirty;
     VtVec3fArray _colors;
     VtVec2fArray _uvs;
+    VtVec3fArray _normals;
 
     HdGeminiMesh(const HdGeminiMesh&) = delete;
     HdGeminiMesh &operator =(const HdGeminiMesh&) = delete;

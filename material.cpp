@@ -12,6 +12,8 @@ HdGeminiMaterial::HdGeminiMaterial(SdfPath const& id)
     , _metallic(0.0f)
     , _roughness(0.5f)
     , _opacity(1.0f)
+    , _ior(1.5f)
+    , _transmission(0.0f)
     , _emissionColor(1.0f)
     , _emission(0.0f)
 {
@@ -66,6 +68,8 @@ HdGeminiMaterial::Sync(HdSceneDelegate *sceneDelegate,
                                 _roughness = param.second.UncheckedGet<float>();
                             } else if (param.first == TfToken("opacity") && param.second.IsHolding<float>()) {
                                 _opacity = param.second.UncheckedGet<float>();
+                            } else if (param.first == TfToken("ior") && param.second.IsHolding<float>()) {
+                                _ior = param.second.UncheckedGet<float>();
                             } else if (param.first == TfToken("emissiveColor") && param.second.IsHolding<GfVec3f>()) {
                                 _emissionColor = param.second.UncheckedGet<GfVec3f>();
                                 _emission = 1.0f;
@@ -85,6 +89,10 @@ HdGeminiMaterial::Sync(HdSceneDelegate *sceneDelegate,
                                 _roughness = param.second.UncheckedGet<float>();
                             } else if (param.first == TfToken("opacity") && param.second.IsHolding<float>()) {
                                 _opacity = param.second.UncheckedGet<float>();
+                            } else if (param.first == TfToken("ior") && param.second.IsHolding<float>()) {
+                                _ior = param.second.UncheckedGet<float>();
+                            } else if ((param.first == TfToken("transmission") || param.first == TfToken("transmission_weight")) && param.second.IsHolding<float>()) {
+                                _transmission = param.second.UncheckedGet<float>();
                             } else if ((param.first == TfToken("emission") || param.first == TfToken("emission_weight")) && param.second.IsHolding<float>()) {
                                 _emission = param.second.UncheckedGet<float>();
                             } else if (param.first == TfToken("emission_color") && param.second.IsHolding<GfVec3f>()) {

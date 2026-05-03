@@ -23,6 +23,8 @@ public:
     float GetMetallic() const { return _metallic; }
     float GetRoughness() const { return _roughness; }
     float GetOpacity() const { return _opacity; }
+    float GetIor() const { return _ior; }
+    float GetTransmission() const { return _transmission; }
     const GfVec3f& GetEmissionColor() const { return _emissionColor; }
     float GetEmission() const { return _emission; }
 
@@ -33,6 +35,8 @@ private:
     float _metallic;
     float _roughness;
     float _opacity;
+    float _ior;
+    float _transmission;
     GfVec3f _emissionColor;
     float _emission;
 

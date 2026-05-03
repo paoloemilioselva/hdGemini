@@ -37,6 +37,16 @@ HdGeminiLight::Sync(HdSceneDelegate *sceneDelegate,
             _intensity = intensityVal.UncheckedGet<float>();
         }
 
+        VtValue coneAngleVal = sceneDelegate->GetLightParamValue(id, TfToken("shaping:cone:angle"));
+        if (coneAngleVal.IsHolding<float>()) {
+            _shapingConeAngle = coneAngleVal.UncheckedGet<float>();
+        }
+
+        VtValue coneSoftnessVal = sceneDelegate->GetLightParamValue(id, TfToken("shaping:cone:softness"));
+        if (coneSoftnessVal.IsHolding<float>()) {
+            _shapingConeSoftness = coneSoftnessVal.UncheckedGet<float>();
+        }
+
         if (_lightType == HdPrimTypeTokens->domeLight) {
             VtValue textureVal = sceneDelegate->GetLightParamValue(id, HdLightTokens->textureFile);
             if (textureVal.IsHolding<SdfAssetPath>()) {

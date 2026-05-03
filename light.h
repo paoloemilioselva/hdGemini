@@ -27,6 +27,8 @@ public:
     const SdfAssetPath& GetTextureFile() const { return _textureFile; }
     float GetWidth() const { return _width; }
     float GetHeight() const { return _height; }
+    float GetShapingConeAngle() const { return _shapingConeAngle; }
+    float GetShapingConeSoftness() const { return _shapingConeSoftness; }
 
 private:
     GfVec3f _color;
@@ -36,6 +38,8 @@ private:
     SdfAssetPath _textureFile;
     float _width;
     float _height;
+    float _shapingConeAngle = 180.0f;
+    float _shapingConeSoftness = 0.0f;
 };
 
 #endif // HD_GEMINI_LIGHT_H

@@ -475,7 +475,34 @@ GfVec3f HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVec3f& ray
             lColor = light->GetColor() * light->GetIntensity();
         }
 
-        if (lightDist > 0) {
+        // Apply shaping parameters (cone angle & softness) for local lights
+        if (lightDist > 0 && light->GetLightType() != HdPrimTypeTokens->domeLight && light->GetLightType() != HdPrimTypeTokens->distantLight) {
+            float coneAngle = light->GetShapingConeAngle();
+            if (coneAngle < 180.0f) {
+                GfVec3f lNormal = GfMatrix4f(light->GetTransform()).TransformDir(GfVec3f(0, 0, -1)).GetNormalized();
+                float cosTheta = GfDot(lNormal, -lDir);
+                float coneAngleRad = coneAngle * (float)(M_PI / 180.0);
+                float cosConeAngle = std::cos(coneAngleRad);
+
+                if (cosTheta <= cosConeAngle) {
+                    lColor = GfVec3f(0.0f);
+                } else {
+                    float softness = light->GetShapingConeSoftness();
+                    if (softness > 0.0f) {
+                        float innerAngleRad = coneAngleRad * (1.0f - softness);
+                        float cosInnerAngle = std::cos(innerAngleRad);
+                        if (cosTheta < cosInnerAngle) {
+                            float factor = (cosTheta - cosConeAngle) / (cosInnerAngle - cosConeAngle);
+                            // smoothstep
+                            factor = factor * factor * (3.0f - 2.0f * factor);
+                            lColor *= factor;
+                        }
+                    }
+                }
+            }
+        }
+
+        if (lightDist > 0 && (lColor[0] > 0 || lColor[1] > 0 || lColor[2] > 0)) {
             float nDotL = std::max(0.0f, GfDot(hit.normal, lDir));
             if (nDotL > 0) {
                 HitRecord shadowHit;

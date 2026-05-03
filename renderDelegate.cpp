@@ -25,8 +25,7 @@ public:
     void Sync(HdSceneDelegate *sceneDelegate,
               HdRenderParam   *renderParam,
               HdDirtyBits     *dirtyBits) override {
-        std::cout << "[Gemini] Syncing ExtComputation: " << GetId().GetText() << " (dirty: " << *dirtyBits << ")" << std::endl;
-        *dirtyBits = 0;
+        // std::cout << "[Gemini] Syncing ExtComputation: " << GetId().GetText() << " (dirty: " << *dirtyBits << ")" << std::endl;
     }
 };
 
@@ -36,8 +35,7 @@ public:
     void Sync(HdSceneDelegate *sceneDelegate,
               HdRenderParam   *renderParam,
               HdDirtyBits     *dirtyBits) override {
-        std::cout << "[Gemini] Syncing Skeleton: " << GetId().GetText() << " (dirty: " << *dirtyBits << ")" << std::endl;
-        *dirtyBits = 0;
+        // std::cout << "[Gemini] Syncing Skeleton: " << GetId().GetText() << " (dirty: " << *dirtyBits << ")" << std::endl;
     }
 };
 
@@ -47,8 +45,7 @@ public:
     void Sync(HdSceneDelegate *sceneDelegate,
               HdRenderParam   *renderParam,
               HdDirtyBits     *dirtyBits) override {
-        std::cout << "[Gemini] Syncing SkelAnimation: " << GetId().GetText() << " (dirty: " << *dirtyBits << ")" << std::endl;
-        *dirtyBits = 0;
+        // std::cout << "[Gemini] Syncing SkelAnimation: " << GetId().GetText() << " (dirty: " << *dirtyBits << ")" << std::endl;
     }
 };
 

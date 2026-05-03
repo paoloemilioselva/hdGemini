@@ -37,11 +37,13 @@ HdGeminiMaterial::Sync(HdSceneDelegate *sceneDelegate,
             // Convert to HdMaterialNetwork2 for easier terminal lookup
             HdMaterialNetwork2 network = HdConvertToHdMaterialNetwork2(map);
             
-            // Find the surface terminal
-            auto itTerm = network.terminals.find(HdMaterialTerminalTokens->surface);
+            // Find the surface terminal (prioritize mtlx:surface, then surface)
+            auto itTerm = network.terminals.find(TfToken("mtlx:surface"));
             if (itTerm == network.terminals.end()) {
-                // fallback to anything if surface is not there
-                if (!network.terminals.empty()) itTerm = network.terminals.begin();
+                itTerm = network.terminals.find(HdMaterialTerminalTokens->surface);
+            }
+            if (itTerm == network.terminals.end() && !network.terminals.empty()) {
+                itTerm = network.terminals.begin();
             }
 
             if (itTerm != network.terminals.end()) {
@@ -52,8 +54,13 @@ HdGeminiMaterial::Sync(HdSceneDelegate *sceneDelegate,
                     const HdMaterialNode2& surfaceNode = itNode->second;
                     
                     SdrRegistry &sdrRegistry = SdrRegistry::GetInstance();
-                    TfTokenVector sourceTypes = {TfToken("mtlx"), TfToken("glslfx")};
-                    SdrShaderNodeConstPtr sdrEntry = sdrRegistry.GetShaderNodeByIdentifier(surfaceNode.nodeTypeId, sourceTypes);
+                    
+                    // Prioritize mtlx context for shader resolution
+                    SdrShaderNodeConstPtr sdrEntry = sdrRegistry.GetShaderNodeByIdentifier(surfaceNode.nodeTypeId, {TfToken("mtlx")});
+                    if (!sdrEntry) {
+                        // Fallback to no-context
+                        sdrEntry = sdrRegistry.GetShaderNodeByIdentifier(surfaceNode.nodeTypeId);
+                    }
                     
                     TfToken shaderId = sdrEntry ? sdrEntry->GetIdentifier() : surfaceNode.nodeTypeId;
 
@@ -113,7 +120,10 @@ HdGeminiMaterial::Sync(HdSceneDelegate *sceneDelegate,
                                 if (itInputNode != network.nodes.end()) {
                                     const HdMaterialNode2& inputNode = itInputNode->second;
                                     
-                                    SdrShaderNodeConstPtr inputSdrEntry = sdrRegistry.GetShaderNodeByIdentifier(inputNode.nodeTypeId, sourceTypes);
+                                    SdrShaderNodeConstPtr inputSdrEntry = sdrRegistry.GetShaderNodeByIdentifier(inputNode.nodeTypeId, {TfToken("mtlx")});
+                                    if (!inputSdrEntry) {
+                                        inputSdrEntry = sdrRegistry.GetShaderNodeByIdentifier(inputNode.nodeTypeId);
+                                    }
                                     TfToken inputShaderId = inputSdrEntry ? inputSdrEntry->GetIdentifier() : inputNode.nodeTypeId;
 
                                     if (inputShaderId == TfToken("UsdUVTexture") ||

@@ -21,7 +21,7 @@ public:
     virtual HdDirtyBits GetInitialDirtyBitsMask() const override;
 
     const GfVec3f& GetColor() const { return _color; }
-    float GetIntensity() const { return _intensity; }
+    float GetIntensity() const { return _intensity * std::exp2(_exposure); }
     const GfMatrix4d& GetTransform() const { return _transform; }
     const TfToken& GetLightType() const { return _lightType; }
     const SdfAssetPath& GetTextureFile() const { return _textureFile; }
@@ -33,6 +33,7 @@ public:
 private:
     GfVec3f _color;
     float _intensity;
+    float _exposure;
     GfMatrix4d _transform;
     TfToken _lightType;
     SdfAssetPath _textureFile;

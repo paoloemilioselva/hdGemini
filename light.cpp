@@ -4,12 +4,15 @@
 #include "pxr/imaging/hd/sceneDelegate.h"
 #include "pxr/imaging/hd/tokens.h"
 
+#include <cmath>
+
 PXR_NAMESPACE_USING_DIRECTIVE
 
 HdGeminiLight::HdGeminiLight(SdfPath const& id, TfToken const& lightType)
     : HdLight(id)
     , _color(1.0f)
     , _intensity(1.0f)
+    , _exposure(0.0f)
     , _transform(1.0)
     , _lightType(lightType)
 {
@@ -35,6 +38,11 @@ HdGeminiLight::Sync(HdSceneDelegate *sceneDelegate,
         VtValue intensityVal = sceneDelegate->GetLightParamValue(id, HdLightTokens->intensity);
         if (intensityVal.IsHolding<float>()) {
             _intensity = intensityVal.UncheckedGet<float>();
+        }
+
+        VtValue exposureVal = sceneDelegate->GetLightParamValue(id, HdLightTokens->exposure);
+        if (exposureVal.IsHolding<float>()) {
+            _exposure = exposureVal.UncheckedGet<float>();
         }
 
         VtValue coneAngleVal = sceneDelegate->GetLightParamValue(id, TfToken("shaping:cone:angle"));

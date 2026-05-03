@@ -115,6 +115,19 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
 
     // --- COMPUTED PRIMVARS ---
     // We check for all computed primvars first.
+    {
+        for (size_t i=0; i < HdInterpolationCount; ++i) {
+            HdInterpolation interp = static_cast<HdInterpolation>(i);
+            HdExtComputationPrimvarDescriptorVector compPrimvars = 
+                sceneDelegate->GetExtComputationPrimvarDescriptors(id, interp);
+            for (auto const& pv: compPrimvars) {
+                std::cout << "[Gemini] Found computed PV descriptor: " << pv.name.GetText() 
+                          << " interp: " << interp << " dirty: " 
+                          << HdChangeTracker::IsPrimvarDirty(*dirtyBits, id, pv.name) << std::endl;
+            }
+        }
+    }
+
     TfTokenVector computedNames = _UpdateComputedPrimvarSources(sceneDelegate, *dirtyBits);
     bool pointsUpdatedByComputation = false;
     bool colorsUpdatedByComputation = false;

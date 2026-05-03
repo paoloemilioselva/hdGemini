@@ -4,6 +4,7 @@
 #include "pxr/pxr.h"
 #include "pxr/imaging/hd/material.h"
 #include "pxr/base/gf/vec3f.h"
+#include "pxr/usd/sdf/assetPath.h"
 
 PXR_NAMESPACE_USING_DIRECTIVE
 
@@ -25,6 +26,8 @@ public:
     const GfVec3f& GetEmissionColor() const { return _emissionColor; }
     float GetEmission() const { return _emission; }
 
+    const SdfAssetPath& GetDiffuseTexture() const { return _diffuseTexture; }
+
 private:
     GfVec3f _diffuseColor;
     float _metallic;
@@ -32,6 +35,8 @@ private:
     float _opacity;
     GfVec3f _emissionColor;
     float _emission;
+
+    SdfAssetPath _diffuseTexture;
 };
 
 #endif // HD_GEMINI_MATERIAL_H

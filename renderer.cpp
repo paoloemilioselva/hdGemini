@@ -356,10 +356,12 @@ bool HdGeminiRenderer::_IntersectTLAS(int nodeIdx, const GfVec3f& rayOrigin, con
             GfVec3f objRayDir = inst.invTransform.TransformDir(rayDir);
             float instT = hit.t;
             GfVec3f instNormal;
-            if (inst.mesh->GetBVH().Intersect(objRayOrigin, objRayDir, instT, instNormal)) {
+            GfVec2f instUv;
+            if (inst.mesh->GetBVH().Intersect(objRayOrigin, objRayDir, instT, instNormal, instUv)) {
                 if (instT < hit.t) {
                     hit.t = instT;
                     hit.normal = inst.transform.TransformDir(instNormal).GetNormalized();
+                    hit.uv = instUv;
                     hit.baseColor = GfVec3f(1.0f);
                     const VtVec3fArray& colors = inst.mesh->GetColors();
                     if (!colors.empty()) hit.baseColor = colors[0];
@@ -369,6 +371,7 @@ bool HdGeminiRenderer::_IntersectTLAS(int nodeIdx, const GfVec3f& rayOrigin, con
                         hit.roughness = inst.material->GetRoughness();
                         hit.opacity = inst.material->GetOpacity();
                         hit.emission = inst.material->GetEmissionColor() * inst.material->GetEmission();
+                        hit.diffuseTexture = inst.material->GetDiffuseTexture();
                     }
                     hit.hit = true;
                     wasHit = true;
@@ -406,6 +409,62 @@ GfVec3f HdGeminiRenderer::_SampleEnvironment(const GfVec3f& rayDir, const std::m
     return color;
 }
 
+GfVec3f HdGeminiRenderer::_SampleTexture(const SdfAssetPath& path, const GfVec2f& uv) const
+{
+    if (path.GetAssetPath().empty()) return GfVec3f(1.0f);
+
+    auto it = _textureCache.find(path.GetAssetPath());
+    if (it == _textureCache.end()) {
+        HioImageSharedPtr image = HioImage::OpenForReading(path.GetResolvedPath());
+        if (!image) {
+            _textureCache[path.GetAssetPath()] = TextureData();
+            return GfVec3f(1.0f);
+        }
+
+        TextureData data;
+        data.width = image->GetWidth();
+        data.height = image->GetHeight();
+        data.pixels.assign(data.width * data.height * 3, 0.0f);
+
+        HioImage::StorageSpec spec;
+        spec.format = HioFormatFloat32Vec3;
+        spec.width = data.width;
+        spec.height = data.height;
+        spec.data = data.pixels.data();
+        image->Read(spec);
+
+        _textureCache[path.GetAssetPath()] = std::move(data);
+        it = _textureCache.find(path.GetAssetPath());
+    }
+
+    const TextureData& data = it->second;
+    if (data.pixels.empty()) return GfVec3f(1.0f);
+
+    float u = uv[0] - std::floor(uv[0]);
+    float v = 1.0f - (uv[1] - std::floor(uv[1])); // Flip V for standard image coords
+
+    float px = u * (data.width - 1);
+    float py = v * (data.height - 1);
+    int x0 = (int)std::floor(px);
+    int y0 = (int)std::floor(py);
+    int x1 = std::min(x0 + 1, data.width - 1);
+    int y1 = std::min(y0 + 1, data.height - 1);
+    float fx = px - x0;
+    float fy = py - y0;
+
+    auto getPixel = [&](int x, int y) {
+        size_t idx = (y * data.width + x) * 3;
+        return GfVec3f(data.pixels[idx], data.pixels[idx+1], data.pixels[idx+2]);
+    };
+
+    GfVec3f p00 = getPixel(x0, y0);
+    GfVec3f p10 = getPixel(x1, y0);
+    GfVec3f p01 = getPixel(x0, y1);
+    GfVec3f p11 = getPixel(x1, y1);
+
+    return (p00 * (1-fx) + p10 * fx) * (1-fy) + (p01 * (1-fx) + p11 * fx) * fy;
+}
+
 GfVec3f HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVec3f& rayDir, int depth, bool isInteractive, HdRenderThread* renderThread, const std::map<SdfPath, HdGeminiLight*>& lights, uint32_t& rng) const
 {
     if (depth > (isInteractive ? 0 : 3) || renderThread->IsStopRequested()) return GfVec3f(0.0f);
@@ -413,6 +472,10 @@ GfVec3f HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVec3f& ray
     HitRecord hit;
     if (!this->_IntersectTLAS(0, rayOrigin, rayDir, hit, renderThread)) {
         return _SampleEnvironment(rayDir, lights);
+    }
+
+    if (!hit.diffuseTexture.GetAssetPath().empty()) {
+        hit.baseColor = GfCompMult(hit.baseColor, _SampleTexture(hit.diffuseTexture, hit.uv));
     }
 
     GfVec3f hitPos = rayOrigin + rayDir * hit.t;

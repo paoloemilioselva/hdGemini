@@ -7,7 +7,7 @@ PXR_NAMESPACE_USING_DIRECTIVE
 static bool 
 IntersectTriangle(const GfVec3f& rayOrigin, const GfVec3f& rayDir,
                   const GfVec3f& v0, const GfVec3f& v1, const GfVec3f& v2,
-                  float& t)
+                  float& t, float& outU, float& outV)
 {
     GfVec3f edge1 = v1 - v0;
     GfVec3f edge2 = v2 - v0;
@@ -22,6 +22,8 @@ IntersectTriangle(const GfVec3f& rayOrigin, const GfVec3f& rayDir,
     float v = GfDot(rayDir, qvec) * invDet;
     if (v < 0.0f || u + v > 1.0f) return false;
     t = GfDot(edge2, qvec) * invDet;
+    outU = u;
+    outV = v;
     return (t > 1e-4);
 }
 
@@ -52,7 +54,7 @@ IntersectAABB(const GfVec3f& rayOrigin, const GfVec3f& rayDir, const GfRange3f& 
     return tmax > 0 && tmax > 1e-4;
 }
 
-void BVH::Build(const VtVec3fArray& points, const VtVec3iArray& indices) {
+void BVH::Build(const VtVec3fArray& points, const VtVec3iArray& indices, const VtVec2fArray& uvs) {
     _triangles.clear();
     _nodes.clear();
     if (indices.empty() || points.empty()) return;
@@ -67,6 +69,15 @@ void BVH::Build(const VtVec3fArray& points, const VtVec3iArray& indices) {
         tri.v0 = points[triIdx[0]];
         tri.v1 = points[triIdx[1]];
         tri.v2 = points[triIdx[2]];
+
+        if (!uvs.empty()) {
+            tri.uv0 = (triIdx[0] < (int)uvs.size()) ? uvs[triIdx[0]] : GfVec2f(0.0f);
+            tri.uv1 = (triIdx[1] < (int)uvs.size()) ? uvs[triIdx[1]] : GfVec2f(0.0f);
+            tri.uv2 = (triIdx[2] < (int)uvs.size()) ? uvs[triIdx[2]] : GfVec2f(0.0f);
+        } else {
+            tri.uv0 = tri.uv1 = tri.uv2 = GfVec2f(0.0f);
+        }
+
         tri.centroid = (tri.v0 + tri.v1 + tri.v2) / 3.0f;
         _triangles.push_back(tri);
     }
@@ -129,12 +140,12 @@ void BVH::_Subdivide(int nodeIdx, int start, int end) {
     _Subdivide(leftChildIdx + 1, i, end);
 }
 
-bool BVH::Intersect(const GfVec3f& rayOrigin, const GfVec3f& rayDir, float& t, GfVec3f& normal) const {
+bool BVH::Intersect(const GfVec3f& rayOrigin, const GfVec3f& rayDir, float& t, GfVec3f& normal, GfVec2f& uv) const {
     if (_nodes.empty()) return false;
-    return _IntersectNode(0, rayOrigin, rayDir, t, normal);
+    return _IntersectNode(0, rayOrigin, rayDir, t, normal, uv);
 }
 
-bool BVH::_IntersectNode(int nodeIdx, const GfVec3f& rayOrigin, const GfVec3f& rayDir, float& t, GfVec3f& normal) const {
+bool BVH::_IntersectNode(int nodeIdx, const GfVec3f& rayOrigin, const GfVec3f& rayDir, float& t, GfVec3f& normal, GfVec2f& uv) const {
     const BVHNode& node = _nodes[nodeIdx];
     float tAabb;
     if (!IntersectAABB(rayOrigin, rayDir, node.bounds, tAabb)) return false;
@@ -145,19 +156,20 @@ bool BVH::_IntersectNode(int nodeIdx, const GfVec3f& rayOrigin, const GfVec3f& r
         int start = -node.leftChild - 1;
         for (int i = 0; i < node.triangleCount; ++i) {
             const auto& tri = _triangles[start + i];
-            float triT;
-            if (IntersectTriangle(rayOrigin, rayDir, tri.v0, tri.v1, tri.v2, triT)) {
+            float triT, triU, triV;
+            if (IntersectTriangle(rayOrigin, rayDir, tri.v0, tri.v1, tri.v2, triT, triU, triV)) {
                 if (triT < t) {
                     t = triT;
                     normal = GfCross(tri.v1 - tri.v0, tri.v2 - tri.v0).GetNormalized();
+                    uv = tri.uv0 * (1.0f - triU - triV) + tri.uv1 * triU + tri.uv2 * triV;
                     hit = true;
                 }
             }
         }
         return hit;
     } else {
-        bool hitLeft = _IntersectNode(node.leftChild, rayOrigin, rayDir, t, normal);
-        bool hitRight = _IntersectNode(node.leftChild + 1, rayOrigin, rayDir, t, normal);
+        bool hitLeft = _IntersectNode(node.leftChild, rayOrigin, rayDir, t, normal, uv);
+        bool hitRight = _IntersectNode(node.leftChild + 1, rayOrigin, rayDir, t, normal, uv);
         return hitLeft || hitRight;
     }
 }

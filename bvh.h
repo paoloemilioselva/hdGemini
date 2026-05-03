@@ -4,6 +4,7 @@
 #include <pxr/pxr.h>
 #include <pxr/base/gf/vec3f.h>
 #include <pxr/base/gf/vec3i.h>
+#include <pxr/base/gf/vec2f.h>
 #include <pxr/base/gf/range3f.h>
 #include <pxr/base/vt/array.h>
 #include <vector>
@@ -18,14 +19,15 @@ struct BVHNode {
 
 struct BVHTriangle {
     GfVec3f v0, v1, v2;
+    GfVec2f uv0, uv1, uv2;
     GfVec3f centroid;
 };
 
 class BVH {
 public:
     BVH() = default;
-    void Build(const VtVec3fArray& points, const VtVec3iArray& indices);
-    bool Intersect(const GfVec3f& rayOrigin, const GfVec3f& rayDir, float& t, GfVec3f& normal) const;
+    void Build(const VtVec3fArray& points, const VtVec3iArray& indices, const VtVec2fArray& uvs);
+    bool Intersect(const GfVec3f& rayOrigin, const GfVec3f& rayDir, float& t, GfVec3f& normal, GfVec2f& uv) const;
     bool IsEmpty() const { return _nodes.empty(); }
 
 private:
@@ -35,7 +37,7 @@ private:
     };
 
     void _Subdivide(int nodeIdx, int start, int end);
-    bool _IntersectNode(int nodeIdx, const GfVec3f& rayOrigin, const GfVec3f& rayDir, float& t, GfVec3f& normal) const;
+    bool _IntersectNode(int nodeIdx, const GfVec3f& rayOrigin, const GfVec3f& rayDir, float& t, GfVec3f& normal, GfVec2f& uv) const;
 
     std::vector<BVHNode> _nodes;
     std::vector<BVHTriangle> _triangles;

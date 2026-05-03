@@ -224,6 +224,22 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
         }
     }
 
+    // --- UV UPDATING ---
+    TfToken stToken("st");
+    if (HdChangeTracker::IsPrimvarDirty(*dirtyBits, id, stToken) || _uvs.empty()) {
+        VtValue val = sceneDelegate->Get(id, stToken);
+        if (val.IsHolding<VtVec2fArray>()) {
+            _uvs = val.UncheckedGet<VtVec2fArray>();
+        } else {
+            // fallback to 'uv'
+            TfToken uvToken("uv");
+            val = sceneDelegate->Get(id, uvToken);
+            if (val.IsHolding<VtVec2fArray>()) {
+                _uvs = val.UncheckedGet<VtVec2fArray>();
+            }
+        }
+    }
+
     if (HdChangeTracker::IsTopologyDirty(*dirtyBits, id)) {
         HdMeshTopology topology = GetMeshTopology(sceneDelegate);
         HdMeshUtil meshUtil(&topology, id);
@@ -238,9 +254,9 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
             for (const auto& p : _points) {
                 _range.ExtendBy(p);
             }
-            _bvh.Build(_points, _triangulatedIndices);
+            _bvh.Build(_points, _triangulatedIndices, _uvs);
         } else {
-            _bvh.Build(VtVec3fArray(), VtVec3iArray());
+            _bvh.Build(VtVec3fArray(), VtVec3iArray(), VtVec2fArray());
         }
         _bvhDirty = false;
     }

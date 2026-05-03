@@ -9,9 +9,11 @@
 #include "pxr/base/gf/rect2i.h"
 #include "pxr/base/gf/vec3f.h"
 #include "pxr/base/gf/range3f.h"
+#include "pxr/base/gf/vec2f.h"
 #include "pxr/usd/sdf/assetPath.h"
 #include <vector>
 #include <atomic>
+#include <map>
 #include <memory>
 PXR_NAMESPACE_USING_DIRECTIVE
 
@@ -55,12 +57,20 @@ private:
     struct HitRecord {
         float t = 1e30f;
         GfVec3f normal;
+        GfVec2f uv = GfVec2f(0.0f);
         GfVec3f baseColor = GfVec3f(1.0f);
         float metallic = 0.0f;
         float roughness = 0.5f;
         float opacity = 1.0f;
         GfVec3f emission = GfVec3f(0.0f);
+        SdfAssetPath diffuseTexture;
         bool hit = false;
+    };
+
+    struct TextureData {
+        std::vector<float> pixels;
+        int width = 0;
+        int height = 0;
     };
 
     static GfVec4f _GetClearColor(VtValue const& clearValue);
@@ -71,6 +81,7 @@ private:
     bool _IntersectTLAS(int nodeIdx, const GfVec3f& rayOrigin, const GfVec3f& rayDir, HitRecord& hit, HdRenderThread* renderThread) const;
     GfVec3f _TraceRay(const GfVec3f& rayOrigin, const GfVec3f& rayDir, int depth, bool isInteractive, HdRenderThread* renderThread, const std::map<SdfPath, HdGeminiLight*>& lights, uint32_t& rng) const;
     GfVec3f _SampleEnvironment(const GfVec3f& rayDir, const std::map<SdfPath, HdGeminiLight*>& lights) const;
+    GfVec3f _SampleTexture(const SdfAssetPath& path, const GfVec2f& uv) const;
 
     HdRenderPassAovBindingVector _aovBindings;
     GfRect2i _dataWindow;
@@ -91,6 +102,8 @@ private:
     std::vector<float> _envMapColCdf;
     float _envMapTotalLuminance = 0.0f;
     SdfAssetPath _lastEnvMapPath;
+
+    mutable std::map<std::string, TextureData> _textureCache;
 };
 
 #endif // HD_GEMINI_RENDERER_H

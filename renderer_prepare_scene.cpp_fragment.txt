@@ -1,0 +1,126 @@
+void
+HdGeminiRenderer::_PrepareScene(HdRenderThread *renderThread, HdGeminiRenderDelegate* delegate)
+{
+    std::cout << "[Gemini] _PrepareScene START" << std::endl;
+    _instances.clear();
+    
+    std::lock_guard<std::recursive_mutex> lock(delegate->GetSceneLock());
+    const auto& meshes = delegate->GetMeshes();
+    const auto& lights = delegate->GetLights();
+    std::cout << "[Gemini]   Processing " << meshes.size() << " meshes and " << lights.size() << " lights" << std::endl;
+
+    bool foundDome = false;
+    for (const auto& lightPair : lights) {
+        HdGeminiLight* light = lightPair.second;
+        if (light->GetLightType() == HdPrimTypeTokens->domeLight) {
+            if (light->GetEnvMapPath() != _lastEnvMapPath) {
+                std::cout << "[Gemini]   Found dome light with env map: " << light->GetEnvMapPath().GetAssetPath() << std::endl;
+                SdfAssetPath texPath = light->GetEnvMapPath();
+                if (!texPath.GetAssetPath().empty()) {
+                    HioImageSharedPtr image = HioImage::OpenForReading(texPath.GetResolvedPath());
+                    if (image) {
+                        _envMapWidth = image->GetWidth();
+                        _envMapHeight = image->GetHeight();
+                        _envMapPixels.assign(_envMapWidth * _envMapHeight * 3, 0.0f);
+                        HioImage::StorageSpec spec;
+                        spec.format = HioFormatFloat32RGB;
+                        spec.width = _envMapWidth;
+                        spec.height = _envMapHeight;
+                        spec.data = _envMapPixels.data();
+                        image->Read(spec);
+                        _lastEnvMapPath = texPath;
+
+                        _envMapRowCdf.assign(_envMapHeight + 1, 0.0f);
+                        _envMapColCdf.assign(_envMapHeight * (_envMapWidth + 1), 0.0f);
+
+                        _envMapTotalLuminance = 0.0f;
+                        for (int y = 0; y < _envMapHeight; ++y) {
+                            float rowLuminance = 0.0f;
+                            float sinTheta = std::sin(M_PI * (float)(y + 0.5f) / (float)_envMapHeight);
+                            for (int x = 0; x < _envMapWidth; ++x) {
+                                size_t idx = (y * _envMapWidth + x) * 3;
+                                float lum = 0.2126f * _envMapPixels[idx] + 0.7152f * _envMapPixels[idx+1] + 0.0722f * _envMapPixels[idx+2];
+                                lum *= sinTheta;
+                                rowLuminance += lum;
+                                _envMapColCdf[y * (_envMapWidth + 1) + x + 1] = _envMapColCdf[y * (_envMapWidth + 1) + x] + lum;
+                            }
+                            if (rowLuminance > 0) {
+                                for (int x = 0; x <= _envMapWidth; ++x) {
+                                    _envMapColCdf[y * (_envMapWidth + 1) + x] /= rowLuminance;
+                                }
+                            }
+                            _envMapTotalLuminance += rowLuminance;
+                            _envMapRowCdf[y + 1] = _envMapRowCdf[y] + rowLuminance;
+                        }
+                        if (_envMapTotalLuminance > 0) {
+                            for (int y = 0; y <= _envMapHeight; ++y) {
+                                _envMapRowCdf[y] /= _envMapTotalLuminance;
+                            }
+                        }
+                    }
+                }
+                foundDome = !_envMapPixels.empty();
+            } else {
+                foundDome = true;
+            }
+            break;
+        }
+    }
+    if (!foundDome) {
+        if (!_envMapPixels.empty()) std::cout << "[Gemini]   Dome light removed. Clearing env map." << std::endl;
+        _envMapPixels.clear();
+        _envMapWidth = _envMapHeight = 0;
+        _envMapRowCdf.clear();
+        _envMapColCdf.clear();
+        _envMapTotalLuminance = 0.0f;
+        _lastEnvMapPath = SdfAssetPath();
+    }
+
+    for (auto const& item : meshes) {
+        if (renderThread->IsStopRequested()) return;
+        HdGeminiMesh* mesh = item.second;
+        if (!mesh->IsVisible()) continue;
+
+        GfRange3f meshBounds = mesh->GetRange();
+        if (meshBounds.IsEmpty()) {
+            //std::cout << "[Gemini]   Skipping mesh with empty bounds: " << mesh->GetId().GetText() << std::endl;
+            continue;
+        }
+
+        HdGeminiMaterial* material = nullptr;
+        if (!mesh->GetMaterialId().IsEmpty()) {
+            material = delegate->GetMaterial(mesh->GetMaterialId());
+        }
+
+        if (!mesh->GetInstancerId().IsEmpty()) {
+            HdGeminiInstancer* instancer = delegate->GetInstancer(mesh->GetInstancerId());
+            if (instancer) {
+                VtMatrix4dArray transforms = instancer->ComputeInstanceTransforms(mesh->GetId());
+                for (const auto& t : transforms) {
+                    MeshInstance inst;
+                    inst.mesh = mesh;
+                    inst.material = material;
+                    inst.transform = GfMatrix4f(t) * mesh->GetTransform();
+                    inst.invTransform = inst.transform.GetInverse();
+                    inst.bounds = TransformBounds(meshBounds, inst.transform);
+                    inst.centroid = (inst.bounds.GetMin() + inst.bounds.GetMax()) * 0.5f;
+                    _instances.push_back(inst);
+                }
+            }
+            continue;
+        }
+
+        MeshInstance inst;
+        inst.mesh = mesh;
+        inst.material = material;
+        inst.transform = mesh->GetTransform();
+        inst.invTransform = inst.transform.GetInverse();
+        inst.bounds = TransformBounds(meshBounds, inst.transform);
+        inst.centroid = (inst.bounds.GetMin() + inst.bounds.GetMax()) * 0.5f;
+        _instances.push_back(inst);
+    }
+
+    std::cout << "[Gemini]   Building TLAS with " << _instances.size() << " instances" << std::endl;
+    _BuildTLAS(renderThread);
+    std::cout << "[Gemini] _PrepareScene END" << std::endl;
+}

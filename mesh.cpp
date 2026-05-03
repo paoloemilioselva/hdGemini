@@ -146,6 +146,20 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
         _transform = GfMatrix4f(sceneDelegate->GetTransform(id));
     }
 
+    // --- EXHAUSTIVE PRIMVAR AUDIT ---
+    {
+        std::cout << "[Gemini] Audit for " << id.GetText() << ":" << std::endl;
+        for (int i = 0; i < HdInterpolationCount; ++i) {
+            HdInterpolation interp = (HdInterpolation)i;
+            HdPrimvarDescriptorVector pvs = sceneDelegate->GetPrimvarDescriptors(id, interp);
+            for (const auto& pv : pvs) {
+                VtValue val = sceneDelegate->Get(id, pv.name);
+                std::cout << "[Gemini]   PV: " << pv.name.GetText() << " (interp: " << interp 
+                          << ") Type: " << val.GetTypeName() << " Empty: " << val.IsEmpty() << std::endl;
+            }
+        }
+    }
+
     // --- COMPUTED PRIMVARS ---
     // We check for all computed primvars first.
     {

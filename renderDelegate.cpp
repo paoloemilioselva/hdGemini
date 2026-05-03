@@ -19,16 +19,6 @@
 
 PXR_NAMESPACE_USING_DIRECTIVE
 
-class HdGeminiExtComputation final : public HdExtComputation {
-public:
-    HdGeminiExtComputation(SdfPath const& id) : HdExtComputation(id) {}
-    void Sync(HdSceneDelegate *sceneDelegate,
-              HdRenderParam   *renderParam,
-              HdDirtyBits     *dirtyBits) override {
-        // std::cout << "[Gemini] Syncing ExtComputation: " << GetId().GetText() << " (dirty: " << *dirtyBits << ")" << std::endl;
-    }
-};
-
 const TfTokenVector HdGeminiRenderDelegate::SUPPORTED_RPRIM_TYPES =
 {
     HdPrimTypeTokens->mesh,
@@ -37,7 +27,6 @@ const TfTokenVector HdGeminiRenderDelegate::SUPPORTED_RPRIM_TYPES =
 const TfTokenVector HdGeminiRenderDelegate::SUPPORTED_SPRIM_TYPES =
 {
     HdPrimTypeTokens->camera,
-    HdPrimTypeTokens->extComputation,
     HdPrimTypeTokens->material,
     HdPrimTypeTokens->distantLight,
     HdPrimTypeTokens->sphereLight,
@@ -191,8 +180,6 @@ HdGeminiRenderDelegate::CreateSprim(TfToken const& typeId,
     std::cout << "[Gemini] CreateSprim: " << typeId.GetText() << " " << sprimId.GetText() << std::endl;
     if (typeId == HdPrimTypeTokens->camera) {
         return new HdCamera(sprimId);
-    } else if (typeId == HdPrimTypeTokens->extComputation) {
-        return new HdGeminiExtComputation(sprimId);
     } else if (typeId == HdPrimTypeTokens->material) {
         HdGeminiMaterial* mat = new HdGeminiMaterial(sprimId);
         AddMaterial(sprimId, mat);
@@ -212,8 +199,6 @@ HdGeminiRenderDelegate::CreateFallbackSprim(TfToken const& typeId)
     std::cout << "[Gemini] CreateFallbackSprim: " << typeId.GetText() << std::endl;
     if (typeId == HdPrimTypeTokens->camera) {
         return new HdCamera(SdfPath::EmptyPath());
-    } else if (typeId == HdPrimTypeTokens->extComputation) {
-        return new HdGeminiExtComputation(SdfPath::EmptyPath());
     } else if (typeId == HdPrimTypeTokens->material) {
         HdGeminiMaterial* mat = new HdGeminiMaterial(SdfPath::EmptyPath());
         AddMaterial(SdfPath::EmptyPath(), mat);

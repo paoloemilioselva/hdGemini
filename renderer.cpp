@@ -155,13 +155,11 @@ HdGeminiRenderer::Render(HdRenderThread *renderThread, HdGeminiRenderDelegate* d
 void
 HdGeminiRenderer::_PrepareScene(HdRenderThread *renderThread, HdGeminiRenderDelegate* delegate)
 {
-    std::cout << "[Gemini] _PrepareScene START" << std::endl;
     _instances.clear();
     
     std::lock_guard<std::recursive_mutex> lock(delegate->GetSceneLock());
     const auto& meshes = delegate->GetMeshes();
     const auto& lights = delegate->GetLights();
-    std::cout << "[Gemini]   Processing " << meshes.size() << " meshes and " << lights.size() << " lights" << std::endl;
 
     bool foundDome = false;
     for (const auto& lightPair : lights) {
@@ -273,9 +271,7 @@ HdGeminiRenderer::_PrepareScene(HdRenderThread *renderThread, HdGeminiRenderDele
         _instances.push_back(inst);
     }
 
-    std::cout << "[Gemini]   Building TLAS with " << _instances.size() << " instances" << std::endl;
     _BuildTLAS(renderThread);
-    std::cout << "[Gemini] _PrepareScene END" << std::endl;
 }
 
 void HdGeminiRenderer::_BuildTLAS(HdRenderThread *renderThread)

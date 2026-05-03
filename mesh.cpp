@@ -37,30 +37,41 @@ HdGeminiMesh::_UpdateComputedPrimvarSources(HdSceneDelegate* sceneDelegate,
                                             HdDirtyBits dirtyBits)
 {
     SdfPath const& id = GetId();
-    HdExtComputationPrimvarDescriptorVector dirtyCompPrimvars;
+    HdExtComputationPrimvarDescriptorVector compPrimvarsToUpdate;
     for (size_t i=0; i < HdInterpolationCount; ++i) {
         HdInterpolation interp = static_cast<HdInterpolation>(i);
-        HdExtComputationPrimvarDescriptorVector compPrimvars = 
+        HdExtComputationPrimvarDescriptorVector descriptors = 
             sceneDelegate->GetExtComputationPrimvarDescriptors(id, interp);
 
-        for (auto const& pv: compPrimvars) {
-            if (HdChangeTracker::IsPrimvarDirty(dirtyBits, id, pv.name)) {
-                dirtyCompPrimvars.emplace_back(pv);
+        for (auto const& pv: descriptors) {
+            bool dirty = HdChangeTracker::IsPrimvarDirty(dirtyBits, id, pv.name);
+            
+            // Special case: if DirtyPoints is set, any computed 'points' is dirty
+            if (pv.name == HdTokens->points && (dirtyBits & HdChangeTracker::DirtyPoints)) {
+                dirty = true;
+            }
+            // Special case: if DirtyColors is set, any computed 'displayColor' is dirty
+            if (pv.name == HdTokens->displayColor && (dirtyBits & HdChangeTracker::DirtyColors)) {
+                dirty = true;
+            }
+
+            if (dirty || _points.empty()) {
+                compPrimvarsToUpdate.emplace_back(pv);
             }
         }
     }
 
-    if (dirtyCompPrimvars.empty()) {
+    if (compPrimvarsToUpdate.empty()) {
         return TfTokenVector();
     }
     
     HdExtComputationUtils::ValueStore valueStore = 
-        HdExtComputationUtils::GetComputedPrimvarValues(dirtyCompPrimvars, sceneDelegate);
+        HdExtComputationUtils::GetComputedPrimvarValues(compPrimvarsToUpdate, sceneDelegate);
 
     TfTokenVector compPrimvarNames;
-    for (auto const& compPrimvar : dirtyCompPrimvars) {
+    for (auto const& compPrimvar : compPrimvarsToUpdate) {
         auto const it = valueStore.find(compPrimvar.name);
-        if (it == valueStore.end()) {
+        if (it == valueStore.end() || it->second.IsEmpty()) {
             continue;
         }
         

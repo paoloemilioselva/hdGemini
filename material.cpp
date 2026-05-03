@@ -2,6 +2,7 @@
 #include "pxr/imaging/hd/sceneDelegate.h"
 #include "pxr/base/vt/value.h"
 #include <map>
+#include <iostream>
 
 PXR_NAMESPACE_USING_DIRECTIVE
 
@@ -107,6 +108,7 @@ HdGeminiMaterial::Sync(HdSceneDelegate *sceneDelegate,
                                             if ((param.first == TfToken("file") || param.first == TfToken("texcoord")) && 
                                                 param.second.IsHolding<SdfAssetPath>()) {
                                                 _diffuseTexture = param.second.UncheckedGet<SdfAssetPath>();
+                                                std::cout << "[Gemini]   Found texture for " << inputName.GetText() << ": " << _diffuseTexture.GetAssetPath() << std::endl;
                                             }
                                         }
                                     }

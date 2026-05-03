@@ -413,31 +413,56 @@ GfVec3f HdGeminiRenderer::_SampleTexture(const SdfAssetPath& path, const GfVec2f
 {
     if (path.GetAssetPath().empty()) return GfVec3f(1.0f);
 
-    auto it = _textureCache.find(path.GetAssetPath());
-    if (it == _textureCache.end()) {
-        HioImageSharedPtr image = HioImage::OpenForReading(path.GetResolvedPath());
-        if (!image) {
-            _textureCache[path.GetAssetPath()] = TextureData();
-            return GfVec3f(1.0f);
+    {
+        std::lock_guard<std::mutex> lock(_textureMutex);
+        auto it = _textureCache.find(path.GetAssetPath());
+        if (it != _textureCache.end()) {
+            const TextureData& data = it->second;
+            if (data.pixels.empty()) return GfVec3f(1.0f);
+            return _SampleTextureData(data, uv);
         }
-
-        TextureData data;
-        data.width = image->GetWidth();
-        data.height = image->GetHeight();
-        data.pixels.assign(data.width * data.height * 3, 0.0f);
-
-        HioImage::StorageSpec spec;
-        spec.format = HioFormatFloat32Vec3;
-        spec.width = data.width;
-        spec.height = data.height;
-        spec.data = data.pixels.data();
-        image->Read(spec);
-
-        _textureCache[path.GetAssetPath()] = std::move(data);
-        it = _textureCache.find(path.GetAssetPath());
     }
 
-    const TextureData& data = it->second;
+    // Not in cache, load it (hold lock for loading to prevent redundant loads)
+    std::lock_guard<std::mutex> lock(_textureMutex);
+    
+    // Check again in case another thread loaded it while we were waiting for the lock
+    auto it = _textureCache.find(path.GetAssetPath());
+    if (it != _textureCache.end()) {
+        const TextureData& data = it->second;
+        if (data.pixels.empty()) return GfVec3f(1.0f);
+        return _SampleTextureData(data, uv);
+    }
+
+    std::cout << "[Gemini]   Loading texture: " << path.GetAssetPath() << std::endl;
+    HioImageSharedPtr image = HioImage::OpenForReading(path.GetResolvedPath());
+    if (!image) {
+        std::cout << "[Gemini]   Failed to open texture: " << path.GetResolvedPath() << std::endl;
+        _textureCache[path.GetAssetPath()] = TextureData();
+        return GfVec3f(1.0f);
+    }
+
+    TextureData data;
+    data.width = image->GetWidth();
+    data.height = image->GetHeight();
+    std::cout << "[Gemini]   Texture loaded: " << data.width << "x" << data.height << std::endl;
+    data.pixels.assign(data.width * data.height * 3, 0.0f);
+
+    HioImage::StorageSpec spec;
+    spec.format = HioFormatFloat32Vec3;
+    spec.width = data.width;
+    spec.height = data.height;
+    spec.data = data.pixels.data();
+    if (!image->Read(spec)) {
+        std::cout << "[Gemini]   Failed to read texture pixels: " << path.GetAssetPath() << std::endl;
+    }
+
+    _textureCache[path.GetAssetPath()] = std::move(data);
+    return _SampleTextureData(_textureCache[path.GetAssetPath()], uv);
+}
+
+GfVec3f HdGeminiRenderer::_SampleTextureData(const TextureData& data, const GfVec2f& uv) const
+{
     if (data.pixels.empty()) return GfVec3f(1.0f);
 
     float u = uv[0] - std::floor(uv[0]);

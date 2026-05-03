@@ -15,6 +15,7 @@
 #include <atomic>
 #include <map>
 #include <memory>
+#include <mutex>
 PXR_NAMESPACE_USING_DIRECTIVE
 
 class HdGeminiRenderDelegate;
@@ -82,6 +83,7 @@ private:
     GfVec3f _TraceRay(const GfVec3f& rayOrigin, const GfVec3f& rayDir, int depth, bool isInteractive, HdRenderThread* renderThread, const std::map<SdfPath, HdGeminiLight*>& lights, uint32_t& rng) const;
     GfVec3f _SampleEnvironment(const GfVec3f& rayDir, const std::map<SdfPath, HdGeminiLight*>& lights) const;
     GfVec3f _SampleTexture(const SdfAssetPath& path, const GfVec2f& uv) const;
+    GfVec3f _SampleTextureData(const TextureData& data, const GfVec2f& uv) const;
 
     HdRenderPassAovBindingVector _aovBindings;
     GfRect2i _dataWindow;
@@ -104,6 +106,7 @@ private:
     SdfAssetPath _lastEnvMapPath;
 
     mutable std::map<std::string, TextureData> _textureCache;
+    mutable std::mutex _textureMutex;
 };
 
 #endif // HD_GEMINI_RENDERER_H

@@ -9,8 +9,6 @@
 
 #include "pxr/imaging/hd/camera.h"
 #include "pxr/imaging/hd/extComputation.h"
-#include "pxr/imaging/hd/skeleton.h"
-#include "pxr/imaging/hd/skelAnimation.h"
 #include "pxr/imaging/hd/tokens.h"
 #include "pxr/base/gf/vec4f.h"
 #include "pxr/base/vt/value.h"
@@ -27,6 +25,7 @@ const TfTokenVector HdGeminiRenderDelegate::SUPPORTED_RPRIM_TYPES =
 const TfTokenVector HdGeminiRenderDelegate::SUPPORTED_SPRIM_TYPES =
 {
     HdPrimTypeTokens->camera,
+    HdPrimTypeTokens->extComputation,
     HdPrimTypeTokens->material,
     HdPrimTypeTokens->distantLight,
     HdPrimTypeTokens->sphereLight,
@@ -180,6 +179,8 @@ HdGeminiRenderDelegate::CreateSprim(TfToken const& typeId,
     std::cout << "[Gemini] CreateSprim: " << typeId.GetText() << " " << sprimId.GetText() << std::endl;
     if (typeId == HdPrimTypeTokens->camera) {
         return new HdCamera(sprimId);
+    } else if (typeId == HdPrimTypeTokens->extComputation) {
+        return new HdExtComputation(sprimId);
     } else if (typeId == HdPrimTypeTokens->material) {
         HdGeminiMaterial* mat = new HdGeminiMaterial(sprimId);
         AddMaterial(sprimId, mat);
@@ -199,6 +200,8 @@ HdGeminiRenderDelegate::CreateFallbackSprim(TfToken const& typeId)
     std::cout << "[Gemini] CreateFallbackSprim: " << typeId.GetText() << std::endl;
     if (typeId == HdPrimTypeTokens->camera) {
         return new HdCamera(SdfPath::EmptyPath());
+    } else if (typeId == HdPrimTypeTokens->extComputation) {
+        return new HdExtComputation(SdfPath::EmptyPath());
     } else if (typeId == HdPrimTypeTokens->material) {
         HdGeminiMaterial* mat = new HdGeminiMaterial(SdfPath::EmptyPath());
         AddMaterial(SdfPath::EmptyPath(), mat);

@@ -50,10 +50,6 @@ HdGeminiMesh::_UpdateComputedPrimvarSources(HdSceneDelegate* sceneDelegate,
             if (pv.name == HdTokens->points && (dirtyBits & HdChangeTracker::DirtyPoints)) {
                 dirty = true;
             }
-            // Special case: if DirtyColors is set, any computed 'displayColor' is dirty
-            if (pv.name == HdTokens->displayColor && (dirtyBits & HdChangeTracker::DirtyColors)) {
-                dirty = true;
-            }
 
             if (dirty || _points.empty()) {
                 compPrimvarsToUpdate.emplace_back(pv);
@@ -65,42 +61,39 @@ HdGeminiMesh::_UpdateComputedPrimvarSources(HdSceneDelegate* sceneDelegate,
         return TfTokenVector();
     }
     
-    HdExtComputationUtils::ValueStore valueStore = 
-        HdExtComputationUtils::GetComputedPrimvarValues(compPrimvarsToUpdate, sceneDelegate);
-
-    // Diagnostic: Log all keys in valueStore
-    for (auto const& pair : valueStore) {
-        std::cout << "[Gemini] ValueStore entry: " << pair.first.GetText() << " Type: " << pair.second.GetTypeName() << std::endl;
+    HdExtComputationUtils::ValueStore valueStore;
+    try {
+        valueStore = HdExtComputationUtils::GetComputedPrimvarValues(compPrimvarsToUpdate, sceneDelegate);
+    } catch (...) {
+        std::cout << "[Gemini] ERROR: GetComputedPrimvarValues threw an exception for " << id.GetText() << std::endl;
     }
 
     TfTokenVector compPrimvarNames;
     for (auto const& compPrimvar : compPrimvarsToUpdate) {
-        // Try looking up by primvar name first, then by source output name
         auto it = valueStore.find(compPrimvar.name);
         if (it == valueStore.end() || it->second.IsEmpty()) {
-            it = valueStore.find(compPrimvar.sourceOutputName);
+            it = valueStore.find(compPrimvar.sourceComputationOutputName);
         }
 
         VtValue val;
         if (it != valueStore.end() && !it->second.IsEmpty()) {
             val = it->second;
         } else {
-            // Fallback 1: try direct Get()
-            val = sceneDelegate->Get(id, compPrimvar.name);
-            if (val.IsEmpty() && compPrimvar.name != compPrimvar.sourceOutputName) {
-                val = sceneDelegate->Get(id, compPrimvar.sourceOutputName);
-            }
-            
-            // Fallback 2: try GetExtComputationResult()
-            if (val.IsEmpty()) {
-                val = sceneDelegate->GetExtComputationResult(compPrimvar.sourceComputationId, compPrimvar.sourceOutputName);
+            // Fallback: try direct Get()
+            try {
+                val = sceneDelegate->Get(id, compPrimvar.name);
+                if (val.IsEmpty() && compPrimvar.name != compPrimvar.sourceComputationOutputName) {
+                    val = sceneDelegate->Get(id, compPrimvar.sourceComputationOutputName);
+                }
+            } catch (...) {
+                // Ignore fallback errors
             }
         }
 
         if (val.IsEmpty()) {
-            std::cout << "[Gemini]   Failed to find computed value for PV " << compPrimvar.name.GetText() 
-                      << " (output: " << compPrimvar.sourceOutputName.GetText() 
-                      << " comp: " << compPrimvar.sourceComputationId.GetText() << ") even with fallbacks" << std::endl;
+            std::cout << "[Gemini] Warning: Failed to find computed value for PV " << compPrimvar.name.GetText() 
+                      << " (output: " << compPrimvar.sourceComputationOutputName.GetText() 
+                      << " comp: " << compPrimvar.sourceComputationId.GetText() << ")" << std::endl;
             continue;
         }
         
@@ -152,45 +145,7 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
         _transform = GfMatrix4f(sceneDelegate->GetTransform(id));
     }
 
-    // --- EXHAUSTIVE PRIMVAR AUDIT ---
-    {
-        std::cout << "[Gemini] Audit for " << id.GetText() << ":" << std::endl;
-        for (int i = 0; i < HdInterpolationCount; ++i) {
-            HdInterpolation interp = (HdInterpolation)i;
-            HdPrimvarDescriptorVector pvs = sceneDelegate->GetPrimvarDescriptors(id, interp);
-            for (const auto& pv : pvs) {
-                VtValue val = sceneDelegate->Get(id, pv.name);
-                if (!val.IsEmpty()) {
-                    std::cout << "[Gemini]   * PV: " << pv.name.GetText() << " (interp: " << interp 
-                              << ") Type: " << val.GetTypeName() << " Size: ";
-                    if (val.IsHolding<VtVec3fArray>()) std::cout << val.UncheckedGet<VtVec3fArray>().size();
-                    else if (val.IsHolding<VtVec3dArray>()) std::cout << val.UncheckedGet<VtVec3dArray>().size();
-                    else if (val.IsHolding<VtFloatArray>()) std::cout << val.UncheckedGet<VtFloatArray>().size();
-                    else if (val.IsHolding<VtIntArray>()) std::cout << val.UncheckedGet<VtIntArray>().size();
-                    else std::cout << "N/A";
-                    std::cout << std::endl;
-                } else {
-                    std::cout << "[Gemini]     PV: " << pv.name.GetText() << " is EMPTY" << std::endl;
-                }
-            }
-        }
-    }
-
     // --- COMPUTED PRIMVARS ---
-    // We check for all computed primvars first.
-    {
-        for (size_t i=0; i < HdInterpolationCount; ++i) {
-            HdInterpolation interp = static_cast<HdInterpolation>(i);
-            HdExtComputationPrimvarDescriptorVector compPrimvars = 
-                sceneDelegate->GetExtComputationPrimvarDescriptors(id, interp);
-            for (auto const& pv: compPrimvars) {
-                std::cout << "[Gemini] Found computed PV descriptor: " << pv.name.GetText() 
-                          << " interp: " << interp << " dirty: " 
-                          << HdChangeTracker::IsPrimvarDirty(*dirtyBits, id, pv.name) << std::endl;
-            }
-        }
-    }
-
     TfTokenVector computedNames = _UpdateComputedPrimvarSources(sceneDelegate, *dirtyBits);
     bool pointsUpdatedByComputation = false;
     bool colorsUpdatedByComputation = false;
@@ -200,10 +155,6 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
     }
 
     // --- POINTS UPDATING ---
-    // We update points if:
-    // 1. The DirtyPoints bit is set
-    // 2. The 'points' primvar is marked dirty
-    // 3. We don't have any points yet
     bool pointsDirty = (*dirtyBits & HdChangeTracker::DirtyPoints) || 
                        HdChangeTracker::IsPrimvarDirty(*dirtyBits, id, HdTokens->points) ||
                        _points.empty();
@@ -211,15 +162,7 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
     if (pointsDirty) {
         bool pointsActuallyUpdated = pointsUpdatedByComputation;
 
-        // 1. Try standard GetPoints() API first (most direct)
-        if (!pointsActuallyUpdated) {
-            _points = sceneDelegate->GetPoints(id);
-            if (!_points.empty()) {
-                pointsActuallyUpdated = true;
-            }
-        }
-
-        // 2. Try standard "points" attribute via Get() as fallback
+        // 1. Try standard "points" attribute via Get()
         if (!pointsActuallyUpdated) {
             VtValue val = sceneDelegate->Get(id, HdTokens->points);
             if (!val.IsEmpty()) {
@@ -235,13 +178,11 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
             }
         }
 
-        // 3. Last resort: BRUTE FORCE SCOUTING for anything that looks like points
-        // (Sometimes points are named 'P' or provided in custom primvars)
+        // 2. Last resort: BRUTE FORCE SCOUTING for anything that looks like points
         if (!pointsActuallyUpdated) {
             for (int i = 0; i < HdInterpolationCount; ++i) {
                 HdPrimvarDescriptorVector pvs = sceneDelegate->GetPrimvarDescriptors(id, (HdInterpolation)i);
                 for (const auto& pv : pvs) {
-                    // Skip if we already checked 'points'
                     if (pv.name == HdTokens->points) continue;
 
                     VtValue val = sceneDelegate->Get(id, pv.name);
@@ -249,7 +190,6 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
                         if (val.IsHolding<VtVec3fArray>()) {
                             const auto& arr = val.UncheckedGet<VtVec3fArray>();
                             if (!arr.empty()) {
-                                std::cout << "[Gemini]   Found potential points in PV " << pv.name.GetText() << " with " << arr.size() << " elements." << std::endl;
                                 _points = arr;
                                 pointsActuallyUpdated = true;
                                 break;
@@ -257,7 +197,6 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
                         } else if (val.IsHolding<VtVec3dArray>()) {
                             const auto& arr = val.UncheckedGet<VtVec3dArray>();
                             if (!arr.empty()) {
-                                std::cout << "[Gemini]   Found potential points (double) in PV " << pv.name.GetText() << " with " << arr.size() << " elements." << std::endl;
                                 _points.resize(arr.size());
                                 for (size_t j = 0; j < arr.size(); ++j) _points[j] = GfVec3f(arr[j]);
                                 pointsActuallyUpdated = true;
@@ -304,10 +243,6 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
             _bvh.Build(VtVec3fArray(), VtVec3iArray());
         }
         _bvhDirty = false;
-    }
-
-    if (_points.size() > 0) {
-        std::cout << "[Gemini] Mesh " << id.GetText() << " synced. Points: " << _points.size() << " Triangles: " << _triangulatedIndices.size() << std::endl;
     }
 
     *dirtyBits &= ~HdChangeTracker::AllSceneDirtyBits;

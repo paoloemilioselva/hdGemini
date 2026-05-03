@@ -85,16 +85,22 @@ HdGeminiMesh::_UpdateComputedPrimvarSources(HdSceneDelegate* sceneDelegate,
         if (it != valueStore.end() && !it->second.IsEmpty()) {
             val = it->second;
         } else {
-            // Fallback: try direct Get() which some delegates use to trigger computations
+            // Fallback 1: try direct Get()
             val = sceneDelegate->Get(id, compPrimvar.name);
             if (val.IsEmpty() && compPrimvar.name != compPrimvar.sourceOutputName) {
                 val = sceneDelegate->Get(id, compPrimvar.sourceOutputName);
+            }
+            
+            // Fallback 2: try GetExtComputationResult()
+            if (val.IsEmpty()) {
+                val = sceneDelegate->GetExtComputationResult(compPrimvar.sourceComputationId, compPrimvar.sourceOutputName);
             }
         }
 
         if (val.IsEmpty()) {
             std::cout << "[Gemini]   Failed to find computed value for PV " << compPrimvar.name.GetText() 
-                      << " (output: " << compPrimvar.sourceOutputName.GetText() << ") even with fallback Get()" << std::endl;
+                      << " (output: " << compPrimvar.sourceOutputName.GetText() 
+                      << " comp: " << compPrimvar.sourceComputationId.GetText() << ") even with fallbacks" << std::endl;
             continue;
         }
         

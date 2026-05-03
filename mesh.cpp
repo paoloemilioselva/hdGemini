@@ -65,8 +65,9 @@ HdGeminiMesh::_UpdateComputedPrimvarSources(HdSceneDelegate* sceneDelegate,
         }
         
         compPrimvarNames.emplace_back(compPrimvar.name);
+        const VtValue& val = it->second;
+
         if (compPrimvar.name == HdTokens->points) {
-            const VtValue& val = it->second;
             if (val.IsHolding<VtVec3fArray>()) {
                 _points = val.UncheckedGet<VtVec3fArray>();
                 _bvhDirty = true;
@@ -75,6 +76,10 @@ HdGeminiMesh::_UpdateComputedPrimvarSources(HdSceneDelegate* sceneDelegate,
                 _points.resize(pointsd.size());
                 for (size_t j = 0; j < pointsd.size(); ++j) _points[j] = GfVec3f(pointsd[j]);
                 _bvhDirty = true;
+            }
+        } else if (compPrimvar.name == HdTokens->displayColor) {
+            if (val.IsHolding<VtVec3fArray>()) {
+                _colors = val.UncheckedGet<VtVec3fArray>();
             }
         }
     }
@@ -108,51 +113,91 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
         _transform = GfMatrix4f(sceneDelegate->GetTransform(id));
     }
 
-    // --- BRUTE FORCE SCOUTING ---
-    _points.clear();
-    bool pointsUpdated = false;
+    // --- COMPUTED PRIMVARS ---
+    // We check for all computed primvars first.
+    TfTokenVector computedNames = _UpdateComputedPrimvarSources(sceneDelegate, *dirtyBits);
+    bool pointsUpdatedByComputation = false;
+    bool colorsUpdatedByComputation = false;
+    for (const auto& name : computedNames) {
+        if (name == HdTokens->points) pointsUpdatedByComputation = true;
+        if (name == HdTokens->displayColor) colorsUpdatedByComputation = true;
+    }
 
-    // First try all computed sources
-    _UpdateComputedPrimvarSources(sceneDelegate, *dirtyBits);
-    if (!_points.empty()) pointsUpdated = true;
+    // --- POINTS UPDATING ---
+    // We update points if:
+    // 1. The DirtyPoints bit is set
+    // 2. The 'points' primvar is marked dirty
+    // 3. We don't have any points yet
+    bool pointsDirty = (*dirtyBits & HdChangeTracker::DirtyPoints) || 
+                       HdChangeTracker::IsPrimvarDirty(*dirtyBits, id, HdTokens->points) ||
+                       _points.empty();
 
-    // Then try every single primvar on the mesh
-    if (!pointsUpdated) {
-        for (int i = 0; i < HdInterpolationCount; ++i) {
-            HdPrimvarDescriptorVector pvs = sceneDelegate->GetPrimvarDescriptors(id, (HdInterpolation)i);
-            for (const auto& pv : pvs) {
-                VtValue val = sceneDelegate->Get(id, pv.name);
-                if (!val.IsEmpty()) {
-                    if (val.IsHolding<VtVec3fArray>()) {
-                        const auto& arr = val.UncheckedGet<VtVec3fArray>();
-                        if (!arr.empty()) {
-                            std::cout << "[Gemini]   Found PV " << pv.name.GetText() << " with " << arr.size() << " points!" << std::endl;
-                            _points = arr;
-                            pointsUpdated = true;
-                            break;
-                        }
-                    } else if (val.IsHolding<VtVec3dArray>()) {
-                        const auto& arr = val.UncheckedGet<VtVec3dArray>();
-                        if (!arr.empty()) {
-                            std::cout << "[Gemini]   Found PV " << pv.name.GetText() << " (double) with " << arr.size() << " points!" << std::endl;
-                            _points.resize(arr.size());
-                            for (size_t j = 0; j < arr.size(); ++j) _points[j] = GfVec3f(arr[j]);
-                            pointsUpdated = true;
-                            break;
+    if (pointsDirty) {
+        bool pointsActuallyUpdated = pointsUpdatedByComputation;
+
+        // 1. Try standard "points" attribute if not already found in computed sources
+        if (!pointsActuallyUpdated) {
+            VtValue val = sceneDelegate->Get(id, HdTokens->points);
+            if (!val.IsEmpty()) {
+                if (val.IsHolding<VtVec3fArray>()) {
+                    _points = val.UncheckedGet<VtVec3fArray>();
+                    pointsActuallyUpdated = true;
+                } else if (val.IsHolding<VtVec3dArray>()) {
+                    const auto& arr = val.UncheckedGet<VtVec3dArray>();
+                    _points.resize(arr.size());
+                    for (size_t j = 0; j < arr.size(); ++j) _points[j] = GfVec3f(arr[j]);
+                    pointsActuallyUpdated = true;
+                }
+            }
+        }
+
+        // 2. Last resort: BRUTE FORCE SCOUTING for anything that looks like points
+        // (Sometimes points are named 'P' or provided in custom primvars)
+        if (!pointsActuallyUpdated) {
+            for (int i = 0; i < HdInterpolationCount; ++i) {
+                HdPrimvarDescriptorVector pvs = sceneDelegate->GetPrimvarDescriptors(id, (HdInterpolation)i);
+                for (const auto& pv : pvs) {
+                    // Skip if we already checked 'points'
+                    if (pv.name == HdTokens->points) continue;
+
+                    VtValue val = sceneDelegate->Get(id, pv.name);
+                    if (!val.IsEmpty()) {
+                        if (val.IsHolding<VtVec3fArray>()) {
+                            const auto& arr = val.UncheckedGet<VtVec3fArray>();
+                            if (!arr.empty()) {
+                                std::cout << "[Gemini]   Found potential points in PV " << pv.name.GetText() << " with " << arr.size() << " elements." << std::endl;
+                                _points = arr;
+                                pointsActuallyUpdated = true;
+                                break;
+                            }
+                        } else if (val.IsHolding<VtVec3dArray>()) {
+                            const auto& arr = val.UncheckedGet<VtVec3dArray>();
+                            if (!arr.empty()) {
+                                std::cout << "[Gemini]   Found potential points (double) in PV " << pv.name.GetText() << " with " << arr.size() << " elements." << std::endl;
+                                _points.resize(arr.size());
+                                for (size_t j = 0; j < arr.size(); ++j) _points[j] = GfVec3f(arr[j]);
+                                pointsActuallyUpdated = true;
+                                break;
+                            }
                         }
                     }
                 }
+                if (pointsActuallyUpdated) break;
             }
-            if (pointsUpdated) break;
+        }
+
+        if (pointsActuallyUpdated) {
+            _bvhDirty = true;
         }
     }
 
-    _bvhDirty = true;
-
+    // --- COLOR UPDATING ---
     if (HdChangeTracker::IsPrimvarDirty(*dirtyBits, id, HdTokens->displayColor)) {
-        VtValue val = sceneDelegate->Get(id, HdTokens->displayColor);
-        if (val.IsHolding<VtVec3fArray>()) {
-            _colors = val.UncheckedGet<VtVec3fArray>();
+        if (!colorsUpdatedByComputation) {
+            VtValue val = sceneDelegate->Get(id, HdTokens->displayColor);
+            if (val.IsHolding<VtVec3fArray>()) {
+                _colors = val.UncheckedGet<VtVec3fArray>();
+            }
         }
     }
 

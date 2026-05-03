@@ -5,6 +5,7 @@
 #include "pxr/usd/sdr/shaderNode.h"
 #include "pxr/base/vt/value.h"
 #include <map>
+#include <set>
 #include <iostream>
 
 PXR_NAMESPACE_USING_DIRECTIVE
@@ -24,6 +25,100 @@ HdGeminiMaterial::HdGeminiMaterial(SdfPath const& id)
 
 HdGeminiMaterial::~HdGeminiMaterial() = default;
 
+// Helper to walk upstream and process nodes
+static void _ProcessNodeUpstream(
+    const HdMaterialNetwork2& network,
+    const SdfPath& nodePath,
+    std::set<SdfPath>& visited,
+    HdGeminiMaterial* material)
+{
+    if (visited.count(nodePath)) return;
+    visited.insert(nodePath);
+
+    auto itNode = network.nodes.find(nodePath);
+    if (itNode == network.nodes.end()) return;
+
+    const HdMaterialNode2& node = itNode->second;
+    SdrRegistry &sdrRegistry = SdrRegistry::GetInstance();
+    
+    // Resolve shader with MaterialX context preference
+    SdrShaderNodeConstPtr sdrEntry = sdrRegistry.GetShaderNodeByIdentifier(node.nodeTypeId, {TfToken("mtlx")});
+    if (!sdrEntry) sdrEntry = sdrRegistry.GetShaderNodeByIdentifier(node.nodeTypeId);
+    
+    TfToken shaderId = sdrEntry ? sdrEntry->GetIdentifier() : node.nodeTypeId;
+    
+    std::cout << "[Gemini]     Node: " << nodePath.GetText() << " | Resolved ID: " << shaderId.GetText() << " | Type: " << node.nodeTypeId.GetText() << std::endl;
+
+    // Parse parameters based on shader type
+    if (shaderId == TfToken("UsdPreviewSurface")) {
+        for (auto const& param : node.parameters) {
+            if (param.first == TfToken("diffuseColor") && param.second.IsHolding<GfVec3f>()) {
+                material->SetDiffuseColor(param.second.UncheckedGet<GfVec3f>());
+            } else if (param.first == TfToken("metallic") && param.second.IsHolding<float>()) {
+                material->SetMetallic(param.second.UncheckedGet<float>());
+            } else if (param.first == TfToken("roughness") && param.second.IsHolding<float>()) {
+                material->SetRoughness(param.second.UncheckedGet<float>());
+            } else if (param.first == TfToken("opacity") && param.second.IsHolding<float>()) {
+                material->SetOpacity(param.second.UncheckedGet<float>());
+            } else if (param.first == TfToken("ior") && param.second.IsHolding<float>()) {
+                material->SetIor(param.second.UncheckedGet<float>());
+            } else if (param.first == TfToken("emissiveColor") && param.second.IsHolding<GfVec3f>()) {
+                material->SetEmissionColor(param.second.UncheckedGet<GfVec3f>());
+                material->SetEmission(1.0f);
+            }
+        }
+    } else if (shaderId == TfToken("ND_standard_surface_surfaceshader") ||
+               shaderId == TfToken("standard_surface") ||
+               shaderId == TfToken("StandardSurface")) {
+        float base = 1.0f;
+        GfVec3f baseColor(0.8f);
+        for (auto const& param : node.parameters) {
+            if ((param.first == TfToken("base") || param.first == TfToken("base_weight")) && param.second.IsHolding<float>()) {
+                base = param.second.UncheckedGet<float>();
+            } else if (param.first == TfToken("base_color") && param.second.IsHolding<GfVec3f>()) {
+                baseColor = param.second.UncheckedGet<GfVec3f>();
+            } else if (param.first == TfToken("metalness") && param.second.IsHolding<float>()) {
+                material->SetMetallic(param.second.UncheckedGet<float>());
+            } else if ((param.first == TfToken("specular_roughness") || param.first == TfToken("roughness")) && param.second.IsHolding<float>()) {
+                material->SetRoughness(param.second.UncheckedGet<float>());
+            } else if (param.first == TfToken("opacity") && param.second.IsHolding<float>()) {
+                material->SetOpacity(param.second.UncheckedGet<float>());
+            } else if (param.first == TfToken("ior") && param.second.IsHolding<float>()) {
+                material->SetIor(param.second.UncheckedGet<float>());
+            } else if ((param.first == TfToken("transmission") || param.first == TfToken("transmission_weight")) && param.second.IsHolding<float>()) {
+                material->SetTransmission(param.second.UncheckedGet<float>());
+            } else if ((param.first == TfToken("emission") || param.first == TfToken("emission_weight")) && param.second.IsHolding<float>()) {
+                material->SetEmission(param.second.UncheckedGet<float>());
+            } else if (param.first == TfToken("emission_color") && param.second.IsHolding<GfVec3f>()) {
+                material->SetEmissionColor(param.second.UncheckedGet<GfVec3f>());
+            }
+        }
+        material->SetDiffuseColor(baseColor * base);
+    } else if (shaderId == TfToken("UsdUVTexture") ||
+               shaderId == TfToken("ND_image_color3") ||
+               shaderId == TfToken("ND_image") ||
+               shaderId == TfToken("ND_image_float") ||
+               shaderId == TfToken("ND_image_vector2") ||
+               shaderId == TfToken("ND_image_vector3") ||
+               shaderId == TfToken("ND_image_vector4") ||
+               shaderId == TfToken("ND_image_color4")) {
+        for (auto const& param : node.parameters) {
+            if ((param.first == TfToken("file") || param.first == TfToken("texcoord")) && 
+                param.second.IsHolding<SdfAssetPath>()) {
+                material->SetDiffuseTexture(param.second.UncheckedGet<SdfAssetPath>());
+                std::cout << "[Gemini]       Mapped texture: " << material->GetDiffuseTexture().GetAssetPath() << std::endl;
+            }
+        }
+    }
+
+    // Walk upstream recursively
+    for (auto const& connPair : node.inputConnections) {
+        for (auto const& conn : connPair.second) {
+            _ProcessNodeUpstream(network, conn.upstreamNode, visited, material);
+        }
+    }
+}
+
 void
 HdGeminiMaterial::Sync(HdSceneDelegate *sceneDelegate,
                        HdRenderParam   *renderParam,
@@ -34,114 +129,43 @@ HdGeminiMaterial::Sync(HdSceneDelegate *sceneDelegate,
         if (materialResource.IsHolding<HdMaterialNetworkMap>()) {
             HdMaterialNetworkMap const& map = materialResource.UncheckedGet<HdMaterialNetworkMap>();
             
-            // Convert to HdMaterialNetwork2 for easier traversal
+            // Convert to HdMaterialNetwork2
             HdMaterialNetwork2 network = HdConvertToHdMaterialNetwork2(map);
 
-            std::cout << "[Gemini] Syncing material network for " << GetId().GetText() << ":" << std::endl;
-
-            // Prioritize surface terminals
-            TfToken terminalNames[] = { TfToken("mtlx:surface"), HdMaterialTerminalTokens->surface };
+            std::cout << "[Gemini] Syncing material " << GetId().GetText() << ":" << std::endl;
             
-            for (const auto& termName : terminalNames) {
-                auto itTerm = network.terminals.find(termName);
-                if (itTerm == network.terminals.end()) continue;
+            std::set<SdfPath> visited;
+            
+            std::cout << "[Gemini]   Terminals found:";
+            for (auto const& t : network.terminals) std::cout << " " << t.first.GetText();
+            std::cout << std::endl;
 
-                SdfPath terminalPath = itTerm->second.upstreamNode;
-                auto itNode = network.nodes.find(terminalPath);
-                if (itNode == network.nodes.end()) continue;
+            // Find the best terminal
+            TfToken selectedTerminal;
+            TfToken terminalPriorities[] = { 
+                TfToken("mtlx:surface"), 
+                HdMaterialTerminalTokens->surface,
+                TfToken("outputs:surface") 
+            };
 
-                const HdMaterialNode2& surfaceNode = itNode->second;
-                SdrRegistry &sdrRegistry = SdrRegistry::GetInstance();
-                
-                // Resolve terminal shader
-                SdrShaderNodeConstPtr sdrEntry = sdrRegistry.GetShaderNodeByIdentifier(surfaceNode.nodeTypeId, {TfToken("mtlx")});
-                if (!sdrEntry) sdrEntry = sdrRegistry.GetShaderNodeByIdentifier(surfaceNode.nodeTypeId);
-                
-                TfToken shaderId = sdrEntry ? sdrEntry->GetIdentifier() : surfaceNode.nodeTypeId;
-                std::cout << "[Gemini]   Terminal " << termName.GetText() << " -> " << shaderId.GetText() << " (" << terminalPath.GetText() << ")" << std::endl;
-
-                // 1. Read constant parameters
-                if (shaderId == TfToken("UsdPreviewSurface")) {
-                    for (auto const& param : surfaceNode.parameters) {
-                        if (param.first == TfToken("diffuseColor") && param.second.IsHolding<GfVec3f>()) {
-                            _diffuseColor = param.second.UncheckedGet<GfVec3f>();
-                        } else if (param.first == TfToken("metallic") && param.second.IsHolding<float>()) {
-                            _metallic = param.second.UncheckedGet<float>();
-                        } else if (param.first == TfToken("roughness") && param.second.IsHolding<float>()) {
-                            _roughness = param.second.UncheckedGet<float>();
-                        } else if (param.first == TfToken("opacity") && param.second.IsHolding<float>()) {
-                            _opacity = param.second.UncheckedGet<float>();
-                        } else if (param.first == TfToken("ior") && param.second.IsHolding<float>()) {
-                            _ior = param.second.UncheckedGet<float>();
-                        } else if (param.first == TfToken("emissiveColor") && param.second.IsHolding<GfVec3f>()) {
-                            _emissionColor = param.second.UncheckedGet<GfVec3f>();
-                            _emission = 1.0f;
-                        }
-                    }
-                } else if (shaderId == TfToken("ND_standard_surface_surfaceshader") ||
-                           shaderId == TfToken("standard_surface") ||
-                           shaderId == TfToken("StandardSurface")) {
-                    float base = 1.0f;
-                    GfVec3f baseColor(0.8f);
-                    for (auto const& param : surfaceNode.parameters) {
-                        if ((param.first == TfToken("base") || param.first == TfToken("base_weight")) && param.second.IsHolding<float>()) {
-                            base = param.second.UncheckedGet<float>();
-                        } else if (param.first == TfToken("base_color") && param.second.IsHolding<GfVec3f>()) {
-                            baseColor = param.second.UncheckedGet<GfVec3f>();
-                        } else if (param.first == TfToken("metalness") && param.second.IsHolding<float>()) {
-                            _metallic = param.second.UncheckedGet<float>();
-                        } else if ((param.first == TfToken("specular_roughness") || param.first == TfToken("roughness")) && param.second.IsHolding<float>()) {
-                            _roughness = param.second.UncheckedGet<float>();
-                        } else if (param.first == TfToken("opacity") && param.second.IsHolding<float>()) {
-                            _opacity = param.second.UncheckedGet<float>();
-                        } else if (param.first == TfToken("ior") && param.second.IsHolding<float>()) {
-                            _ior = param.second.UncheckedGet<float>();
-                        } else if ((param.first == TfToken("transmission") || param.first == TfToken("transmission_weight")) && param.second.IsHolding<float>()) {
-                            _transmission = param.second.UncheckedGet<float>();
-                        } else if ((param.first == TfToken("emission") || param.first == TfToken("emission_weight")) && param.second.IsHolding<float>()) {
-                            _emission = param.second.UncheckedGet<float>();
-                        } else if (param.first == TfToken("emission_color") && param.second.IsHolding<GfVec3f>()) {
-                            _emissionColor = param.second.UncheckedGet<GfVec3f>();
-                        }
-                    }
-                    _diffuseColor = baseColor * base;
+            for (const auto& t : terminalPriorities) {
+                if (network.terminals.count(t)) {
+                    selectedTerminal = t;
+                    break;
                 }
+            }
 
-                // 2. Read connections (textures) by walking upstream
-                for (auto const& connPair : surfaceNode.inputConnections) {
-                    TfToken inputName = connPair.first;
-                    for (auto const& conn : connPair.second) {
-                        auto itInputNode = network.nodes.find(conn.upstreamNode);
-                        if (itInputNode == network.nodes.end()) continue;
+            // Fallback to first if none of the above found
+            if (selectedTerminal.IsEmpty() && !network.terminals.empty()) {
+                selectedTerminal = network.terminals.begin()->first;
+            }
 
-                        const HdMaterialNode2& inputNode = itInputNode->second;
-                        SdrShaderNodeConstPtr inputSdrEntry = sdrRegistry.GetShaderNodeByIdentifier(inputNode.nodeTypeId, {TfToken("mtlx")});
-                        if (!inputSdrEntry) inputSdrEntry = sdrRegistry.GetShaderNodeByIdentifier(inputNode.nodeTypeId);
-                        
-                        TfToken inputShaderId = inputSdrEntry ? inputSdrEntry->GetIdentifier() : inputNode.nodeTypeId;
-                        std::cout << "[Gemini]     Input " << inputName.GetText() << " connected to " << inputShaderId.GetText() << " (" << conn.upstreamNode.GetText() << ")" << std::endl;
-
-                        if (inputName == TfToken("diffuseColor") || inputName == TfToken("base_color")) {
-                            if (inputShaderId == TfToken("UsdUVTexture") ||
-                                inputShaderId == TfToken("ND_image_color3") ||
-                                inputShaderId == TfToken("ND_image") ||
-                                inputShaderId == TfToken("ND_image_float") ||
-                                inputShaderId == TfToken("ND_image_vector3") ||
-                                inputShaderId == TfToken("ND_image_vector4") ||
-                                inputShaderId == TfToken("ND_image_color4")) {
-                                for (auto const& param : inputNode.parameters) {
-                                    if ((param.first == TfToken("file") || param.first == TfToken("texcoord")) && 
-                                        param.second.IsHolding<SdfAssetPath>()) {
-                                        _diffuseTexture = param.second.UncheckedGet<SdfAssetPath>();
-                                        std::cout << "[Gemini]       Found texture for " << inputName.GetText() << ": " << _diffuseTexture.GetAssetPath() << std::endl;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                // If we found and processed a surface terminal, we can stop
-                break;
+            if (!selectedTerminal.IsEmpty()) {
+                const SdfPath& terminalPath = network.terminals.at(selectedTerminal).upstreamNode;
+                std::cout << "[Gemini]   Selected terminal: " << selectedTerminal.GetText() << " -> " << terminalPath.GetText() << std::endl;
+                _ProcessNodeUpstream(network, terminalPath, visited, this);
+            } else {
+                std::cout << "[Gemini]   No terminals found in network!" << std::endl;
             }
         }
     }

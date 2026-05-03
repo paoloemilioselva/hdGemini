@@ -17,20 +17,36 @@ public:
               HdRenderParam   *renderParam,
               HdDirtyBits     *dirtyBits) override;
 
-    HdDirtyBits GetInitialDirtyBitsMask() const override;
+    virtual HdDirtyBits GetInitialDirtyBitsMask() const override;
 
     const GfVec3f& GetDiffuseColor() const { return _diffuseColor; }
+    void SetDiffuseColor(const GfVec3f& v) { _diffuseColor = v; }
+
     float GetMetallic() const { return _metallic; }
+    void SetMetallic(float v) { _metallic = v; }
+
     float GetRoughness() const { return _roughness; }
+    void SetRoughness(float v) { _roughness = v; }
+
     float GetOpacity() const { return _opacity; }
+    void SetOpacity(float v) { _opacity = v; }
+
     float GetIor() const { return _ior; }
+    void SetIor(float v) { _ior = v; }
+
     float GetTransmission() const { return _transmission; }
+    void SetTransmission(float v) { _transmission = v; }
+
     const GfVec3f& GetEmissionColor() const { return _emissionColor; }
+    void SetEmissionColor(const GfVec3f& v) { _emissionColor = v; }
+
     float GetEmission() const { return _emission; }
+    void SetEmission(float v) { _emission = v; }
 
     const SdfAssetPath& GetDiffuseTexture() const { return _diffuseTexture; }
+    void SetDiffuseTexture(const SdfAssetPath& v) { _diffuseTexture = v; }
 
-private:
+    private:
     GfVec3f _diffuseColor;
     float _metallic;
     float _roughness;

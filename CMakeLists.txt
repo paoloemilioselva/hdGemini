@@ -89,6 +89,7 @@ target_link_libraries(
     ${DELEGATE_NAME}
     PUBLIC
     ${USD_LIBS}
+    usd_sdr.lib
     TBB::tbb
 )
 

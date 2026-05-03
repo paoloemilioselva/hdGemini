@@ -49,15 +49,23 @@ HdGeminiMaterial::Sync(HdSceneDelegate *sceneDelegate,
                     nodesByPath[node.path] = &node;
                 }
 
-                // Find the terminal node (last node in the list usually, or find by type)
+                // Find the terminal node (prioritize MaterialX then UsdPreviewSurface)
                 HdMaterialNode const* surfaceNode = nullptr;
                 for (auto const& node : network.nodes) {
-                    if (node.identifier == TfToken("UsdPreviewSurface") ||
-                        node.identifier == TfToken("ND_standard_surface_surfaceshader") ||
+                    if (node.identifier == TfToken("ND_standard_surface_surfaceshader") ||
                         node.identifier == TfToken("standard_surface") ||
                         node.identifier == TfToken("StandardSurface")) {
                         surfaceNode = &node;
                         break;
+                    }
+                }
+                
+                if (!surfaceNode) {
+                    for (auto const& node : network.nodes) {
+                        if (node.identifier == TfToken("UsdPreviewSurface")) {
+                            surfaceNode = &node;
+                            break;
+                        }
                     }
                 }
 

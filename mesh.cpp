@@ -81,14 +81,24 @@ HdGeminiMesh::_UpdateComputedPrimvarSources(HdSceneDelegate* sceneDelegate,
             it = valueStore.find(compPrimvar.sourceOutputName);
         }
 
-        if (it == valueStore.end() || it->second.IsEmpty()) {
+        VtValue val;
+        if (it != valueStore.end() && !it->second.IsEmpty()) {
+            val = it->second;
+        } else {
+            // Fallback: try direct Get() which some delegates use to trigger computations
+            val = sceneDelegate->Get(id, compPrimvar.name);
+            if (val.IsEmpty() && compPrimvar.name != compPrimvar.sourceOutputName) {
+                val = sceneDelegate->Get(id, compPrimvar.sourceOutputName);
+            }
+        }
+
+        if (val.IsEmpty()) {
             std::cout << "[Gemini]   Failed to find computed value for PV " << compPrimvar.name.GetText() 
-                      << " (output: " << compPrimvar.sourceOutputName.GetText() << ")" << std::endl;
+                      << " (output: " << compPrimvar.sourceOutputName.GetText() << ") even with fallback Get()" << std::endl;
             continue;
         }
         
         compPrimvarNames.emplace_back(compPrimvar.name);
-        const VtValue& val = it->second;
 
         if (compPrimvar.name == HdTokens->points) {
             if (val.IsHolding<VtVec3fArray>()) {

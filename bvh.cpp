@@ -60,7 +60,8 @@ void BVH::Build(const VtVec3fArray& points, const VtVec3iArray& indices, const V
     if (indices.empty() || points.empty()) return;
 
     _triangles.reserve(indices.size());
-    for (const auto& triIdx : indices) {
+    for (size_t i = 0; i < indices.size(); ++i) {
+        const auto& triIdx = indices[i];
         if (triIdx[0] < 0 || triIdx[0] >= (int)points.size() || 
             triIdx[1] < 0 || triIdx[1] >= (int)points.size() || 
             triIdx[2] < 0 || triIdx[2] >= (int)points.size()) continue;
@@ -71,9 +72,17 @@ void BVH::Build(const VtVec3fArray& points, const VtVec3iArray& indices, const V
         tri.v2 = points[triIdx[2]];
 
         if (!uvs.empty()) {
-            tri.uv0 = (triIdx[0] < (int)uvs.size()) ? uvs[triIdx[0]] : GfVec2f(0.0f);
-            tri.uv1 = (triIdx[1] < (int)uvs.size()) ? uvs[triIdx[1]] : GfVec2f(0.0f);
-            tri.uv2 = (triIdx[2] < (int)uvs.size()) ? uvs[triIdx[2]] : GfVec2f(0.0f);
+            if (uvs.size() == indices.size() * 3) {
+                // Face-varying (triangulated) UVs
+                tri.uv0 = uvs[i * 3 + 0];
+                tri.uv1 = uvs[i * 3 + 1];
+                tri.uv2 = uvs[i * 3 + 2];
+            } else {
+                // Vertex-indexed UVs
+                tri.uv0 = (triIdx[0] < (int)uvs.size()) ? uvs[triIdx[0]] : GfVec2f(0.0f);
+                tri.uv1 = (triIdx[1] < (int)uvs.size()) ? uvs[triIdx[1]] : GfVec2f(0.0f);
+                tri.uv2 = (triIdx[2] < (int)uvs.size()) ? uvs[triIdx[2]] : GfVec2f(0.0f);
+            }
         } else {
             tri.uv0 = tri.uv1 = tri.uv2 = GfVec2f(0.0f);
         }

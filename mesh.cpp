@@ -215,27 +215,101 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
     }
 
     // --- COLOR UPDATING ---
-    if (HdChangeTracker::IsPrimvarDirty(*dirtyBits, id, HdTokens->displayColor)) {
+    TfToken colorToken = HdTokens->displayColor;
+    if (HdChangeTracker::IsPrimvarDirty(*dirtyBits, id, colorToken)) {
         if (!colorsUpdatedByComputation) {
-            VtValue val = sceneDelegate->Get(id, HdTokens->displayColor);
-            if (val.IsHolding<VtVec3fArray>()) {
-                _colors = val.UncheckedGet<VtVec3fArray>();
+            HdInterpolation colorInterp = HdInterpolationVertex;
+            HdPrimvarDescriptorVector allPvs;
+            for (int i = 0; i < HdInterpolationCount; ++i) {
+                HdPrimvarDescriptorVector pvs = sceneDelegate->GetPrimvarDescriptors(id, (HdInterpolation)i);
+                for (const auto& pv : pvs) {
+                    if (pv.name == colorToken) {
+                        colorInterp = pv.interpolation;
+                        break;
+                    }
+                }
+            }
+
+            VtIntArray colorIndices;
+            VtValue val = sceneDelegate->GetIndexedPrimvar(id, colorToken, &colorIndices);
+            if (val.IsEmpty()) val = sceneDelegate->Get(id, colorToken);
+
+            if (!val.IsEmpty() && val.IsHolding<VtVec3fArray>()) {
+                VtVec3fArray colors = val.UncheckedGet<VtVec3fArray>();
+                if (!colorIndices.empty()) {
+                    VtVec3fArray flattened(colorIndices.size());
+                    for (size_t i = 0; i < colorIndices.size(); ++i) {
+                        flattened[i] = colors[colorIndices[i]];
+                    }
+                    colors = flattened;
+                }
+
+                if (colorInterp == HdInterpolationFaceVarying) {
+                    HdMeshTopology topology = GetMeshTopology(sceneDelegate);
+                    HdMeshUtil meshUtil(&topology, id);
+                    VtValue triangulated;
+                    meshUtil.ComputeTriangulatedFaceVaryingPrimvar(colors.data(), (int)colors.size(), HdTypeFloatVec3, &triangulated);
+                    if (!triangulated.IsEmpty() && triangulated.IsHolding<VtVec3fArray>()) {
+                        _colors = triangulated.Get<VtVec3fArray>();
+                    } else {
+                        _colors = colors;
+                    }
+                } else {
+                    _colors = colors;
+                }
             }
         }
     }
 
     // --- UV UPDATING ---
     TfToken stToken("st");
-    if (HdChangeTracker::IsPrimvarDirty(*dirtyBits, id, stToken) || _uvs.empty()) {
-        VtValue val = sceneDelegate->Get(id, stToken);
-        if (val.IsHolding<VtVec2fArray>()) {
-            _uvs = val.UncheckedGet<VtVec2fArray>();
-        } else {
-            // fallback to 'uv'
-            TfToken uvToken("uv");
-            val = sceneDelegate->Get(id, uvToken);
-            if (val.IsHolding<VtVec2fArray>()) {
-                _uvs = val.UncheckedGet<VtVec2fArray>();
+    TfToken uvToken("uv");
+    TfToken activeStToken = stToken;
+    bool stDirty = HdChangeTracker::IsPrimvarDirty(*dirtyBits, id, stToken);
+    bool uvDirty = HdChangeTracker::IsPrimvarDirty(*dirtyBits, id, uvToken);
+
+    if (stDirty || uvDirty || _uvs.empty()) {
+        HdInterpolation stInterp = HdInterpolationVertex;
+        bool found = false;
+        for (int i = 0; i < HdInterpolationCount; ++i) {
+            HdPrimvarDescriptorVector pvs = sceneDelegate->GetPrimvarDescriptors(id, (HdInterpolation)i);
+            for (const auto& pv : pvs) {
+                if (pv.name == stToken || pv.name == uvToken) {
+                    activeStToken = pv.name;
+                    stInterp = pv.interpolation;
+                    found = true;
+                    break;
+                }
+            }
+            if (found) break;
+        }
+
+        VtIntArray stIndices;
+        VtValue val = sceneDelegate->GetIndexedPrimvar(id, activeStToken, &stIndices);
+        if (val.IsEmpty()) val = sceneDelegate->Get(id, activeStToken);
+
+        if (!val.IsEmpty() && val.IsHolding<VtVec2fArray>()) {
+            VtVec2fArray uvs = val.UncheckedGet<VtVec2fArray>();
+            if (!stIndices.empty()) {
+                VtVec2fArray flattened(stIndices.size());
+                for (size_t i = 0; i < stIndices.size(); ++i) {
+                    flattened[i] = uvs[stIndices[i]];
+                }
+                uvs = flattened;
+            }
+
+            if (stInterp == HdInterpolationFaceVarying) {
+                HdMeshTopology topology = GetMeshTopology(sceneDelegate);
+                HdMeshUtil meshUtil(&topology, id);
+                VtValue triangulated;
+                meshUtil.ComputeTriangulatedFaceVaryingPrimvar(uvs.data(), (int)uvs.size(), HdTypeFloatVec2, &triangulated);
+                if (!triangulated.IsEmpty() && triangulated.IsHolding<VtVec2fArray>()) {
+                    _uvs = triangulated.Get<VtVec2fArray>();
+                } else {
+                    _uvs = uvs;
+                }
+            } else {
+                _uvs = uvs;
             }
         }
     }

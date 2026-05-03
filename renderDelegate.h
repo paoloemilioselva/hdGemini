@@ -31,6 +31,7 @@ public:
     virtual const TfTokenVector &GetSupportedRprimTypes() const override;
     virtual const TfTokenVector &GetSupportedSprimTypes() const override;
     virtual const TfTokenVector &GetSupportedBprimTypes() const override;
+    virtual TfTokenVector GetShaderSourceTypes() const override;
 
     virtual HdResourceRegistrySharedPtr GetResourceRegistry() const override;
 

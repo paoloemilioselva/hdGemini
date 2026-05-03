@@ -121,6 +121,12 @@ HdGeminiRenderDelegate::GetSupportedBprimTypes() const
     return SUPPORTED_BPRIM_TYPES;
 }
 
+TfTokenVector
+HdGeminiRenderDelegate::GetShaderSourceTypes() const
+{
+    return {TfToken("mtlx"), TfToken("UsdPreviewSurface"), TfToken("preview")};
+}
+
 HdResourceRegistrySharedPtr
 HdGeminiRenderDelegate::GetResourceRegistry() const
 {

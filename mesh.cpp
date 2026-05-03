@@ -205,7 +205,15 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
     if (pointsDirty) {
         bool pointsActuallyUpdated = pointsUpdatedByComputation;
 
-        // 1. Try standard "points" attribute if not already found in computed sources
+        // 1. Try standard GetPoints() API first (most direct)
+        if (!pointsActuallyUpdated) {
+            _points = sceneDelegate->GetPoints(id);
+            if (!_points.empty()) {
+                pointsActuallyUpdated = true;
+            }
+        }
+
+        // 2. Try standard "points" attribute via Get() as fallback
         if (!pointsActuallyUpdated) {
             VtValue val = sceneDelegate->Get(id, HdTokens->points);
             if (!val.IsEmpty()) {
@@ -221,7 +229,7 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
             }
         }
 
-        // 2. Last resort: BRUTE FORCE SCOUTING for anything that looks like points
+        // 3. Last resort: BRUTE FORCE SCOUTING for anything that looks like points
         // (Sometimes points are named 'P' or provided in custom primvars)
         if (!pointsActuallyUpdated) {
             for (int i = 0; i < HdInterpolationCount; ++i) {

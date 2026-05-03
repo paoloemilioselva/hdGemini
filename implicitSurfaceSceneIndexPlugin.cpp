@@ -29,12 +29,14 @@ TF_REGISTRY_FUNCTION(HdSceneIndexPlugin)
         insertionPhase,
         HdSceneIndexPluginRegistry::InsertionOrderAtStart);
 
+    /*
     HdSceneIndexPluginRegistry::GetInstance().RegisterSceneIndexForRenderer(
         _pluginDisplayName,
         TfToken("HdSkelSceneIndexPlugin"),
         /* inputArgs = */ nullptr,
         insertionPhase,
         HdSceneIndexPluginRegistry::InsertionOrderAtStart);
+    */
 }
 
 HdGemini_ImplicitSurfaceSceneIndexPlugin::HdGemini_ImplicitSurfaceSceneIndexPlugin() = default;

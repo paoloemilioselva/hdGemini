@@ -31,9 +31,14 @@ HdGeminiMaterial::Sync(HdSceneDelegate *sceneDelegate,
         if (materialResource.IsHolding<HdMaterialNetworkMap>()) {
             HdMaterialNetworkMap const& map = materialResource.UncheckedGet<HdMaterialNetworkMap>();
             
-            // Usually we care about the 'surface' network
-            auto itNet = map.map.find(TfToken("surface"));
-            if (itNet == map.map.end()) itNet = map.map.begin(); // Fallback to first if no surface
+            // Prioritize 'mtlx' network, fallback to 'surface', then first available
+            auto itNet = map.map.find(TfToken("mtlx"));
+            if (itNet == map.map.end()) {
+                itNet = map.map.find(TfToken("surface"));
+            }
+            if (itNet == map.map.end()) {
+                itNet = map.map.begin();
+            }
 
             if (itNet != map.map.end()) {
                 HdMaterialNetwork const& network = itNet->second;

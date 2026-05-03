@@ -367,6 +367,8 @@ bool HdGeminiRenderer::_IntersectTLAS(int nodeIdx, const GfVec3f& rayOrigin, con
                         hit.baseColor = GfCompMult(hit.baseColor, inst.material->GetDiffuseColor());
                         hit.metallic = inst.material->GetMetallic();
                         hit.roughness = inst.material->GetRoughness();
+                        hit.opacity = inst.material->GetOpacity();
+                        hit.emission = inst.material->GetEmissionColor() * inst.material->GetEmission();
                     }
                     hit.hit = true;
                     wasHit = true;
@@ -414,8 +416,14 @@ GfVec3f HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVec3f& ray
     }
 
     GfVec3f hitPos = rayOrigin + rayDir * hit.t;
+
+    // Handle transparency/opacity
+    if (hit.opacity < 0.999f && RandomFloat(rng) > hit.opacity) {
+        return _TraceRay(hitPos + rayDir * 1e-4f, rayDir, depth, isInteractive, renderThread, lights, rng);
+    }
+
     GfVec3f shadowOrigin = hitPos + hit.normal * 1e-4f;
-    GfVec3f result(0.0f);
+    GfVec3f result = hit.emission;
 
     if (!lights.empty()) {
         auto it = lights.begin();

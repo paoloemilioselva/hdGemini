@@ -58,6 +58,8 @@ private:
         GfVec3f baseColor = GfVec3f(1.0f);
         float metallic = 0.0f;
         float roughness = 0.5f;
+        float opacity = 1.0f;
+        GfVec3f emission = GfVec3f(0.0f);
         bool hit = false;
     };
 

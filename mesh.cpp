@@ -68,10 +68,22 @@ HdGeminiMesh::_UpdateComputedPrimvarSources(HdSceneDelegate* sceneDelegate,
     HdExtComputationUtils::ValueStore valueStore = 
         HdExtComputationUtils::GetComputedPrimvarValues(compPrimvarsToUpdate, sceneDelegate);
 
+    // Diagnostic: Log all keys in valueStore
+    for (auto const& pair : valueStore) {
+        std::cout << "[Gemini] ValueStore entry: " << pair.first.GetText() << " Type: " << pair.second.GetTypeName() << std::endl;
+    }
+
     TfTokenVector compPrimvarNames;
     for (auto const& compPrimvar : compPrimvarsToUpdate) {
-        auto const it = valueStore.find(compPrimvar.name);
+        // Try looking up by primvar name first, then by source output name
+        auto it = valueStore.find(compPrimvar.name);
         if (it == valueStore.end() || it->second.IsEmpty()) {
+            it = valueStore.find(compPrimvar.sourceOutputName);
+        }
+
+        if (it == valueStore.end() || it->second.IsEmpty()) {
+            std::cout << "[Gemini]   Failed to find computed value for PV " << compPrimvar.name.GetText() 
+                      << " (output: " << compPrimvar.sourceOutputName.GetText() << ")" << std::endl;
             continue;
         }
         

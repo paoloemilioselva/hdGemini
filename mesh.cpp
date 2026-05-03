@@ -154,8 +154,18 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
             HdPrimvarDescriptorVector pvs = sceneDelegate->GetPrimvarDescriptors(id, interp);
             for (const auto& pv : pvs) {
                 VtValue val = sceneDelegate->Get(id, pv.name);
-                std::cout << "[Gemini]   PV: " << pv.name.GetText() << " (interp: " << interp 
-                          << ") Type: " << val.GetTypeName() << " Empty: " << val.IsEmpty() << std::endl;
+                if (!val.IsEmpty()) {
+                    std::cout << "[Gemini]   * PV: " << pv.name.GetText() << " (interp: " << interp 
+                              << ") Type: " << val.GetTypeName() << " Size: ";
+                    if (val.IsHolding<VtVec3fArray>()) std::cout << val.UncheckedGet<VtVec3fArray>().size();
+                    else if (val.IsHolding<VtVec3dArray>()) std::cout << val.UncheckedGet<VtVec3dArray>().size();
+                    else if (val.IsHolding<VtFloatArray>()) std::cout << val.UncheckedGet<VtFloatArray>().size();
+                    else if (val.IsHolding<VtIntArray>()) std::cout << val.UncheckedGet<VtIntArray>().size();
+                    else std::cout << "N/A";
+                    std::cout << std::endl;
+                } else {
+                    std::cout << "[Gemini]     PV: " << pv.name.GetText() << " is EMPTY" << std::endl;
+                }
             }
         }
     }

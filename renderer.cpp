@@ -535,43 +535,50 @@ GfVec3f HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVec3f& ray
 
     // Advanced Material Logic: Reflections and Refractions
     float fresnel = FresnelDielectric(GfDot(rayDir, shadingNormal), hit.ior);
+    
+    // Determine if we reflect or refract/diffuse
     float reflectProb = fresnel;
     if (hit.metallic > 0.0f) reflectProb = std::max(reflectProb, hit.metallic);
+    
+    float randVal = RandomFloat(rng);
 
-    if (RandomFloat(rng) < reflectProb) {
+    if (randVal < reflectProb) {
         // Reflection
         GfVec3f reflectDir = (rayDir - 2.0f * GfDot(rayDir, shadingNormal) * shadingNormal).GetNormalized();
         // Perturb by roughness
         if (hit.roughness > 0.0f) {
             reflectDir = AlignToNormal(SampleCosineHemisphere(RandomFloat(rng), RandomFloat(rng)), reflectDir);
-            // Re-check if we went under the surface
             if (GfDot(reflectDir, shadingNormal) < 0) reflectDir = (reflectDir - 2.0f * GfDot(reflectDir, shadingNormal) * shadingNormal).GetNormalized();
         }
         return result + _TraceRay(hitPos + shadingNormal * 1e-4f, reflectDir, depth + 1, isInteractive, renderThread, lights, rng);
     } 
 
-    if (hit.transmission > 0.0f && RandomFloat(rng) < hit.transmission) {
-        // Refraction
-        float etaI = 1.0f, etaT = hit.ior;
-        GfVec3f n = shadingNormal;
-        float cosThetaI = GfDot(rayDir, n);
-        if (cosThetaI > 0) {
-            std::swap(etaI, etaT);
-            n = -n;
-            cosThetaI = -cosThetaI;
+    // Handle Transmission (Refraction)
+    if (hit.transmission > 1e-6f) {
+        float remainingProb = (randVal - reflectProb) / (1.0f - reflectProb);
+        if (remainingProb < hit.transmission) {
+            float etaI = 1.0f, etaT = hit.ior;
+            GfVec3f n = shadingNormal;
+            float cosThetaI = GfDot(rayDir, n);
+            if (cosThetaI > 0) {
+                std::swap(etaI, etaT);
+                n = -n;
+                cosThetaI = -cosThetaI;
+            }
+            float eta = etaI / etaT;
+            float k = 1.0f - eta * eta * (1.0f - cosThetaI * cosThetaI);
+            if (k >= 0) {
+                GfVec3f refractDir = (eta * rayDir - (eta * cosThetaI + std::sqrt(k)) * n).GetNormalized();
+                // For refraction, we usually want to use baseColor as the filter
+                return result + GfCompMult(hit.baseColor, _TraceRay(hitPos - n * 1e-4f, refractDir, depth + 1, isInteractive, renderThread, lights, rng));
+            }
+            // Total Internal Reflection fallback
+            GfVec3f reflectDir = (rayDir - 2.0f * GfDot(rayDir, n) * n).GetNormalized();
+            return result + _TraceRay(hitPos + n * 1e-4f, reflectDir, depth + 1, isInteractive, renderThread, lights, rng);
         }
-        float eta = etaI / etaT;
-        float k = 1.0f - eta * eta * (1.0f - cosThetaI * cosThetaI);
-        if (k >= 0) {
-            GfVec3f refractDir = (eta * rayDir - (eta * cosThetaI + std::sqrt(k)) * n).GetNormalized();
-            return result + GfCompMult(hit.baseColor, _TraceRay(hitPos - shadingNormal * 1e-4f, refractDir, depth + 1, isInteractive, renderThread, lights, rng));
-        }
-        // Total Internal Reflection
-        GfVec3f reflectDir = (rayDir - 2.0f * GfDot(rayDir, shadingNormal) * shadingNormal).GetNormalized();
-        return result + _TraceRay(hitPos + shadingNormal * 1e-4f, reflectDir, depth + 1, isInteractive, renderThread, lights, rng);
     }
 
-    // Diffuse path
+    // Diffuse path (if not reflected or refracted)
     if (!lights.empty()) {
         auto it = lights.begin();
         std::advance(it, (size_t)(RandomFloat(rng) * lights.size()));

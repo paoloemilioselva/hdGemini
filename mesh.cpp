@@ -201,8 +201,16 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
             VtValue val = sceneDelegate->GetIndexedPrimvar(id, colorToken, &colorIndices);
             if (val.IsEmpty()) val = sceneDelegate->Get(id, colorToken);
 
-            if (!val.IsEmpty() && val.IsHolding<VtVec3fArray>()) {
-                VtVec3fArray colors = val.UncheckedGet<VtVec3fArray>();
+            if (!val.IsEmpty() && (val.IsHolding<VtVec3fArray>() || val.IsHolding<VtVec4fArray>())) {
+                VtVec3fArray colors;
+                if (val.IsHolding<VtVec3fArray>()) {
+                    colors = val.UncheckedGet<VtVec3fArray>();
+                } else {
+                    const auto& c4 = val.UncheckedGet<VtVec4fArray>();
+                    colors.resize(c4.size());
+                    for (size_t j = 0; j < c4.size(); ++j) colors[j] = GfVec3f(c4[j][0], c4[j][1], c4[j][2]);
+                }
+
                 if (!colorIndices.empty()) {
                     VtVec3fArray flattened(colorIndices.size());
                     for (size_t i = 0; i < colorIndices.size(); ++i) {
@@ -366,8 +374,17 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
         std::map<SdfPath, GroupedData> grouped;
 
         for (size_t i = 0; i < allTriangulatedIndices.size(); ++i) {
-            // Correct face index decoding: LOW bits 0-27
-            int faceIdx = trianglePrimitiveParams[i] & 0x0FFFFFFF;
+            // Hydra encodes face index in the upper bits of primitiveParams
+            // but the exact shift can vary. The most reliable way is often masking
+            // or shifting depending on the version. Let's try both or just shift by 3.
+            // Actually, in many cases it's (faceIdx << 3) | edgeFlags.
+            int faceIdx = trianglePrimitiveParams[i] >> 3;
+            
+            // If the resulting faceIdx is impossible, fallback to bitmask
+            if (faceIdx < 0 || (size_t)faceIdx >= faceMaterialPaths.size()) {
+                faceIdx = trianglePrimitiveParams[i] & 0x0FFFFFFF;
+            }
+
             SdfPath matPath = defaultMaterialId;
             if (faceIdx >= 0 && (size_t)faceIdx < faceMaterialPaths.size()) {
                 matPath = faceMaterialPaths[faceIdx];

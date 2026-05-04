@@ -11,6 +11,7 @@
 #include "pxr/base/gf/range3f.h"
 #include "pxr/base/gf/vec2f.h"
 #include "pxr/usd/sdf/assetPath.h"
+#include "mesh.h"
 #include <vector>
 #include <atomic>
 #include <map>
@@ -19,7 +20,6 @@
 PXR_NAMESPACE_USING_DIRECTIVE
 
 class HdGeminiRenderDelegate;
-class HdGeminiMesh;
 class HdGeminiLight;
 class HdGeminiMaterial;
 
@@ -42,7 +42,8 @@ public:
 private:
     struct MeshInstance {
         HdGeminiMesh* mesh;
-        std::vector<HdGeminiMaterial*> materials;
+        const HdGeminiMesh::Subset* subset;
+        HdGeminiMaterial* material = nullptr;
         GfMatrix4f transform;
         GfMatrix4f invTransform;
         GfRange3f bounds;

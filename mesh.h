@@ -16,6 +16,13 @@ PXR_NAMESPACE_USING_DIRECTIVE
 
 class HdGeminiMesh final : public HdMesh {
 public:
+    struct Subset {
+        SdfPath materialId;
+        VtVec3iArray indices;
+        BVH bvh;
+        GfRange3f range;
+    };
+
     HdGeminiMesh(SdfPath const& id);
     virtual ~HdGeminiMesh() = default;
 
@@ -29,17 +36,14 @@ public:
     virtual void Finalize(HdRenderParam *renderParam) override;
 
     const VtVec3fArray& GetPoints() const { return _points; }
-    const VtVec3iArray& GetIndices() const { return _triangulatedIndices; }
     const GfMatrix4f& GetTransform() const { return _transform; }
-    const GfRange3f& GetRange() const { return _range; }
-    const BVH& GetBVH() const { return _bvh; }
-    const SdfPath& GetInstancerId() const { return _instancerId; }
-    const SdfPath& GetMaterialId() const { return _materialId; }
-    const std::vector<SdfPath>& GetMaterialIds() const { return _materialIds; }
     bool IsVisible() const { return _visible; }
     const VtVec3fArray& GetColors() const { return _colors; }
     const VtVec2fArray& GetUVs() const { return _uvs; }
     const VtVec3fArray& GetNormals() const { return _normals; }
+    
+    const std::vector<Subset>& GetSubsets() const { return _subsets; }
+    const SdfPath& GetInstancerId() const { return _instancerId; }
 
 protected:
     virtual void _InitRepr(TfToken const &reprToken,
@@ -52,16 +56,12 @@ private:
                                                 HdDirtyBits dirtyBits);
 
     VtVec3fArray _points;
-    VtVec3iArray _triangulatedIndices;
     GfMatrix4f _transform;
-    GfRange3f _range;
-    BVH _bvh;
     SdfPath _instancerId;
-    SdfPath _materialId;
-    std::vector<SdfPath> _materialIds;
-    std::vector<int> _triangleMaterialIndices;
+    std::vector<Subset> _subsets;
     bool _visible;
-    bool _bvhDirty;
+    bool _subsetsDirty;
+    
     VtVec3fArray _colors;
     VtVec2fArray _uvs;
     VtVec3fArray _normals;

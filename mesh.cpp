@@ -16,7 +16,7 @@ PXR_NAMESPACE_USING_DIRECTIVE
 HdGeminiMesh::HdGeminiMesh(SdfPath const& id)
     : HdMesh(id)
     , _visible(true)
-    , _bvhDirty(true)
+    , _subsetsDirty(true)
 {
 }
 
@@ -103,12 +103,12 @@ HdGeminiMesh::_UpdateComputedPrimvarSources(HdSceneDelegate* sceneDelegate,
         if (compPrimvar.name == HdTokens->points) {
             if (val.IsHolding<VtVec3fArray>()) {
                 _points = val.UncheckedGet<VtVec3fArray>();
-                _bvhDirty = true;
+                _subsetsDirty = true;
             } else if (val.IsHolding<VtVec3dArray>()) {
                 const VtVec3dArray& pointsd = val.UncheckedGet<VtVec3dArray>();
                 _points.resize(pointsd.size());
                 for (size_t j = 0; j < pointsd.size(); ++j) _points[j] = GfVec3f(pointsd[j]);
-                _bvhDirty = true;
+                _subsetsDirty = true;
             }
         } else if (compPrimvar.name == HdTokens->displayColor) {
             if (val.IsHolding<VtVec3fArray>()) {
@@ -162,7 +162,6 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
     if (pointsDirty) {
         bool pointsActuallyUpdated = pointsUpdatedByComputation;
 
-        // 1. Try standard "points" attribute via Get()
         if (!pointsActuallyUpdated) {
             VtValue val = sceneDelegate->Get(id, HdTokens->points);
             if (!val.IsEmpty()) {
@@ -179,7 +178,7 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
         }
 
         if (pointsActuallyUpdated) {
-            _bvhDirty = true;
+            _subsetsDirty = true;
         }
     }
 
@@ -332,19 +331,23 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
 
     if (HdChangeTracker::IsTopologyDirty(*dirtyBits, id) || 
         (*dirtyBits & HdChangeTracker::DirtyMaterialId) ||
-        _triangleMaterialIndices.empty()) {
+        _subsetsDirty) {
         
-        _materialId = sceneDelegate->GetMaterialId(id);
+        SdfPath defaultMaterialId = sceneDelegate->GetMaterialId(id);
         HdMeshTopology topology = GetMeshTopology(sceneDelegate);
         HdMeshUtil meshUtil(&topology, id);
-        VtIntArray trianglePrimitiveParams;
-        meshUtil.ComputeTriangleIndices(&_triangulatedIndices, &trianglePrimitiveParams);
         
-        // Map triangles to material IDs (GeomSubsets)
-        // In some USD versions, subsets are part of topology
+        VtVec3iArray allTriangulatedIndices;
+        VtIntArray trianglePrimitiveParams;
+        meshUtil.ComputeTriangleIndices(&allTriangulatedIndices, &trianglePrimitiveParams);
+        
+        // Map original faces to material IDs (GeomSubsets)
         HdGeomSubsets geomSubsets = topology.GetGeomSubsets();
-        std::vector<SdfPath> faceMaterialPaths(topology.GetNumFaces(), _materialId);
+        std::vector<SdfPath> faceMaterialPaths(topology.GetNumFaces(), defaultMaterialId);
+        
+        std::cout << "[Gemini] Mesh " << id.GetText() << " has " << geomSubsets.size() << " geomsubsets." << std::endl;
         for (const auto& subset : geomSubsets) {
+            std::cout << "[Gemini]   Subset " << subset.id.GetText() << " | Material: " << subset.materialId.GetText() << " | Face count: " << subset.indices.size() << std::endl;
             for (int faceIdx : subset.indices) {
                 if (faceIdx >= 0 && (size_t)faceIdx < faceMaterialPaths.size()) {
                     faceMaterialPaths[faceIdx] = subset.materialId;
@@ -352,40 +355,39 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
             }
         }
         
-        // Compute unique materials for this mesh
-        _materialIds.clear();
-        _materialIds.push_back(_materialId);
-        for (const auto& subset : geomSubsets) {
-            if (std::find(_materialIds.begin(), _materialIds.end(), subset.materialId) == _materialIds.end()) {
-                _materialIds.push_back(subset.materialId);
-            }
-        }
-
-        // Map each triangle to its material index
-        _triangleMaterialIndices.clear();
-        _triangleMaterialIndices.reserve(trianglePrimitiveParams.size());
-        for (int primIdx : trianglePrimitiveParams) {
-            SdfPath matPath = _materialId;
+        // Group triangulated indices by material ID
+        std::map<SdfPath, VtVec3iArray> groupedIndices;
+        for (size_t i = 0; i < allTriangulatedIndices.size(); ++i) {
+            int primIdx = trianglePrimitiveParams[i];
+            SdfPath matPath = defaultMaterialId;
             if (primIdx >= 0 && (size_t)primIdx < faceMaterialPaths.size()) {
                 matPath = faceMaterialPaths[primIdx];
             }
-            auto it = std::find(_materialIds.begin(), _materialIds.end(), matPath);
-            _triangleMaterialIndices.push_back((int)std::distance(_materialIds.begin(), it));
+            groupedIndices[matPath].push_back(allTriangulatedIndices[i]);
         }
-        _bvhDirty = true;
-    }
 
-    if (_bvhDirty) {
-        _range.SetEmpty();
-        if (!_points.empty()) {
-            for (const auto& p : _points) {
-                _range.ExtendBy(p);
+        // Rebuild subsets
+        _subsets.clear();
+        for (auto& pair : groupedIndices) {
+            Subset subset;
+            subset.materialId = pair.first;
+            subset.indices = std::move(pair.second);
+            
+            // Build subset BVH
+            if (!subset.indices.empty() && !_points.empty()) {
+                subset.bvh.Build(_points, subset.indices, _uvs, _normals, std::vector<int>());
+                
+                // Compute subset bounds
+                subset.range.SetEmpty();
+                for (const auto& tri : subset.indices) {
+                    subset.range.ExtendBy(_points[tri[0]]);
+                    subset.range.ExtendBy(_points[tri[1]]);
+                    subset.range.ExtendBy(_points[tri[2]]);
+                }
             }
-            _bvh.Build(_points, _triangulatedIndices, _uvs, _normals, _triangleMaterialIndices);
-        } else {
-            _bvh.Build(VtVec3fArray(), VtVec3iArray(), VtVec2fArray(), VtVec3fArray(), std::vector<int>());
+            _subsets.push_back(std::move(subset));
         }
-        _bvhDirty = false;
+        _subsetsDirty = false;
     }
 
     *dirtyBits &= ~HdChangeTracker::AllSceneDirtyBits;

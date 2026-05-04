@@ -246,42 +246,38 @@ HdGeminiRenderer::_PrepareScene(HdRenderThread *renderThread, HdGeminiRenderDele
         HdGeminiMesh* mesh = item.second;
         if (!mesh->IsVisible()) continue;
 
-        GfRange3f meshBounds = mesh->GetRange();
-        if (meshBounds.IsEmpty()) {
-            continue;
-        }
-
-        std::vector<HdGeminiMaterial*> materials;
-        for (const auto& matId : mesh->GetMaterialIds()) {
-            materials.push_back(delegate->GetMaterial(matId));
-        }
-
         if (!mesh->GetInstancerId().IsEmpty()) {
             HdGeminiInstancer* instancer = delegate->GetInstancer(mesh->GetInstancerId());
             if (instancer) {
                 VtMatrix4dArray transforms = instancer->ComputeInstanceTransforms(mesh->GetId());
                 for (const auto& t : transforms) {
-                    MeshInstance inst;
-                    inst.mesh = mesh;
-                    inst.materials = materials;
-                    inst.transform = GfMatrix4f(t) * mesh->GetTransform();
-                    inst.invTransform = inst.transform.GetInverse();
-                    inst.bounds = TransformBounds(meshBounds, inst.transform);
-                    inst.centroid = (inst.bounds.GetMin() + inst.bounds.GetMax()) * 0.5f;
-                    _instances.push_back(inst);
+                    for (const auto& subset : mesh->GetSubsets()) {
+                        MeshInstance inst;
+                        inst.mesh = mesh;
+                        inst.subset = &subset;
+                        inst.material = delegate->GetMaterial(subset.materialId);
+                        inst.transform = GfMatrix4f(t) * mesh->GetTransform();
+                        inst.invTransform = inst.transform.GetInverse();
+                        inst.bounds = TransformBounds(subset.range, inst.transform);
+                        inst.centroid = (inst.bounds.GetMin() + inst.bounds.GetMax()) * 0.5f;
+                        _instances.push_back(inst);
+                    }
                 }
             }
             continue;
         }
 
-        MeshInstance inst;
-        inst.mesh = mesh;
-        inst.materials = materials;
-        inst.transform = mesh->GetTransform();
-        inst.invTransform = inst.transform.GetInverse();
-        inst.bounds = TransformBounds(meshBounds, inst.transform);
-        inst.centroid = (inst.bounds.GetMin() + inst.bounds.GetMax()) * 0.5f;
-        _instances.push_back(inst);
+        for (const auto& subset : mesh->GetSubsets()) {
+            MeshInstance inst;
+            inst.mesh = mesh;
+            inst.subset = &subset;
+            inst.material = delegate->GetMaterial(subset.materialId);
+            inst.transform = mesh->GetTransform();
+            inst.invTransform = inst.transform.GetInverse();
+            inst.bounds = TransformBounds(subset.range, inst.transform);
+            inst.centroid = (inst.bounds.GetMin() + inst.bounds.GetMax()) * 0.5f;
+            _instances.push_back(inst);
+        }
     }
 
     _BuildTLAS(renderThread);
@@ -372,7 +368,7 @@ bool HdGeminiRenderer::_IntersectTLAS(int nodeIdx, const GfVec3f& rayOrigin, con
             GfVec2f instUv;
             GfVec3f instSmoothNormal;
             int matIdx = -1;
-            if (inst.mesh->GetBVH().Intersect(objRayOrigin, objRayDir, instT, instNormal, instUv, instSmoothNormal, matIdx)) {
+            if (inst.subset->bvh.Intersect(objRayOrigin, objRayDir, instT, instNormal, instUv, instSmoothNormal, matIdx)) {
                 if (instT < hit.t) {
                     hit.t = instT;
                     hit.normal = inst.transform.TransformDir(instNormal).GetNormalized();
@@ -382,21 +378,16 @@ bool HdGeminiRenderer::_IntersectTLAS(int nodeIdx, const GfVec3f& rayOrigin, con
                     const VtVec3fArray& colors = inst.mesh->GetColors();
                     if (!colors.empty()) hit.baseColor = colors[0];
                     
-                    HdGeminiMaterial* material = nullptr;
-                    if (matIdx >= 0 && matIdx < (int)inst.materials.size()) {
-                        material = inst.materials[matIdx];
-                    }
-                    
-                    if (material) {
-                        hit.baseColor = GfCompMult(hit.baseColor, material->GetDiffuseColor());
-                        hit.metallic = material->GetMetallic();
-                        hit.roughness = material->GetRoughness();
-                        hit.opacity = material->GetOpacity();
-                        hit.ior = material->GetIor();
-                        hit.transmission = material->GetTransmission();
-                        hit.transmissionColor = material->GetTransmissionColor();
-                        hit.emission = material->GetEmissionColor() * material->GetEmission();
-                        hit.diffuseTexture = material->GetDiffuseTexture();
+                    if (inst.material) {
+                        hit.baseColor = GfCompMult(hit.baseColor, inst.material->GetDiffuseColor());
+                        hit.metallic = inst.material->GetMetallic();
+                        hit.roughness = inst.material->GetRoughness();
+                        hit.opacity = inst.material->GetOpacity();
+                        hit.ior = inst.material->GetIor();
+                        hit.transmission = inst.material->GetTransmission();
+                        hit.transmissionColor = inst.material->GetTransmissionColor();
+                        hit.emission = inst.material->GetEmissionColor() * inst.material->GetEmission();
+                        hit.diffuseTexture = inst.material->GetDiffuseTexture();
                     }
                     hit.hit = true;
                     wasHit = true;
@@ -667,7 +658,7 @@ GfVec3f HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVec3f& ray
                         float innerAngleRad = coneAngleRad * (1.0f - softness);
                         float cosInnerAngle = std::cos(innerAngleRad);
                         if (cosTheta < cosInnerAngle) {
-                            float factor = (cosTheta - cosConeAngle) / (cosInnerAngle - cosConeAngle);
+                            float factor = (cosTheta - cosConeAngle) / (cosInnerAngle - cosInnerAngle);
                             // smoothstep
                             factor = factor * factor * (3.0f - 2.0f * factor);
                             lColor *= factor;

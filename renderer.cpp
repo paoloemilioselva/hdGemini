@@ -527,6 +527,11 @@ GfVec3f HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVec3f& ray
         return _TraceRay(hitPos + rayDir * 1e-4f, rayDir, depth, isInteractive, renderThread, lights, rng);
     }
 
+    // DEBUG: Force stochastic transparency for fully transmissive objects to test path integrity
+    if (hit.transmission > 0.999f) {
+        return _TraceRay(hitPos + rayDir * 1e-4f, rayDir, depth, isInteractive, renderThread, lights, rng);
+    }
+
     GfVec3f shadingNormal = hit.smoothNormal;
     if (GfDot(shadingNormal, rayDir) > 0) shadingNormal = -shadingNormal;
 

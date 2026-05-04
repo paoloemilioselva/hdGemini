@@ -374,13 +374,10 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
         std::map<SdfPath, GroupedData> grouped;
 
         for (size_t i = 0; i < allTriangulatedIndices.size(); ++i) {
-            // Hydra encodes face index in the upper bits of primitiveParams
-            // but the exact shift can vary. The most reliable way is often masking
-            // or shifting depending on the version. Let's try both or just shift by 3.
-            // Actually, in many cases it's (faceIdx << 3) | edgeFlags.
-            int faceIdx = trianglePrimitiveParams[i] >> 3;
-            
-            // If the resulting faceIdx is impossible, fallback to bitmask
+            // Correct face index decoding: 
+            // - Shift right by 2 is typical for subdivided meshes where faceIndex is in high bits
+            // - Masking with 0x0FFFFFFF is used for non-shifted face indices
+            int faceIdx = trianglePrimitiveParams[i] >> 2;
             if (faceIdx < 0 || (size_t)faceIdx >= faceMaterialPaths.size()) {
                 faceIdx = trianglePrimitiveParams[i] & 0x0FFFFFFF;
             }
@@ -418,6 +415,8 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
             subset.materialId = pair.first;
             subset.indices = std::move(pair.second.indices);
             
+            std::cout << "[Gemini]   Created sub-mesh from " << id.GetText() << " for material " << subset.materialId.GetText() << " with " << subset.indices.size() << " triangles." << std::endl;
+
             VtVec3fArray subsetColors = pair.second.colors.empty() ? _colors : pair.second.colors;
             VtVec2fArray subsetUvs = pair.second.uvs.empty() ? _uvs : pair.second.uvs;
             VtVec3fArray subsetNormals = pair.second.normals.empty() ? _normals : pair.second.normals;

@@ -357,10 +357,10 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
         
         // Group triangulated indices by material ID
         std::map<SdfPath, VtVec3iArray> groupedIndices;
-        std::cout << "[Gemini] Mesh " << id.GetText() << " splitting into subsets:" << std::endl;
         for (size_t i = 0; i < allTriangulatedIndices.size(); ++i) {
-            // Mask out the triangle index within the face to get the original face index
-            int faceIdx = trianglePrimitiveParams[i] & 0x0FFFFFFF;
+            // Hydra encodes face index in the upper bits of primitiveParams
+            // For triangles, the lower 3 bits are used for edge flags.
+            int faceIdx = trianglePrimitiveParams[i] >> 3;
             SdfPath matPath = defaultMaterialId;
             if (faceIdx >= 0 && (size_t)faceIdx < faceMaterialPaths.size()) {
                 matPath = faceMaterialPaths[faceIdx];
@@ -375,9 +375,6 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
             subset.materialId = pair.first;
             subset.indices = std::move(pair.second);
             std::cout << "[Gemini]   Sub-mesh for " << pair.first.GetText() << " has " << subset.indices.size() << " triangles." << std::endl;
-            if (!subset.indices.empty()) {
-                std::cout << "[Gemini]     First triangle: " << subset.indices[0] << std::endl;
-            }
             
             // Build subset BVH
             if (!subset.indices.empty() && !_points.empty()) {

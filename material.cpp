@@ -139,6 +139,17 @@ static void _ProcessNodeUpstream(
                     std::cout << "[Gemini]       Mapped diffuse texture: " << material->GetDiffuseTexture().GetAssetPath() << std::endl;
                 }
             }
+        } else if (targetInput == TfToken("emissiveColor") || targetInput == TfToken("emission_color") || targetInput == TfToken("emission") || targetInput == TfToken("emission_luminance")) {
+             for (auto const& param : node.parameters) {
+                if ((param.first == TfToken("file") || param.first == TfToken("texcoord")) && 
+                    param.second.IsHolding<SdfAssetPath>()) {
+                    std::cout << "[Gemini]       Mapped emissive texture: " << param.second.UncheckedGet<SdfAssetPath>().GetAssetPath() << std::endl;
+                    // For now, if diffuse is empty, use emissive as a placeholder so it shows up
+                    if (material->GetDiffuseTexture().GetAssetPath().empty()) {
+                        material->SetDiffuseTexture(param.second.UncheckedGet<SdfAssetPath>());
+                    }
+                }
+            }
         } else if (targetInput == TfToken("normal")) {
              for (auto const& param : node.parameters) {
                 if ((param.first == TfToken("file") || param.first == TfToken("texcoord")) && 
@@ -206,6 +217,9 @@ HdGeminiMaterial::Sync(HdSceneDelegate *sceneDelegate,
                 const SdfPath& terminalPath = network.terminals.at(selectedTerminal).upstreamNode;
                 std::cout << "[Gemini]   Selected terminal: " << selectedTerminal.GetText() << " -> " << terminalPath.GetText() << std::endl;
                 _ProcessNodeUpstream(network, terminalPath, visited, this);
+                
+                std::cout << "[Gemini]   Final Params: Diffuse=" << _diffuseColor << " | Emission=" << (_emissionColor * _emission) 
+                          << " (Color=" << _emissionColor << ", Weight=" << _emission << ") | Opacity=" << _opacity << std::endl;
             } else {
                 std::cout << "[Gemini]   No terminals found in network!" << std::endl;
             }

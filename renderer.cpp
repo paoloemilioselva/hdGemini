@@ -367,16 +367,15 @@ bool HdGeminiRenderer::_IntersectTLAS(int nodeIdx, const GfVec3f& rayOrigin, con
             GfVec3f instNormal;
             GfVec2f instUv;
             GfVec3f instSmoothNormal;
+            GfVec3f instSmoothColor;
             int matIdx = -1;
-            if (inst.subset->bvh.Intersect(objRayOrigin, objRayDir, instT, instNormal, instUv, instSmoothNormal, matIdx)) {
+            if (inst.subset->bvh.Intersect(objRayOrigin, objRayDir, instT, instNormal, instUv, instSmoothNormal, instSmoothColor, matIdx)) {
                 if (instT < hit.t) {
                     hit.t = instT;
                     hit.normal = inst.transform.TransformDir(instNormal).GetNormalized();
                     hit.smoothNormal = inst.transform.TransformDir(instSmoothNormal).GetNormalized();
                     hit.uv = instUv;
-                    hit.baseColor = GfVec3f(1.0f);
-                    const VtVec3fArray& colors = inst.mesh->GetColors();
-                    if (!colors.empty()) hit.baseColor = colors[0];
+                    hit.baseColor = instSmoothColor; // Use interpolated vertex color
                     
                     if (inst.material) {
                         hit.baseColor = GfCompMult(hit.baseColor, inst.material->GetDiffuseColor());
@@ -658,7 +657,7 @@ GfVec3f HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVec3f& ray
                         float innerAngleRad = coneAngleRad * (1.0f - softness);
                         float cosInnerAngle = std::cos(innerAngleRad);
                         if (cosTheta < cosInnerAngle) {
-                            float factor = (cosTheta - cosConeAngle) / (cosInnerAngle - cosInnerAngle);
+                            float factor = (cosTheta - cosConeAngle) / (cosInnerAngle - cosConeAngle);
                             // smoothstep
                             factor = factor * factor * (3.0f - 2.0f * factor);
                             lColor *= factor;

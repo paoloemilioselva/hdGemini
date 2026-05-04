@@ -54,7 +54,7 @@ IntersectAABB(const GfVec3f& rayOrigin, const GfVec3f& rayDir, const GfRange3f& 
     return tmax > 0 && tmax > 1e-4;
 }
 
-void BVH::Build(const VtVec3fArray& points, const VtVec3iArray& indices, const VtVec2fArray& uvs, const VtVec3fArray& normals, const std::vector<int>& materialIndices) {
+void BVH::Build(const VtVec3fArray& points, const VtVec3iArray& indices, const VtVec2fArray& uvs, const VtVec3fArray& normals, const VtVec3fArray& colors, const std::vector<int>& materialIndices) {
     _triangles.clear();
     _nodes.clear();
     if (indices.empty() || points.empty()) return;
@@ -73,12 +73,10 @@ void BVH::Build(const VtVec3fArray& points, const VtVec3iArray& indices, const V
 
         if (!uvs.empty()) {
             if (uvs.size() == indices.size() * 3) {
-                // Face-varying (triangulated) UVs
                 tri.uv0 = uvs[i * 3 + 0];
                 tri.uv1 = uvs[i * 3 + 1];
                 tri.uv2 = uvs[i * 3 + 2];
             } else {
-                // Vertex-indexed UVs
                 tri.uv0 = (triIdx[0] < (int)uvs.size()) ? uvs[triIdx[0]] : GfVec2f(0.0f);
                 tri.uv1 = (triIdx[1] < (int)uvs.size()) ? uvs[triIdx[1]] : GfVec2f(0.0f);
                 tri.uv2 = (triIdx[2] < (int)uvs.size()) ? uvs[triIdx[2]] : GfVec2f(0.0f);
@@ -89,18 +87,30 @@ void BVH::Build(const VtVec3fArray& points, const VtVec3iArray& indices, const V
 
         if (!normals.empty()) {
             if (normals.size() == indices.size() * 3) {
-                // Face-varying (triangulated) Normals
                 tri.n0 = normals[i * 3 + 0];
                 tri.n1 = normals[i * 3 + 1];
                 tri.n2 = normals[i * 3 + 2];
             } else {
-                // Vertex-indexed Normals
                 tri.n0 = (triIdx[0] < (int)normals.size()) ? normals[triIdx[0]] : GfVec3f(0.0f, 1.0f, 0.0f);
                 tri.n1 = (triIdx[1] < (int)normals.size()) ? normals[triIdx[1]] : GfVec3f(0.0f, 1.0f, 0.0f);
                 tri.n2 = (triIdx[2] < (int)normals.size()) ? normals[triIdx[2]] : GfVec3f(0.0f, 1.0f, 0.0f);
             }
         } else {
             tri.n0 = tri.n1 = tri.n2 = GfVec3f(0.0f, 0.0f, 0.0f);
+        }
+
+        if (!colors.empty()) {
+            if (colors.size() == indices.size() * 3) {
+                tri.c0 = colors[i * 3 + 0];
+                tri.c1 = colors[i * 3 + 1];
+                tri.c2 = colors[i * 3 + 2];
+            } else {
+                tri.c0 = (triIdx[0] < (int)colors.size()) ? colors[triIdx[0]] : GfVec3f(1.0f);
+                tri.c1 = (triIdx[1] < (int)colors.size()) ? colors[triIdx[1]] : GfVec3f(1.0f);
+                tri.c2 = (triIdx[2] < (int)colors.size()) ? colors[triIdx[2]] : GfVec3f(1.0f);
+            }
+        } else {
+            tri.c0 = tri.c1 = tri.c2 = GfVec3f(1.0f);
         }
 
         tri.materialIndex = (i < materialIndices.size()) ? materialIndices[i] : -1;
@@ -131,7 +141,6 @@ void BVH::_Subdivide(int nodeIdx, int start, int end) {
         return;
     }
 
-    // Split along largest axis
     GfVec3f size = node.bounds.GetSize();
     int axis = 0;
     if (size[1] > size[0]) axis = 1;
@@ -152,7 +161,6 @@ void BVH::_Subdivide(int nodeIdx, int start, int end) {
 
     int leftCount = i - start;
     if (leftCount == 0 || leftCount == count) {
-        // Failed split, just split in middle
         i = start + count / 2;
     }
 
@@ -166,12 +174,12 @@ void BVH::_Subdivide(int nodeIdx, int start, int end) {
     _Subdivide(leftChildIdx + 1, i, end);
 }
 
-bool BVH::Intersect(const GfVec3f& rayOrigin, const GfVec3f& rayDir, float& t, GfVec3f& normal, GfVec2f& uv, GfVec3f& smoothNormal, int& materialIndex) const {
+bool BVH::Intersect(const GfVec3f& rayOrigin, const GfVec3f& rayDir, float& t, GfVec3f& normal, GfVec2f& uv, GfVec3f& smoothNormal, GfVec3f& smoothColor, int& materialIndex) const {
     if (_nodes.empty()) return false;
-    return _IntersectNode(0, rayOrigin, rayDir, t, normal, uv, smoothNormal, materialIndex);
+    return _IntersectNode(0, rayOrigin, rayDir, t, normal, uv, smoothNormal, smoothColor, materialIndex);
 }
 
-bool BVH::_IntersectNode(int nodeIdx, const GfVec3f& rayOrigin, const GfVec3f& rayDir, float& t, GfVec3f& normal, GfVec2f& uv, GfVec3f& smoothNormal, int& materialIndex) const {
+bool BVH::_IntersectNode(int nodeIdx, const GfVec3f& rayOrigin, const GfVec3f& rayDir, float& t, GfVec3f& normal, GfVec2f& uv, GfVec3f& smoothNormal, GfVec3f& smoothColor, int& materialIndex) const {
     const BVHNode& node = _nodes[nodeIdx];
     float tAabb;
     if (!IntersectAABB(rayOrigin, rayDir, node.bounds, tAabb)) return false;
@@ -195,6 +203,7 @@ bool BVH::_IntersectNode(int nodeIdx, const GfVec3f& rayOrigin, const GfVec3f& r
                     } else {
                         smoothNormal = normal;
                     }
+                    smoothColor = (tri.c0 * w + tri.c1 * triU + tri.c2 * triV);
                     materialIndex = tri.materialIndex;
                     hit = true;
                 }
@@ -202,8 +211,8 @@ bool BVH::_IntersectNode(int nodeIdx, const GfVec3f& rayOrigin, const GfVec3f& r
         }
         return hit;
     } else {
-        bool hitLeft = _IntersectNode(node.leftChild, rayOrigin, rayDir, t, normal, uv, smoothNormal, materialIndex);
-        bool hitRight = _IntersectNode(node.leftChild + 1, rayOrigin, rayDir, t, normal, uv, smoothNormal, materialIndex);
+        bool hitLeft = _IntersectNode(node.leftChild, rayOrigin, rayDir, t, normal, uv, smoothNormal, smoothColor, materialIndex);
+        bool hitRight = _IntersectNode(node.leftChild + 1, rayOrigin, rayDir, t, normal, uv, smoothNormal, smoothColor, materialIndex);
         return hitLeft || hitRight;
     }
 }

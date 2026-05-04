@@ -224,6 +224,7 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
                 } else {
                     _colors = colors;
                 }
+                _subsetsDirty = true;
             }
         }
     }
@@ -278,6 +279,7 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
             } else {
                 _uvs = uvs;
             }
+            _subsetsDirty = true;
         }
     }
 
@@ -326,6 +328,7 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
             } else {
                 _normals = normals;
             }
+            _subsetsDirty = true;
         }
     }
 
@@ -345,9 +348,7 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
         HdGeomSubsets geomSubsets = topology.GetGeomSubsets();
         std::vector<SdfPath> faceMaterialPaths(topology.GetNumFaces(), defaultMaterialId);
         
-        std::cout << "[Gemini] Mesh " << id.GetText() << " has " << geomSubsets.size() << " geomsubsets." << std::endl;
         for (const auto& subset : geomSubsets) {
-            std::cout << "[Gemini]   Subset " << subset.id.GetText() << " | Material: " << subset.materialId.GetText() << " | Face count: " << subset.indices.size() << std::endl;
             for (int faceIdx : subset.indices) {
                 if (faceIdx >= 0 && (size_t)faceIdx < faceMaterialPaths.size()) {
                     faceMaterialPaths[faceIdx] = subset.materialId;
@@ -355,30 +356,59 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
             }
         }
         
-        // Group triangulated indices by material ID
-        std::map<SdfPath, VtVec3iArray> groupedIndices;
+        // Group everything
+        struct GroupedData {
+            VtVec3iArray indices;
+            VtVec3fArray colors;
+            VtVec2fArray uvs;
+            VtVec3fArray normals;
+        };
+        std::map<SdfPath, GroupedData> grouped;
+
         for (size_t i = 0; i < allTriangulatedIndices.size(); ++i) {
-            // Hydra encodes face index in the upper bits of primitiveParams
-            // For triangles, the lower 3 bits are used for edge flags.
             int faceIdx = trianglePrimitiveParams[i] >> 3;
             SdfPath matPath = defaultMaterialId;
             if (faceIdx >= 0 && (size_t)faceIdx < faceMaterialPaths.size()) {
                 matPath = faceMaterialPaths[faceIdx];
             }
-            groupedIndices[matPath].push_back(allTriangulatedIndices[i]);
+            
+            GroupedData& g = grouped[matPath];
+            g.indices.push_back(allTriangulatedIndices[i]);
+            
+            // Slice face-varying primvars
+            if (_colors.size() == allTriangulatedIndices.size() * 3) {
+                g.colors.push_back(_colors[i * 3 + 0]);
+                g.colors.push_back(_colors[i * 3 + 1]);
+                g.colors.push_back(_colors[i * 3 + 2]);
+            }
+            if (_uvs.size() == allTriangulatedIndices.size() * 3) {
+                g.uvs.push_back(_uvs[i * 3 + 0]);
+                g.uvs.push_back(_uvs[i * 3 + 1]);
+                g.uvs.push_back(_uvs[i * 3 + 2]);
+            }
+            if (_normals.size() == allTriangulatedIndices.size() * 3) {
+                g.normals.push_back(_normals[i * 3 + 0]);
+                g.normals.push_back(_normals[i * 3 + 1]);
+                g.normals.push_back(_normals[i * 3 + 2]);
+            }
         }
 
         // Rebuild subsets
         _subsets.clear();
-        for (auto& pair : groupedIndices) {
+        for (auto& pair : grouped) {
             Subset subset;
             subset.materialId = pair.first;
-            subset.indices = std::move(pair.second);
-            std::cout << "[Gemini]   Sub-mesh for " << pair.first.GetText() << " has " << subset.indices.size() << " triangles." << std::endl;
+            subset.indices = std::move(pair.second.indices);
             
+            // If primvars are not face-varying (length doesn't match triangle count * 3), 
+            // use the shared mesh-wide arrays.
+            VtVec3fArray subsetColors = pair.second.colors.empty() ? _colors : pair.second.colors;
+            VtVec2fArray subsetUvs = pair.second.uvs.empty() ? _uvs : pair.second.uvs;
+            VtVec3fArray subsetNormals = pair.second.normals.empty() ? _normals : pair.second.normals;
+
             // Build subset BVH
             if (!subset.indices.empty() && !_points.empty()) {
-                subset.bvh.Build(_points, subset.indices, _uvs, _normals, std::vector<int>());
+                subset.bvh.Build(_points, subset.indices, subsetUvs, subsetNormals, subsetColors, std::vector<int>());
                 
                 // Compute subset bounds
                 subset.range.SetEmpty();

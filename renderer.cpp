@@ -169,6 +169,7 @@ void
 HdGeminiRenderer::_PrepareScene(HdRenderThread *renderThread, HdGeminiRenderDelegate* delegate)
 {
     _instances.clear();
+    _activeLights.clear();
     
     std::lock_guard<std::recursive_mutex> lock(delegate->GetSceneLock());
     const auto& meshes = delegate->GetMeshes();
@@ -177,6 +178,7 @@ HdGeminiRenderer::_PrepareScene(HdRenderThread *renderThread, HdGeminiRenderDele
     bool foundDome = false;
     for (const auto& lightPair : lights) {
         HdGeminiLight* light = lightPair.second;
+        _activeLights.push_back(light);
         if (light->GetLightType() == HdPrimTypeTokens->domeLight) {
             if (light->GetTextureFile() != _lastEnvMapPath) {
                 std::cout << "[Gemini]   Found dome light with env map: " << light->GetTextureFile().GetAssetPath() << std::endl;
@@ -346,62 +348,69 @@ void HdGeminiRenderer::_SubdivideTLAS(int nodeIdx, int start, int end, HdRenderT
     _SubdivideTLAS(leftChildIdx + 1, i, end, renderThread);
 }
 
-bool HdGeminiRenderer::_IntersectTLAS(int nodeIdx, const GfVec3f& rayOrigin, const GfVec3f& rayDir, HitRecord& hit, HdRenderThread* renderThread) const
+bool HdGeminiRenderer::_IntersectTLAS(const GfVec3f& rayOrigin, const GfVec3f& rayDir, HitRecord& hit, HdRenderThread* renderThread) const
 {
     if (_tlasNodes.empty() || renderThread->IsStopRequested()) return false;
 
-    const TLASNode& node = _tlasNodes[nodeIdx];
-    float tAabb;
-    if (!IntersectAABB(rayOrigin, rayDir, node.bounds, tAabb)) return false;
-    if (tAabb > hit.t) return false;
+    int stack[64];
+    int stackPtr = 0;
+    stack[stackPtr++] = 0;
 
-    if (node.leftChild < 0) {
-        bool wasHit = false;
-        int start = -node.leftChild - 1;
-        for (int i = 0; i < node.instanceCount; ++i) {
-            if (renderThread->IsStopRequested()) return false;
-            const auto& inst = _instances[_tlasInstanceIndices[start + i]];
-            GfVec3f objRayOrigin = inst.invTransform.Transform(rayOrigin);
-            GfVec3f objRayDir = inst.invTransform.TransformDir(rayDir);
-            float instT = hit.t;
-            GfVec3f instNormal;
-            GfVec2f instUv;
-            GfVec3f instSmoothNormal;
-            GfVec3f instSmoothColor;
-            int matIdx = -1;
-            if (inst.subset->bvh.Intersect(objRayOrigin, objRayDir, instT, instNormal, instUv, instSmoothNormal, instSmoothColor, matIdx)) {
-                if (instT < hit.t) {
-                    hit.t = instT;
-                    hit.normal = inst.transform.TransformDir(instNormal).GetNormalized();
-                    hit.smoothNormal = inst.transform.TransformDir(instSmoothNormal).GetNormalized();
-                    hit.uv = instUv;
-                    hit.baseColor = instSmoothColor; // Use interpolated vertex color
-                    
-                    if (inst.material) {
-                        hit.baseColor = GfCompMult(hit.baseColor, inst.material->GetDiffuseColor());
-                        hit.metallic = inst.material->GetMetallic();
-                        hit.roughness = inst.material->GetRoughness();
-                        hit.opacity = inst.material->GetOpacity();
-                        hit.ior = inst.material->GetIor();
-                        hit.transmission = inst.material->GetTransmission();
-                        hit.transmissionColor = inst.material->GetTransmissionColor();
-                        hit.emission = inst.material->GetEmissionColor() * inst.material->GetEmission();
-                        hit.diffuseTexture = inst.material->GetDiffuseTexture();
+    bool wasHit = false;
+
+    while (stackPtr > 0) {
+        if (renderThread->IsStopRequested()) return false;
+        int nodeIdx = stack[--stackPtr];
+        const TLASNode& node = _tlasNodes[nodeIdx];
+        
+        float tAabb;
+        if (!IntersectAABB(rayOrigin, rayDir, node.bounds, tAabb) || tAabb > hit.t) continue;
+
+        if (node.leftChild < 0) {
+            int start = -node.leftChild - 1;
+            for (int i = 0; i < node.instanceCount; ++i) {
+                const auto& inst = _instances[_tlasInstanceIndices[start + i]];
+                GfVec3f objRayOrigin = inst.invTransform.Transform(rayOrigin);
+                GfVec3f objRayDir = inst.invTransform.TransformDir(rayDir);
+                float instT = hit.t;
+                GfVec3f instNormal;
+                GfVec2f instUv;
+                GfVec3f instSmoothNormal;
+                GfVec3f instSmoothColor;
+                int matIdx = -1;
+                if (inst.subset->bvh.Intersect(objRayOrigin, objRayDir, instT, instNormal, instUv, instSmoothNormal, instSmoothColor, matIdx)) {
+                    if (instT < hit.t) {
+                        hit.t = instT;
+                        hit.normal = inst.transform.TransformDir(instNormal).GetNormalized();
+                        hit.smoothNormal = inst.transform.TransformDir(instSmoothNormal).GetNormalized();
+                        hit.uv = instUv;
+                        hit.baseColor = instSmoothColor; // Use interpolated vertex color
+                        
+                        if (inst.material) {
+                            hit.baseColor = GfCompMult(hit.baseColor, inst.material->GetDiffuseColor());
+                            hit.metallic = inst.material->GetMetallic();
+                            hit.roughness = inst.material->GetRoughness();
+                            hit.opacity = inst.material->GetOpacity();
+                            hit.ior = inst.material->GetIor();
+                            hit.transmission = inst.material->GetTransmission();
+                            hit.transmissionColor = inst.material->GetTransmissionColor();
+                            hit.emission = inst.material->GetEmissionColor() * inst.material->GetEmission();
+                            hit.diffuseTexture = inst.material->GetDiffuseTexture();
+                        }
+                        hit.hit = true;
+                        wasHit = true;
                     }
-                    hit.hit = true;
-                    wasHit = true;
                 }
             }
+        } else {
+            stack[stackPtr++] = node.leftChild + 1;
+            stack[stackPtr++] = node.leftChild;
         }
-        return wasHit;
-    } else {
-        bool hitLeft = _IntersectTLAS(node.leftChild, rayOrigin, rayDir, hit, renderThread);
-        bool hitRight = _IntersectTLAS(node.leftChild + 1, rayOrigin, rayDir, hit, renderThread);
-        return hitLeft || hitRight;
     }
+    return wasHit;
 }
 
-GfVec3f HdGeminiRenderer::_SampleEnvironment(const GfVec3f& rayDir, const std::map<SdfPath, HdGeminiLight*>& lights) const
+GfVec3f HdGeminiRenderer::_SampleEnvironment(const GfVec3f& rayDir) const
 {
     if (_envMapPixels.empty()) {
         return GfVec3f(0.0f);
@@ -415,8 +424,7 @@ GfVec3f HdGeminiRenderer::_SampleEnvironment(const GfVec3f& rayDir, const std::m
     int y = std::clamp((int)(v * _envMapHeight), 0, _envMapHeight - 1);
     size_t idx = (y * _envMapWidth + x) * 3;
     GfVec3f color(_envMapPixels[idx], _envMapPixels[idx+1], _envMapPixels[idx+2]);
-    for (const auto& lightPair : lights) {
-        HdGeminiLight* light = lightPair.second;
+    for (const auto& light : _activeLights) {
         if (light->GetLightType() == HdPrimTypeTokens->domeLight) {
             return GfCompMult(color, light->GetColor()) * light->GetIntensity();
         }
@@ -511,7 +519,7 @@ static float PowerHeuristic(float f, float g) {
     return f2 / (f2 + g2);
 }
 
-GfVec3f HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVec3f& rayDir, int depth, bool isInteractive, HdRenderThread* renderThread, const std::map<SdfPath, HdGeminiLight*>& lights, uint32_t& rng) const
+GfVec3f HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVec3f& rayDir, int depth, bool isInteractive, HdRenderThread* renderThread, uint32_t& rng) const
 {
     GfVec3f throughput(1.0f);
     GfVec3f totalRadiance(0.0f);
@@ -524,8 +532,8 @@ GfVec3f HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVec3f& ray
         if (renderThread->IsStopRequested()) break;
 
         HitRecord hit;
-        if (!this->_IntersectTLAS(0, currentRayOrigin, currentRayDir, hit, renderThread)) {
-            totalRadiance += GfCompMult(throughput, _SampleEnvironment(currentRayDir, lights));
+        if (!this->_IntersectTLAS(currentRayOrigin, currentRayDir, hit, renderThread)) {
+            totalRadiance += GfCompMult(throughput, _SampleEnvironment(currentRayDir));
             break;
         }
 
@@ -548,14 +556,13 @@ GfVec3f HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVec3f& ray
         totalRadiance += GfCompMult(throughput, hit.emission);
 
         // --- Direct Lighting (Light Sampling) ---
-        if (!lights.empty()) {
-            auto it = lights.begin();
-            std::advance(it, (size_t)(RandomFloat(rng) * lights.size()));
-            HdGeminiLight* light = it->second;
+        if (!_activeLights.empty()) {
+            size_t lightIdx = std::min((size_t)(RandomFloat(rng) * _activeLights.size()), _activeLights.size() - 1);
+            HdGeminiLight* light = _activeLights[lightIdx];
             
             GfVec3f lDir;
             float lightDist = 1e30f;
-            float lightPdf = 1.0f / (float)lights.size();
+            float lightPdf = 1.0f / (float)_activeLights.size();
             GfVec3f lColor(0.0f);
 
             if (light->GetLightType() == HdPrimTypeTokens->distantLight) {
@@ -641,7 +648,7 @@ GfVec3f HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVec3f& ray
                     HitRecord shadowHit;
                     shadowHit.t = lightDist - 1e-3f;
                     GfVec3f shadowOrigin = hitPos + shadingNormal * 1e-4f;
-                    if (!this->_IntersectTLAS(0, shadowOrigin, lDir, shadowHit, renderThread)) {
+                    if (!this->_IntersectTLAS(shadowOrigin, lDir, shadowHit, renderThread)) {
                         GfVec3f bsdf = hit.baseColor / (float)M_PI;
                         totalRadiance += GfCompMult(throughput, GfCompMult(bsdf, lColor)) * (nDotL / (lightPdf + 1e-6f));
                     }
@@ -732,7 +739,6 @@ HdGeminiRenderer::_RenderTiles(HdRenderThread *renderThread, HdGeminiRenderDeleg
     if (!colorBuffer) return;
     GfVec3f cameraPosWorld(_inverseViewMatrix.Transform(GfVec3f(0, 0, 0)));
     std::lock_guard<std::recursive_mutex> lock(delegate->GetSceneLock());
-    const auto& lights = delegate->GetLights();
     int res = _resolutionLevel;
     bool isInteractive = (res > 1);
     const int bucketSize = 16;
@@ -758,7 +764,7 @@ HdGeminiRenderer::_RenderTiles(HdRenderThread *renderThread, HdGeminiRenderDeleg
                     GfVec3f nearPlanePointCam(_inverseProjMatrix.Transform(GfVec3f(ndcX, ndcY, -1.0f)));
                     GfVec3f nearPlanePointWorld(_inverseViewMatrix.Transform(nearPlanePointCam));
                     GfVec3f rayDirWorld = (nearPlanePointWorld - cameraPosWorld).GetNormalized();
-                    GfVec3f hitColor = _TraceRay(cameraPosWorld, rayDirWorld, 0, isInteractive, renderThread, lights, rng);
+                    GfVec3f hitColor = _TraceRay(cameraPosWorld, rayDirWorld, 0, isInteractive, renderThread, rng);
                     if (isInteractive) {
                         GfVec4f finalColor(hitColor[0], hitColor[1], hitColor[2], 1.0f);
                         for (int dy = 0; dy < res && y + dy < height; ++dy) {

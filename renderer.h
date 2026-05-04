@@ -84,9 +84,9 @@ private:
     void _PrepareScene(HdRenderThread *renderThread, HdGeminiRenderDelegate* delegate);
     void _BuildTLAS(HdRenderThread *renderThread);
     void _SubdivideTLAS(int nodeIdx, int start, int end, HdRenderThread *renderThread);
-    bool _IntersectTLAS(int nodeIdx, const GfVec3f& rayOrigin, const GfVec3f& rayDir, HitRecord& hit, HdRenderThread* renderThread) const;
-    GfVec3f _TraceRay(const GfVec3f& rayOrigin, const GfVec3f& rayDir, int depth, bool isInteractive, HdRenderThread* renderThread, const std::map<SdfPath, HdGeminiLight*>& lights, uint32_t& rng) const;
-    GfVec3f _SampleEnvironment(const GfVec3f& rayDir, const std::map<SdfPath, HdGeminiLight*>& lights) const;
+    bool _IntersectTLAS(const GfVec3f& rayOrigin, const GfVec3f& rayDir, HitRecord& hit, HdRenderThread* renderThread) const;
+    GfVec3f _TraceRay(const GfVec3f& rayOrigin, const GfVec3f& rayDir, int depth, bool isInteractive, HdRenderThread* renderThread, uint32_t& rng) const;
+    GfVec3f _SampleEnvironment(const GfVec3f& rayDir) const;
     GfVec3f _SampleTexture(const SdfAssetPath& path, const GfVec2f& uv) const;
     GfVec3f _SampleTextureData(const TextureData& data, const GfVec2f& uv) const;
 
@@ -97,6 +97,7 @@ private:
     GfMatrix4d _inverseViewMatrix;
     GfMatrix4d _inverseProjMatrix;
     std::vector<MeshInstance> _instances;
+    std::vector<HdGeminiLight*> _activeLights;
     std::vector<TLASNode> _tlasNodes;
     std::vector<int> _tlasInstanceIndices;
     int _resolutionLevel;

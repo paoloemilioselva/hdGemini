@@ -377,25 +377,12 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
         std::map<SdfPath, GroupedData> grouped;
 
         for (size_t i = 0; i < allTriangulatedIndices.size(); ++i) {
-            // Robust face index decoding: try various strategies
-            int rawParam = trianglePrimitiveParams[i];
-            int faceIdx = -1;
-
-            // Strategy 1: Modern shift (>> 3)
-            int candidate = rawParam >> 3;
-            if (candidate >= 0 && candidate < (int)faceMaterialPaths.size()) {
-                faceIdx = candidate;
-            } else {
-                // Strategy 2: Bitmask (& 0x0FFFFFFF)
-                candidate = rawParam & 0x0FFFFFFF;
-                if (candidate >= 0 && candidate < (int)faceMaterialPaths.size()) {
-                    faceIdx = candidate;
-                } else {
-                    // Strategy 3: Just the raw value (some versions use this)
-                    if (rawParam >= 0 && rawParam < (int)faceMaterialPaths.size()) {
-                        faceIdx = rawParam;
-                    }
-                }
+            // Correct face index decoding: 
+            // - Shift right by 2 is typical for subdivided meshes where faceIndex is in high bits
+            // - Masking with 0x0FFFFFFF is used for non-shifted face indices
+            int faceIdx = trianglePrimitiveParams[i] >> 2;
+            if (faceIdx < 0 || (size_t)faceIdx >= faceMaterialPaths.size()) {
+                faceIdx = trianglePrimitiveParams[i] & 0x0FFFFFFF;
             }
 
             SdfPath matPath = defaultMaterialId;

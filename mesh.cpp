@@ -366,7 +366,8 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
         std::map<SdfPath, GroupedData> grouped;
 
         for (size_t i = 0; i < allTriangulatedIndices.size(); ++i) {
-            int faceIdx = trianglePrimitiveParams[i] >> 3;
+            // Correct face index decoding: LOW bits 0-27
+            int faceIdx = trianglePrimitiveParams[i] & 0x0FFFFFFF;
             SdfPath matPath = defaultMaterialId;
             if (faceIdx >= 0 && (size_t)faceIdx < faceMaterialPaths.size()) {
                 matPath = faceMaterialPaths[faceIdx];
@@ -400,17 +401,13 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
             subset.materialId = pair.first;
             subset.indices = std::move(pair.second.indices);
             
-            // If primvars are not face-varying (length doesn't match triangle count * 3), 
-            // use the shared mesh-wide arrays.
             VtVec3fArray subsetColors = pair.second.colors.empty() ? _colors : pair.second.colors;
             VtVec2fArray subsetUvs = pair.second.uvs.empty() ? _uvs : pair.second.uvs;
             VtVec3fArray subsetNormals = pair.second.normals.empty() ? _normals : pair.second.normals;
 
-            // Build subset BVH
             if (!subset.indices.empty() && !_points.empty()) {
                 subset.bvh.Build(_points, subset.indices, subsetUvs, subsetNormals, subsetColors, std::vector<int>());
                 
-                // Compute subset bounds
                 subset.range.SetEmpty();
                 for (const auto& tri : subset.indices) {
                     subset.range.ExtendBy(_points[tri[0]]);

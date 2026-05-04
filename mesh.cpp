@@ -359,10 +359,11 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
         std::map<SdfPath, VtVec3iArray> groupedIndices;
         std::cout << "[Gemini] Mesh " << id.GetText() << " splitting into subsets:" << std::endl;
         for (size_t i = 0; i < allTriangulatedIndices.size(); ++i) {
-            int primIdx = trianglePrimitiveParams[i];
+            // Mask out the triangle index within the face to get the original face index
+            int faceIdx = trianglePrimitiveParams[i] & 0x0FFFFFFF;
             SdfPath matPath = defaultMaterialId;
-            if (primIdx >= 0 && (size_t)primIdx < faceMaterialPaths.size()) {
-                matPath = faceMaterialPaths[primIdx];
+            if (faceIdx >= 0 && (size_t)faceIdx < faceMaterialPaths.size()) {
+                matPath = faceMaterialPaths[faceIdx];
             }
             groupedIndices[matPath].push_back(allTriangulatedIndices[i]);
         }

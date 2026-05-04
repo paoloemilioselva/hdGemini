@@ -127,6 +127,12 @@ HdGeminiRenderDelegate::GetShaderSourceTypes() const
     return {TfToken("mtlx"), TfToken("UsdPreviewSurface"), TfToken("preview")};
 }
 
+TfTokenVector
+HdGeminiRenderDelegate::GetMaterialRenderContexts() const
+{
+    return {TfToken("mtlx")};
+}
+
 HdResourceRegistrySharedPtr
 HdGeminiRenderDelegate::GetResourceRegistry() const
 {

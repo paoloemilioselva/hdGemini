@@ -94,6 +94,32 @@ static void _ProcessNodeUpstream(
             }
         }
         material->SetDiffuseColor(baseColor * base);
+    } else if (shaderId == TfToken("ND_open_pbr_surface_surfaceshader") ||
+               shaderId == TfToken("open_pbr_surface")) {
+        float base = 1.0f;
+        GfVec3f baseColor(0.8f);
+        for (auto const& param : node.parameters) {
+            if (param.first == TfToken("base_weight") && param.second.IsHolding<float>()) {
+                base = param.second.UncheckedGet<float>();
+            } else if (param.first == TfToken("base_color") && param.second.IsHolding<GfVec3f>()) {
+                baseColor = param.second.UncheckedGet<GfVec3f>();
+            } else if (param.first == TfToken("base_metalness") && param.second.IsHolding<float>()) {
+                material->SetMetallic(param.second.UncheckedGet<float>());
+            } else if (param.first == TfToken("specular_roughness") && param.second.IsHolding<float>()) {
+                material->SetRoughness(param.second.UncheckedGet<float>());
+            } else if (param.first == TfToken("geometry_opacity") && param.second.IsHolding<float>()) {
+                material->SetOpacity(param.second.UncheckedGet<float>());
+            } else if (param.first == TfToken("specular_ior") && param.second.IsHolding<float>()) {
+                material->SetIor(param.second.UncheckedGet<float>());
+            } else if (param.first == TfToken("transmission_weight") && param.second.IsHolding<float>()) {
+                material->SetTransmission(param.second.UncheckedGet<float>());
+            } else if (param.first == TfToken("emission_luminance") && param.second.IsHolding<float>()) {
+                material->SetEmission(param.second.UncheckedGet<float>());
+            } else if (param.first == TfToken("emission_color") && param.second.IsHolding<GfVec3f>()) {
+                material->SetEmissionColor(param.second.UncheckedGet<GfVec3f>());
+            }
+        }
+        material->SetDiffuseColor(baseColor * base);
     } else if (shaderId == TfToken("UsdUVTexture") ||
                shaderId == TfToken("ND_image_color3") ||
                shaderId == TfToken("ND_image") ||

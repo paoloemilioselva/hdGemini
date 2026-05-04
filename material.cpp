@@ -30,7 +30,8 @@ static void _ProcessNodeUpstream(
     const HdMaterialNetwork2& network,
     const SdfPath& nodePath,
     std::set<SdfPath>& visited,
-    HdGeminiMaterial* material)
+    HdGeminiMaterial* material,
+    TfToken targetInput = TfToken())
 {
     if (visited.count(nodePath)) return;
     visited.insert(nodePath);
@@ -47,7 +48,7 @@ static void _ProcessNodeUpstream(
     
     TfToken shaderId = sdrEntry ? sdrEntry->GetIdentifier() : node.nodeTypeId;
     
-    std::cout << "[Gemini]     Node: " << nodePath.GetText() << " | Resolved ID: " << shaderId.GetText() << " | Type: " << node.nodeTypeId.GetText() << std::endl;
+    std::cout << "[Gemini]     Node: " << nodePath.GetText() << " | Resolved ID: " << shaderId.GetText() << " | Type: " << node.nodeTypeId.GetText() << " | Target: " << targetInput.GetText() << std::endl;
 
     // Parse parameters based on shader type
     if (shaderId == TfToken("UsdPreviewSurface")) {
@@ -128,19 +129,34 @@ static void _ProcessNodeUpstream(
                shaderId == TfToken("ND_image_vector3") ||
                shaderId == TfToken("ND_image_vector4") ||
                shaderId == TfToken("ND_image_color4")) {
-        for (auto const& param : node.parameters) {
-            if ((param.first == TfToken("file") || param.first == TfToken("texcoord")) && 
-                param.second.IsHolding<SdfAssetPath>()) {
-                material->SetDiffuseTexture(param.second.UncheckedGet<SdfAssetPath>());
-                std::cout << "[Gemini]       Mapped texture: " << material->GetDiffuseTexture().GetAssetPath() << std::endl;
+        
+        // Only map to diffuse texture if we are on a path leading to diffuse color
+        if (targetInput == TfToken("diffuseColor") || targetInput == TfToken("base_color") || targetInput == TfToken("base")) {
+            for (auto const& param : node.parameters) {
+                if ((param.first == TfToken("file") || param.first == TfToken("texcoord")) && 
+                    param.second.IsHolding<SdfAssetPath>()) {
+                    material->SetDiffuseTexture(param.second.UncheckedGet<SdfAssetPath>());
+                    std::cout << "[Gemini]       Mapped diffuse texture: " << material->GetDiffuseTexture().GetAssetPath() << std::endl;
+                }
+            }
+        } else if (targetInput == TfToken("normal")) {
+             for (auto const& param : node.parameters) {
+                if ((param.first == TfToken("file") || param.first == TfToken("texcoord")) && 
+                    param.second.IsHolding<SdfAssetPath>()) {
+                    std::cout << "[Gemini]       Mapped normal texture (skipping for now): " << param.second.UncheckedGet<SdfAssetPath>().GetAssetPath() << std::endl;
+                }
             }
         }
     }
 
     // Walk upstream recursively
     for (auto const& connPair : node.inputConnections) {
+        TfToken inputName = connPair.first;
+        // Propagate targetInput. If it's empty, we use inputName as the start of a new chain.
+        TfToken nextTarget = targetInput.IsEmpty() ? inputName : targetInput;
+
         for (auto const& conn : connPair.second) {
-            _ProcessNodeUpstream(network, conn.upstreamNode, visited, material);
+            _ProcessNodeUpstream(network, conn.upstreamNode, visited, material, nextTarget);
         }
     }
 }

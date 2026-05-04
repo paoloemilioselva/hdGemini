@@ -290,12 +290,18 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
 
         if (!val.IsEmpty() && val.IsHolding<VtVec2fArray>()) {
             VtVec2fArray uvs = val.UncheckedGet<VtVec2fArray>();
+            std::cout << "[Gemini]   Syncing UV primvar '" << activeStToken.GetText() << "' for " << id.GetText() << ":" << std::endl;
+            std::cout << "[Gemini]     Interpolation: " << stInterp << std::endl;
+            std::cout << "[Gemini]     Source count: " << uvs.size() << std::endl;
+            std::cout << "[Gemini]     Indexed: " << (!stIndices.empty() ? "yes" : "no") << std::endl;
+
             if (!stIndices.empty()) {
                 VtVec2fArray flattened(stIndices.size());
                 for (size_t i = 0; i < stIndices.size(); ++i) {
                     flattened[i] = uvs[stIndices[i]];
                 }
                 uvs = flattened;
+                std::cout << "[Gemini]     Flattened count: " << uvs.size() << std::endl;
             }
 
             if (stInterp == HdInterpolationFaceVarying) {
@@ -305,12 +311,26 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
                 meshUtil.ComputeTriangulatedFaceVaryingPrimvar(uvs.data(), (int)uvs.size(), HdTypeFloatVec2, &triangulated);
                 if (!triangulated.IsEmpty() && triangulated.IsHolding<VtVec2fArray>()) {
                     _uvs = triangulated.Get<VtVec2fArray>();
+                    std::cout << "[Gemini]     Triangulated count: " << _uvs.size() << std::endl;
                 } else {
                     _uvs = uvs;
                 }
             } else {
                 _uvs = uvs;
             }
+            
+            if (!_uvs.empty()) {
+                GfVec2f minUV = _uvs[0], maxUV = _uvs[0];
+                for (const auto& uv : _uvs) {
+                    minUV[0] = std::min(minUV[0], uv[0]);
+                    minUV[1] = std::min(minUV[1], uv[1]);
+                    maxUV[0] = std::max(maxUV[0], uv[0]);
+                    maxUV[1] = std::max(maxUV[1], uv[1]);
+                }
+                std::cout << "[Gemini]     UV Range: [" << minUV << "] to [" << maxUV << "]" << std::endl;
+            }
+        } else {
+             std::cout << "[Gemini]   UV primvar '" << activeStToken.GetText() << "' not found for " << id.GetText() << std::endl;
         }
     }
 

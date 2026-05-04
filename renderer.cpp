@@ -181,7 +181,7 @@ HdGeminiRenderer::_PrepareScene(HdRenderThread *renderThread, HdGeminiRenderDele
         _activeLights.push_back(light);
         if (light->GetLightType() == HdPrimTypeTokens->domeLight) {
             if (light->GetTextureFile() != _lastEnvMapPath) {
-                std::cout << "[Gemini]   Found dome light with env map: " << light->GetTextureFile().GetAssetPath() << std::endl;
+                HDGEMINI_LOG << "[Gemini]   Found dome light with env map: " << light->GetTextureFile().GetAssetPath() << std::endl;
                 SdfAssetPath texPath = light->GetTextureFile();
                 if (!texPath.GetAssetPath().empty()) {
                     HioImageSharedPtr image = HioImage::OpenForReading(texPath.GetResolvedPath());
@@ -234,7 +234,7 @@ HdGeminiRenderer::_PrepareScene(HdRenderThread *renderThread, HdGeminiRenderDele
         }
     }
     if (!foundDome) {
-        if (!_envMapPixels.empty()) std::cout << "[Gemini]   Dome light removed. Clearing env map." << std::endl;
+        if (!_envMapPixels.empty()) HDGEMINI_LOG << "[Gemini]   Dome light removed. Clearing env map." << std::endl;
         _envMapPixels.clear();
         _envMapWidth = _envMapHeight = 0;
         _envMapRowCdf.clear();
@@ -457,10 +457,10 @@ GfVec3f HdGeminiRenderer::_SampleTexture(const SdfAssetPath& path, const GfVec2f
         return _SampleTextureData(data, uv);
     }
 
-    std::cout << "[Gemini]   Loading texture: " << path.GetAssetPath() << std::endl;
+    HDGEMINI_LOG << "[Gemini]   Loading texture: " << path.GetAssetPath() << std::endl;
     HioImageSharedPtr image = HioImage::OpenForReading(path.GetResolvedPath());
     if (!image) {
-        std::cout << "[Gemini]   Failed to open texture: " << path.GetResolvedPath() << std::endl;
+        HDGEMINI_LOG << "[Gemini]   Failed to open texture: " << path.GetResolvedPath() << std::endl;
         _textureCache[path.GetAssetPath()] = TextureData();
         return GfVec3f(1.0f);
     }
@@ -468,7 +468,7 @@ GfVec3f HdGeminiRenderer::_SampleTexture(const SdfAssetPath& path, const GfVec2f
     TextureData data;
     data.width = image->GetWidth();
     data.height = image->GetHeight();
-    std::cout << "[Gemini]   Texture loaded: " << data.width << "x" << data.height << std::endl;
+    HDGEMINI_LOG << "[Gemini]   Texture loaded: " << data.width << "x" << data.height << std::endl;
     data.pixels.assign(data.width * data.height * 3, 0.0f);
 
     HioImage::StorageSpec spec;
@@ -477,7 +477,7 @@ GfVec3f HdGeminiRenderer::_SampleTexture(const SdfAssetPath& path, const GfVec2f
     spec.height = data.height;
     spec.data = data.pixels.data();
     if (!image->Read(spec)) {
-        std::cout << "[Gemini]   Failed to read texture pixels: " << path.GetAssetPath() << std::endl;
+        HDGEMINI_LOG << "[Gemini]   Failed to read texture pixels: " << path.GetAssetPath() << std::endl;
     }
 
     _textureCache[path.GetAssetPath()] = std::move(data);

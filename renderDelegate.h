@@ -6,8 +6,14 @@
 #include "pxr/imaging/hd/renderThread.h"
 #include "pxr/imaging/hd/resourceRegistry.h"
 #include "renderer.h"
-
 #include <mutex>
+#include <iostream>
+
+#ifdef HDGEMINI_DEBUG_PRINTS
+    #define HDGEMINI_LOG std::cout
+#else
+    #define HDGEMINI_LOG while(false) std::cout
+#endif
 #include <map>
 #include <vector>
 

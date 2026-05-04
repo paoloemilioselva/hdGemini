@@ -1,4 +1,5 @@
 #include "material.h"
+#include "renderDelegate.h"
 #include "pxr/imaging/hd/sceneDelegate.h"
 #include "pxr/imaging/hd/materialNetwork2Interface.h"
 #include "pxr/usd/sdr/registry.h"
@@ -49,7 +50,7 @@ static void _ProcessNodeUpstream(
     
     TfToken shaderId = sdrEntry ? sdrEntry->GetIdentifier() : node.nodeTypeId;
     
-    std::cout << "[Gemini]     Node: " << nodePath.GetText() << " | Resolved ID: " << shaderId.GetText() << " | Type: " << node.nodeTypeId.GetText() << " | Target: " << targetInput.GetText() << std::endl;
+    HDGEMINI_LOG << "[Gemini]     Node: " << nodePath.GetText() << " | Resolved ID: " << shaderId.GetText() << " | Type: " << node.nodeTypeId.GetText() << " | Target: " << targetInput.GetText() << std::endl;
 
     // Parse parameters based on shader type
     if (shaderId == TfToken("UsdPreviewSurface")) {
@@ -141,14 +142,14 @@ static void _ProcessNodeUpstream(
                 if ((param.first == TfToken("file") || param.first == TfToken("texcoord")) && 
                     param.second.IsHolding<SdfAssetPath>()) {
                     material->SetDiffuseTexture(param.second.UncheckedGet<SdfAssetPath>());
-                    std::cout << "[Gemini]       Mapped diffuse texture: " << material->GetDiffuseTexture().GetAssetPath() << std::endl;
+                    HDGEMINI_LOG << "[Gemini]       Mapped diffuse texture: " << material->GetDiffuseTexture().GetAssetPath() << std::endl;
                 }
             }
         } else if (targetInput == TfToken("emissiveColor") || targetInput == TfToken("emission_color") || targetInput == TfToken("emission") || targetInput == TfToken("emission_luminance")) {
              for (auto const& param : node.parameters) {
                 if ((param.first == TfToken("file") || param.first == TfToken("texcoord")) && 
                     param.second.IsHolding<SdfAssetPath>()) {
-                    std::cout << "[Gemini]       Mapped emissive texture: " << param.second.UncheckedGet<SdfAssetPath>().GetAssetPath() << std::endl;
+                    HDGEMINI_LOG << "[Gemini]       Mapped emissive texture: " << param.second.UncheckedGet<SdfAssetPath>().GetAssetPath() << std::endl;
                     // For now, if diffuse is empty, use emissive as a placeholder so it shows up
                     if (material->GetDiffuseTexture().GetAssetPath().empty()) {
                         material->SetDiffuseTexture(param.second.UncheckedGet<SdfAssetPath>());
@@ -159,7 +160,7 @@ static void _ProcessNodeUpstream(
              for (auto const& param : node.parameters) {
                 if ((param.first == TfToken("file") || param.first == TfToken("texcoord")) && 
                     param.second.IsHolding<SdfAssetPath>()) {
-                    std::cout << "[Gemini]       Mapped normal texture (skipping for now): " << param.second.UncheckedGet<SdfAssetPath>().GetAssetPath() << std::endl;
+                    HDGEMINI_LOG << "[Gemini]       Mapped normal texture (skipping for now): " << param.second.UncheckedGet<SdfAssetPath>().GetAssetPath() << std::endl;
                 }
             }
         }
@@ -190,13 +191,13 @@ HdGeminiMaterial::Sync(HdSceneDelegate *sceneDelegate,
             // Convert to HdMaterialNetwork2
             HdMaterialNetwork2 network = HdConvertToHdMaterialNetwork2(map);
 
-            std::cout << "[Gemini] Syncing material " << GetId().GetText() << ":" << std::endl;
+            HDGEMINI_LOG << "[Gemini] Syncing material " << GetId().GetText() << ":" << std::endl;
             
             std::set<SdfPath> visited;
             
-            std::cout << "[Gemini]   Terminals found:";
-            for (auto const& t : network.terminals) std::cout << " " << t.first.GetText();
-            std::cout << std::endl;
+            HDGEMINI_LOG << "[Gemini]   Terminals found:";
+            for (auto const& t : network.terminals) HDGEMINI_LOG << " " << t.first.GetText();
+            HDGEMINI_LOG << std::endl;
 
             // Find the best terminal
             TfToken selectedTerminal;
@@ -220,14 +221,14 @@ HdGeminiMaterial::Sync(HdSceneDelegate *sceneDelegate,
 
             if (!selectedTerminal.IsEmpty()) {
                 const SdfPath& terminalPath = network.terminals.at(selectedTerminal).upstreamNode;
-                std::cout << "[Gemini]   Selected terminal: " << selectedTerminal.GetText() << " -> " << terminalPath.GetText() << std::endl;
+                HDGEMINI_LOG << "[Gemini]   Selected terminal: " << selectedTerminal.GetText() << " -> " << terminalPath.GetText() << std::endl;
                 _ProcessNodeUpstream(network, terminalPath, visited, this);
                 
-                std::cout << "[Gemini]   Final Params: Diffuse=" << _diffuseColor << " | Emission=" << (_emissionColor * _emission) 
+                HDGEMINI_LOG << "[Gemini]   Final Params: Diffuse=" << _diffuseColor << " | Emission=" << (_emissionColor * _emission) 
                           << " (Color=" << _emissionColor << ", Weight=" << _emission << ") | Opacity=" << _opacity 
                           << " | Transmission=" << _transmission << " (Color=" << _transmissionColor << ")" << std::endl;
             } else {
-                std::cout << "[Gemini]   No terminals found in network!" << std::endl;
+                HDGEMINI_LOG << "[Gemini]   No terminals found in network!" << std::endl;
             }
         }
     }

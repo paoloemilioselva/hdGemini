@@ -151,7 +151,7 @@ HdInstancer *
 HdGeminiRenderDelegate::CreateInstancer(HdSceneDelegate *delegate,
                                         SdfPath const& id)
 {
-    std::cout << "[Gemini] CreateInstancer: " << id.GetText() << std::endl;
+    HDGEMINI_LOG << "[Gemini] CreateInstancer: " << id.GetText() << std::endl;
     HdGeminiInstancer* instancer = new HdGeminiInstancer(delegate, id);
     AddInstancer(id, instancer);
     return instancer;
@@ -168,7 +168,7 @@ HdRprim *
 HdGeminiRenderDelegate::CreateRprim(TfToken const& typeId,
                                     SdfPath const& rprimId)
 {
-    std::cout << "[Gemini] CreateRprim: " << typeId.GetText() << " " << rprimId.GetText() << std::endl;
+    HDGEMINI_LOG << "[Gemini] CreateRprim: " << typeId.GetText() << " " << rprimId.GetText() << std::endl;
     if (typeId == HdPrimTypeTokens->mesh) {
         return new HdGeminiMesh(rprimId);
     }
@@ -188,7 +188,7 @@ HdSprim *
 HdGeminiRenderDelegate::CreateSprim(TfToken const& typeId,
                                     SdfPath const& sprimId)
 {
-    std::cout << "[Gemini] CreateSprim: " << typeId.GetText() << " " << sprimId.GetText() << std::endl;
+    HDGEMINI_LOG << "[Gemini] CreateSprim: " << typeId.GetText() << " " << sprimId.GetText() << std::endl;
     if (typeId == HdPrimTypeTokens->camera) {
         return new HdCamera(sprimId);
     } else if (typeId == HdPrimTypeTokens->extComputation) {
@@ -209,7 +209,7 @@ HdGeminiRenderDelegate::CreateSprim(TfToken const& typeId,
 HdSprim *
 HdGeminiRenderDelegate::CreateFallbackSprim(TfToken const& typeId)
 {
-    std::cout << "[Gemini] CreateFallbackSprim: " << typeId.GetText() << std::endl;
+    HDGEMINI_LOG << "[Gemini] CreateFallbackSprim: " << typeId.GetText() << std::endl;
     if (typeId == HdPrimTypeTokens->camera) {
         return new HdCamera(SdfPath::EmptyPath());
     } else if (typeId == HdPrimTypeTokens->extComputation) {
@@ -244,7 +244,7 @@ HdBprim *
 HdGeminiRenderDelegate::CreateBprim(TfToken const& typeId,
                                     SdfPath const& bprimId)
 {
-    std::cout << "[Gemini] CreateBprim: " << typeId.GetText() << " " << bprimId.GetText() << std::endl;
+    HDGEMINI_LOG << "[Gemini] CreateBprim: " << typeId.GetText() << " " << bprimId.GetText() << std::endl;
     if (typeId == HdPrimTypeTokens->renderBuffer) {
         return new HdGeminiRenderBuffer(bprimId);
     }
@@ -254,7 +254,7 @@ HdGeminiRenderDelegate::CreateBprim(TfToken const& typeId,
 HdBprim *
 HdGeminiRenderDelegate::CreateFallbackBprim(TfToken const& typeId)
 {
-    std::cout << "[Gemini] CreateFallbackBprim: " << typeId.GetText() << std::endl;
+    HDGEMINI_LOG << "[Gemini] CreateFallbackBprim: " << typeId.GetText() << std::endl;
     if (typeId == HdPrimTypeTokens->renderBuffer) {
         return new HdGeminiRenderBuffer(SdfPath::EmptyPath());
     }

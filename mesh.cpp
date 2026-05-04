@@ -66,7 +66,7 @@ HdGeminiMesh::_UpdateComputedPrimvarSources(HdSceneDelegate* sceneDelegate,
     try {
         valueStore = HdExtComputationUtils::GetComputedPrimvarValues(compPrimvarsToUpdate, sceneDelegate);
     } catch (...) {
-        std::cout << "[Gemini] ERROR: GetComputedPrimvarValues threw an exception for " << id.GetText() << std::endl;
+        HDGEMINI_LOG << "[Gemini] ERROR: GetComputedPrimvarValues threw an exception for " << id.GetText() << std::endl;
     }
 
     TfTokenVector compPrimvarNames;
@@ -92,7 +92,7 @@ HdGeminiMesh::_UpdateComputedPrimvarSources(HdSceneDelegate* sceneDelegate,
         }
 
         if (val.IsEmpty()) {
-            std::cout << "[Gemini] Warning: Failed to find computed value for PV " << compPrimvar.name.GetText() 
+            HDGEMINI_LOG << "[Gemini] Warning: Failed to find computed value for PV " << compPrimvar.name.GetText() 
                       << " (output: " << compPrimvar.sourceComputationOutputName.GetText() 
                       << " comp: " << compPrimvar.sourceComputationId.GetText() << ")" << std::endl;
             continue;
@@ -357,9 +357,9 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
 
         std::vector<SdfPath> faceMaterialPaths(topology.GetNumFaces(), defaultMaterialId);
         
-        std::cout << "[Gemini] Mesh " << id.GetText() << " splitting into subsets (Faces: " << topology.GetNumFaces() << "):" << std::endl;
+        HDGEMINI_LOG << "[Gemini] Mesh " << id.GetText() << " splitting into subsets (Faces: " << topology.GetNumFaces() << "):" << std::endl;
         for (const auto& subset : geomSubsets) {
-            std::cout << "[Gemini]   Subset " << subset.id.GetText() << " | Material: " << subset.materialId.GetText() << " | Face count: " << subset.indices.size() << std::endl;
+            HDGEMINI_LOG << "[Gemini]   Subset " << subset.id.GetText() << " | Material: " << subset.materialId.GetText() << " | Face count: " << subset.indices.size() << std::endl;
             for (int faceIdx : subset.indices) {
                 if (faceIdx >= 0 && (size_t)faceIdx < faceMaterialPaths.size()) {
                     faceMaterialPaths[faceIdx] = subset.materialId;
@@ -418,7 +418,7 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
             subset.materialId = pair.first;
             subset.indices = std::move(pair.second.indices);
             
-            std::cout << "[Gemini]   Created sub-mesh from " << id.GetText() << " for material " << subset.materialId.GetText() << " with " << subset.indices.size() << " triangles." << std::endl;
+            HDGEMINI_LOG << "[Gemini]   Created sub-mesh from " << id.GetText() << " for material " << subset.materialId.GetText() << " with " << subset.indices.size() << " triangles." << std::endl;
 
             VtVec3fArray subsetColors = pair.second.colors.empty() ? _colors : pair.second.colors;
             VtVec2fArray subsetUvs = pair.second.uvs.empty() ? _uvs : pair.second.uvs;

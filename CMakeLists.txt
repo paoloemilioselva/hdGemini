@@ -6,6 +6,11 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(TARGET "hdGemini")
 add_definitions(-DNOMINMAX)
 
+option(HDGEMINI_DEBUG_PRINTS "Enable verbose debug printing" OFF)
+if(HDGEMINI_DEBUG_PRINTS)
+    add_compile_definitions(HDGEMINI_DEBUG_PRINTS)
+endif()
+
 project( 
     ${TARGET}
     LANGUAGES CXX C

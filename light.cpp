@@ -76,10 +76,10 @@ HdGeminiLight::Sync(HdSceneDelegate *sceneDelegate,
             }
         }
         
-        std::cout << "[Gemini] Syncing light " << id.GetText() << " (type: " << _lightType.GetText() << "):" << std::endl;
-        std::cout << "[Gemini]   Intensity: " << _intensity << " | Exposure: " << _exposure << " | Final: " << GetIntensity() << std::endl;
+        HDGEMINI_LOG << "[Gemini] Syncing light " << id.GetText() << " (type: " << _lightType.GetText() << "):" << std::endl;
+        HDGEMINI_LOG << "[Gemini]   Intensity: " << _intensity << " | Exposure: " << _exposure << " | Final: " << GetIntensity() << std::endl;
         if (_shapingConeAngle < 180.0f) {
-            std::cout << "[Gemini]   Shaping: Angle=" << _shapingConeAngle << " | Softness=" << _shapingConeSoftness << std::endl;
+            HDGEMINI_LOG << "[Gemini]   Shaping: Angle=" << _shapingConeAngle << " | Softness=" << _shapingConeSoftness << std::endl;
         }
     }
 

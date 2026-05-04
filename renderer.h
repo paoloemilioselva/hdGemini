@@ -42,7 +42,7 @@ public:
 private:
     struct MeshInstance {
         HdGeminiMesh* mesh;
-        HdGeminiMaterial* material = nullptr;
+        std::vector<HdGeminiMaterial*> materials;
         GfMatrix4f transform;
         GfMatrix4f invTransform;
         GfRange3f bounds;
@@ -66,6 +66,7 @@ private:
         float opacity = 1.0f;
         float ior = 1.5f;
         float transmission = 0.0f;
+        GfVec3f transmissionColor = GfVec3f(1.0f);
         GfVec3f emission = GfVec3f(0.0f);
         SdfAssetPath diffuseTexture;
         bool hit = false;

@@ -22,13 +22,14 @@ struct BVHTriangle {
     GfVec2f uv0, uv1, uv2;
     GfVec3f n0, n1, n2;
     GfVec3f centroid;
+    int materialIndex = -1;
 };
 
 class BVH {
 public:
     BVH() = default;
-    void Build(const VtVec3fArray& points, const VtVec3iArray& indices, const VtVec2fArray& uvs, const VtVec3fArray& normals);
-    bool Intersect(const GfVec3f& rayOrigin, const GfVec3f& rayDir, float& t, GfVec3f& normal, GfVec2f& uv, GfVec3f& smoothNormal) const;
+    void Build(const VtVec3fArray& points, const VtVec3iArray& indices, const VtVec2fArray& uvs, const VtVec3fArray& normals, const std::vector<int>& materialIndices);
+    bool Intersect(const GfVec3f& rayOrigin, const GfVec3f& rayDir, float& t, GfVec3f& normal, GfVec2f& uv, GfVec3f& smoothNormal, int& materialIndex) const;
     bool IsEmpty() const { return _nodes.empty(); }
 
 private:
@@ -38,7 +39,7 @@ private:
     };
 
     void _Subdivide(int nodeIdx, int start, int end);
-    bool _IntersectNode(int nodeIdx, const GfVec3f& rayOrigin, const GfVec3f& rayDir, float& t, GfVec3f& normal, GfVec2f& uv, GfVec3f& smoothNormal) const;
+    bool _IntersectNode(int nodeIdx, const GfVec3f& rayOrigin, const GfVec3f& rayDir, float& t, GfVec3f& normal, GfVec2f& uv, GfVec3f& smoothNormal, int& materialIndex) const;
 
     std::vector<BVHNode> _nodes;
     std::vector<BVHTriangle> _triangles;

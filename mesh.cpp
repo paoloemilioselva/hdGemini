@@ -9,6 +9,7 @@
 #include <iostream>
 #include <set>
 #include <algorithm>
+#include <map>
 
 PXR_NAMESPACE_USING_DIRECTIVE
 
@@ -135,7 +136,6 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
     }
 
     _instancerId = sceneDelegate->GetInstancerId(id);
-    _materialId = sceneDelegate->GetMaterialId(id);
     
     if (HdChangeTracker::IsVisibilityDirty(*dirtyBits, id)) {
         _visible = sceneDelegate->GetVisible(id);
@@ -178,37 +178,6 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
             }
         }
 
-        // 2. Last resort: BRUTE FORCE SCOUTING for anything that looks like points
-        if (!pointsActuallyUpdated) {
-            for (int i = 0; i < HdInterpolationCount; ++i) {
-                HdPrimvarDescriptorVector pvs = sceneDelegate->GetPrimvarDescriptors(id, (HdInterpolation)i);
-                for (const auto& pv : pvs) {
-                    if (pv.name == HdTokens->points) continue;
-
-                    VtValue val = sceneDelegate->Get(id, pv.name);
-                    if (!val.IsEmpty()) {
-                        if (val.IsHolding<VtVec3fArray>()) {
-                            const auto& arr = val.UncheckedGet<VtVec3fArray>();
-                            if (!arr.empty()) {
-                                _points = arr;
-                                pointsActuallyUpdated = true;
-                                break;
-                            }
-                        } else if (val.IsHolding<VtVec3dArray>()) {
-                            const auto& arr = val.UncheckedGet<VtVec3dArray>();
-                            if (!arr.empty()) {
-                                _points.resize(arr.size());
-                                for (size_t j = 0; j < arr.size(); ++j) _points[j] = GfVec3f(arr[j]);
-                                pointsActuallyUpdated = true;
-                                break;
-                            }
-                        }
-                    }
-                }
-                if (pointsActuallyUpdated) break;
-            }
-        }
-
         if (pointsActuallyUpdated) {
             _bvhDirty = true;
         }
@@ -219,7 +188,6 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
     if (HdChangeTracker::IsPrimvarDirty(*dirtyBits, id, colorToken)) {
         if (!colorsUpdatedByComputation) {
             HdInterpolation colorInterp = HdInterpolationVertex;
-            HdPrimvarDescriptorVector allPvs;
             for (int i = 0; i < HdInterpolationCount; ++i) {
                 HdPrimvarDescriptorVector pvs = sceneDelegate->GetPrimvarDescriptors(id, (HdInterpolation)i);
                 for (const auto& pv : pvs) {
@@ -290,18 +258,12 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
 
         if (!val.IsEmpty() && val.IsHolding<VtVec2fArray>()) {
             VtVec2fArray uvs = val.UncheckedGet<VtVec2fArray>();
-            std::cout << "[Gemini]   Syncing UV primvar '" << activeStToken.GetText() << "' for " << id.GetText() << ":" << std::endl;
-            std::cout << "[Gemini]     Interpolation: " << stInterp << std::endl;
-            std::cout << "[Gemini]     Source count: " << uvs.size() << std::endl;
-            std::cout << "[Gemini]     Indexed: " << (!stIndices.empty() ? "yes" : "no") << std::endl;
-
             if (!stIndices.empty()) {
                 VtVec2fArray flattened(stIndices.size());
                 for (size_t i = 0; i < stIndices.size(); ++i) {
                     flattened[i] = uvs[stIndices[i]];
                 }
                 uvs = flattened;
-                std::cout << "[Gemini]     Flattened count: " << uvs.size() << std::endl;
             }
 
             if (stInterp == HdInterpolationFaceVarying) {
@@ -311,26 +273,12 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
                 meshUtil.ComputeTriangulatedFaceVaryingPrimvar(uvs.data(), (int)uvs.size(), HdTypeFloatVec2, &triangulated);
                 if (!triangulated.IsEmpty() && triangulated.IsHolding<VtVec2fArray>()) {
                     _uvs = triangulated.Get<VtVec2fArray>();
-                    std::cout << "[Gemini]     Triangulated count: " << _uvs.size() << std::endl;
                 } else {
                     _uvs = uvs;
                 }
             } else {
                 _uvs = uvs;
             }
-            
-            if (!_uvs.empty()) {
-                GfVec2f minUV = _uvs[0], maxUV = _uvs[0];
-                for (const auto& uv : _uvs) {
-                    minUV[0] = std::min(minUV[0], uv[0]);
-                    minUV[1] = std::min(minUV[1], uv[1]);
-                    maxUV[0] = std::max(maxUV[0], uv[0]);
-                    maxUV[1] = std::max(maxUV[1], uv[1]);
-                }
-                std::cout << "[Gemini]     UV Range: [" << minUV << "] to [" << maxUV << "]" << std::endl;
-            }
-        } else {
-             std::cout << "[Gemini]   UV primvar '" << activeStToken.GetText() << "' not found for " << id.GetText() << std::endl;
         }
     }
 
@@ -382,11 +330,48 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
         }
     }
 
-    if (HdChangeTracker::IsTopologyDirty(*dirtyBits, id)) {
+    if (HdChangeTracker::IsTopologyDirty(*dirtyBits, id) || 
+        (*dirtyBits & HdChangeTracker::DirtyMaterialId) ||
+        _triangleMaterialIndices.empty()) {
+        
+        _materialId = sceneDelegate->GetMaterialId(id);
         HdMeshTopology topology = GetMeshTopology(sceneDelegate);
         HdMeshUtil meshUtil(&topology, id);
         VtIntArray trianglePrimitiveParams;
         meshUtil.ComputeTriangleIndices(&_triangulatedIndices, &trianglePrimitiveParams);
+        
+        // Map triangles to material IDs (GeomSubsets)
+        // In some USD versions, subsets are part of topology
+        HdGeomSubsets geomSubsets = topology.GetGeomSubsets();
+        std::vector<SdfPath> faceMaterialPaths(topology.GetNumFaces(), _materialId);
+        for (const auto& subset : geomSubsets) {
+            for (int faceIdx : subset.indices) {
+                if (faceIdx >= 0 && (size_t)faceIdx < faceMaterialPaths.size()) {
+                    faceMaterialPaths[faceIdx] = subset.materialId;
+                }
+            }
+        }
+        
+        // Compute unique materials for this mesh
+        _materialIds.clear();
+        _materialIds.push_back(_materialId);
+        for (const auto& subset : geomSubsets) {
+            if (std::find(_materialIds.begin(), _materialIds.end(), subset.materialId) == _materialIds.end()) {
+                _materialIds.push_back(subset.materialId);
+            }
+        }
+
+        // Map each triangle to its material index
+        _triangleMaterialIndices.clear();
+        _triangleMaterialIndices.reserve(trianglePrimitiveParams.size());
+        for (int primIdx : trianglePrimitiveParams) {
+            SdfPath matPath = _materialId;
+            if (primIdx >= 0 && (size_t)primIdx < faceMaterialPaths.size()) {
+                matPath = faceMaterialPaths[primIdx];
+            }
+            auto it = std::find(_materialIds.begin(), _materialIds.end(), matPath);
+            _triangleMaterialIndices.push_back((int)std::distance(_materialIds.begin(), it));
+        }
         _bvhDirty = true;
     }
 
@@ -396,9 +381,9 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
             for (const auto& p : _points) {
                 _range.ExtendBy(p);
             }
-            _bvh.Build(_points, _triangulatedIndices, _uvs, _normals);
+            _bvh.Build(_points, _triangulatedIndices, _uvs, _normals, _triangleMaterialIndices);
         } else {
-            _bvh.Build(VtVec3fArray(), VtVec3iArray(), VtVec2fArray(), VtVec3fArray());
+            _bvh.Build(VtVec3fArray(), VtVec3iArray(), VtVec2fArray(), VtVec3fArray(), std::vector<int>());
         }
         _bvhDirty = false;
     }

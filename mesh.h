@@ -35,6 +35,7 @@ public:
     const BVH& GetBVH() const { return _bvh; }
     const SdfPath& GetInstancerId() const { return _instancerId; }
     const SdfPath& GetMaterialId() const { return _materialId; }
+    const std::vector<SdfPath>& GetMaterialIds() const { return _materialIds; }
     bool IsVisible() const { return _visible; }
     const VtVec3fArray& GetColors() const { return _colors; }
     const VtVec2fArray& GetUVs() const { return _uvs; }
@@ -57,6 +58,8 @@ private:
     BVH _bvh;
     SdfPath _instancerId;
     SdfPath _materialId;
+    std::vector<SdfPath> _materialIds;
+    std::vector<int> _triangleMaterialIndices;
     bool _visible;
     bool _bvhDirty;
     VtVec3fArray _colors;

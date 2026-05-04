@@ -251,9 +251,9 @@ HdGeminiRenderer::_PrepareScene(HdRenderThread *renderThread, HdGeminiRenderDele
             continue;
         }
 
-        HdGeminiMaterial* material = nullptr;
-        if (!mesh->GetMaterialId().IsEmpty()) {
-            material = delegate->GetMaterial(mesh->GetMaterialId());
+        std::vector<HdGeminiMaterial*> materials;
+        for (const auto& matId : mesh->GetMaterialIds()) {
+            materials.push_back(delegate->GetMaterial(matId));
         }
 
         if (!mesh->GetInstancerId().IsEmpty()) {
@@ -263,7 +263,7 @@ HdGeminiRenderer::_PrepareScene(HdRenderThread *renderThread, HdGeminiRenderDele
                 for (const auto& t : transforms) {
                     MeshInstance inst;
                     inst.mesh = mesh;
-                    inst.material = material;
+                    inst.materials = materials;
                     inst.transform = GfMatrix4f(t) * mesh->GetTransform();
                     inst.invTransform = inst.transform.GetInverse();
                     inst.bounds = TransformBounds(meshBounds, inst.transform);
@@ -276,7 +276,7 @@ HdGeminiRenderer::_PrepareScene(HdRenderThread *renderThread, HdGeminiRenderDele
 
         MeshInstance inst;
         inst.mesh = mesh;
-        inst.material = material;
+        inst.materials = materials;
         inst.transform = mesh->GetTransform();
         inst.invTransform = inst.transform.GetInverse();
         inst.bounds = TransformBounds(meshBounds, inst.transform);
@@ -371,7 +371,8 @@ bool HdGeminiRenderer::_IntersectTLAS(int nodeIdx, const GfVec3f& rayOrigin, con
             GfVec3f instNormal;
             GfVec2f instUv;
             GfVec3f instSmoothNormal;
-            if (inst.mesh->GetBVH().Intersect(objRayOrigin, objRayDir, instT, instNormal, instUv, instSmoothNormal)) {
+            int matIdx = -1;
+            if (inst.mesh->GetBVH().Intersect(objRayOrigin, objRayDir, instT, instNormal, instUv, instSmoothNormal, matIdx)) {
                 if (instT < hit.t) {
                     hit.t = instT;
                     hit.normal = inst.transform.TransformDir(instNormal).GetNormalized();
@@ -380,15 +381,22 @@ bool HdGeminiRenderer::_IntersectTLAS(int nodeIdx, const GfVec3f& rayOrigin, con
                     hit.baseColor = GfVec3f(1.0f);
                     const VtVec3fArray& colors = inst.mesh->GetColors();
                     if (!colors.empty()) hit.baseColor = colors[0];
-                    if (inst.material) {
-                        hit.baseColor = GfCompMult(hit.baseColor, inst.material->GetDiffuseColor());
-                        hit.metallic = inst.material->GetMetallic();
-                        hit.roughness = inst.material->GetRoughness();
-                        hit.opacity = inst.material->GetOpacity();
-                        hit.ior = inst.material->GetIor();
-                        hit.transmission = inst.material->GetTransmission();
-                        hit.emission = inst.material->GetEmissionColor() * inst.material->GetEmission();
-                        hit.diffuseTexture = inst.material->GetDiffuseTexture();
+                    
+                    HdGeminiMaterial* material = nullptr;
+                    if (matIdx >= 0 && matIdx < (int)inst.materials.size()) {
+                        material = inst.materials[matIdx];
+                    }
+                    
+                    if (material) {
+                        hit.baseColor = GfCompMult(hit.baseColor, material->GetDiffuseColor());
+                        hit.metallic = material->GetMetallic();
+                        hit.roughness = material->GetRoughness();
+                        hit.opacity = material->GetOpacity();
+                        hit.ior = material->GetIor();
+                        hit.transmission = material->GetTransmission();
+                        hit.transmissionColor = material->GetTransmissionColor();
+                        hit.emission = material->GetEmissionColor() * material->GetEmission();
+                        hit.diffuseTexture = material->GetDiffuseTexture();
                     }
                     hit.hit = true;
                     wasHit = true;
@@ -574,8 +582,8 @@ GfVec3f HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVec3f& ray
             float k = 1.0f - eta * eta * (1.0f - cosThetaI * cosThetaI);
             if (k >= 0) {
                 GfVec3f refractDir = (eta * rayDir - (eta * cosThetaI + std::sqrt(k)) * n).GetNormalized();
-                // For refraction, we usually want to use baseColor as the filter
-                return result + GfCompMult(hit.baseColor, _TraceRay(hitPos - n * 1e-4f, refractDir, depth + 1, isInteractive, renderThread, lights, rng));
+                // For refraction, we use transmissionColor as the filter
+                return result + GfCompMult(hit.transmissionColor, _TraceRay(hitPos - n * 1e-4f, refractDir, depth + 1, isInteractive, renderThread, lights, rng));
             }
             // Total Internal Reflection fallback
             GfVec3f reflectDir = (rayDir - 2.0f * GfDot(rayDir, n) * n).GetNormalized();

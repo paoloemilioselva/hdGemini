@@ -357,6 +357,7 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
         
         // Group triangulated indices by material ID
         std::map<SdfPath, VtVec3iArray> groupedIndices;
+        std::cout << "[Gemini] Mesh " << id.GetText() << " splitting into subsets:" << std::endl;
         for (size_t i = 0; i < allTriangulatedIndices.size(); ++i) {
             int primIdx = trianglePrimitiveParams[i];
             SdfPath matPath = defaultMaterialId;
@@ -372,6 +373,10 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
             Subset subset;
             subset.materialId = pair.first;
             subset.indices = std::move(pair.second);
+            std::cout << "[Gemini]   Sub-mesh for " << pair.first.GetText() << " has " << subset.indices.size() << " triangles." << std::endl;
+            if (!subset.indices.empty()) {
+                std::cout << "[Gemini]     First triangle: " << subset.indices[0] << std::endl;
+            }
             
             // Build subset BVH
             if (!subset.indices.empty() && !_points.empty()) {

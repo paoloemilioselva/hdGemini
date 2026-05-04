@@ -505,189 +505,213 @@ GfVec3f HdGeminiRenderer::_SampleTextureData(const TextureData& data, const GfVe
     return (p00 * (1-fx) + p10 * fx) * (1-fy) + (p01 * (1-fx) + p11 * fx) * fy;
 }
 
+static float PowerHeuristic(float f, float g) {
+    float f2 = f * f;
+    float g2 = g * g;
+    return f2 / (f2 + g2);
+}
+
 GfVec3f HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVec3f& rayDir, int depth, bool isInteractive, HdRenderThread* renderThread, const std::map<SdfPath, HdGeminiLight*>& lights, uint32_t& rng) const
 {
-    if (depth > (isInteractive ? 1 : 5) || renderThread->IsStopRequested()) return GfVec3f(0.0f);
+    GfVec3f throughput(1.0f);
+    GfVec3f totalRadiance(0.0f);
+    GfVec3f currentRayOrigin = rayOrigin;
+    GfVec3f currentRayDir = rayDir;
 
-    HitRecord hit;
-    if (!this->_IntersectTLAS(0, rayOrigin, rayDir, hit, renderThread)) {
-        return _SampleEnvironment(rayDir, lights);
-    }
+    const int maxDepth = isInteractive ? 2 : 8;
 
-    if (!hit.diffuseTexture.GetAssetPath().empty()) {
-        hit.baseColor = GfCompMult(hit.baseColor, _SampleTexture(hit.diffuseTexture, hit.uv));
-    }
+    for (int bounce = 0; bounce < maxDepth; ++bounce) {
+        if (renderThread->IsStopRequested()) break;
 
-    GfVec3f hitPos = rayOrigin + rayDir * hit.t;
-
-    // Handle transparency/opacity
-    if (hit.opacity < 0.999f && RandomFloat(rng) > hit.opacity) {
-        return _TraceRay(hitPos + rayDir * 1e-4f, rayDir, depth, isInteractive, renderThread, lights, rng);
-    }
-
-    GfVec3f shadingNormal = hit.smoothNormal;
-    if (GfDot(shadingNormal, rayDir) > 0) shadingNormal = -shadingNormal;
-
-    GfVec3f shadowOrigin = hitPos + shadingNormal * 1e-4f;
-    GfVec3f result = hit.emission;
-
-    // Advanced Material Logic: Reflections and Refractions
-    float fresnel = FresnelDielectric(GfDot(rayDir, shadingNormal), hit.ior);
-    
-    // Determine if we reflect or refract/diffuse
-    float reflectProb = fresnel;
-    if (hit.metallic > 0.0f) reflectProb = std::max(reflectProb, hit.metallic);
-    
-    float randVal = RandomFloat(rng);
-
-    if (randVal < reflectProb) {
-        // Reflection
-        GfVec3f reflectDir = (rayDir - 2.0f * GfDot(rayDir, shadingNormal) * shadingNormal).GetNormalized();
-        // Perturb by roughness
-        if (hit.roughness > 0.0f) {
-            reflectDir = AlignToNormal(SampleCosineHemisphere(RandomFloat(rng), RandomFloat(rng)), reflectDir);
-            if (GfDot(reflectDir, shadingNormal) < 0) reflectDir = (reflectDir - 2.0f * GfDot(reflectDir, shadingNormal) * shadingNormal).GetNormalized();
+        HitRecord hit;
+        if (!this->_IntersectTLAS(0, currentRayOrigin, currentRayDir, hit, renderThread)) {
+            totalRadiance += GfCompMult(throughput, _SampleEnvironment(currentRayDir, lights));
+            break;
         }
-        return result + _TraceRay(hitPos + shadingNormal * 1e-4f, reflectDir, depth + 1, isInteractive, renderThread, lights, rng);
-    } 
 
-    // Handle Transmission (Refraction)
-    if (hit.transmission > 1e-6f) {
-        float remainingProb = (randVal - reflectProb) / (1.0f - reflectProb);
-        if (remainingProb < hit.transmission) {
-            float etaI = 1.0f, etaT = hit.ior;
-            GfVec3f n = shadingNormal;
-            float cosThetaI = GfDot(rayDir, n);
-            if (cosThetaI > 0) {
-                std::swap(etaI, etaT);
-                n = -n;
-                cosThetaI = -cosThetaI;
-            }
-            float eta = etaI / etaT;
-            float k = 1.0f - eta * eta * (1.0f - cosThetaI * cosThetaI);
-            if (k >= 0) {
-                GfVec3f refractDir = (eta * rayDir - (eta * cosThetaI + std::sqrt(k)) * n).GetNormalized();
-                // For refraction, we use transmissionColor as the filter
-                return result + GfCompMult(hit.transmissionColor, _TraceRay(hitPos - n * 1e-4f, refractDir, depth + 1, isInteractive, renderThread, lights, rng));
-            }
-            // Total Internal Reflection fallback
-            GfVec3f reflectDir = (rayDir - 2.0f * GfDot(rayDir, n) * n).GetNormalized();
-            return result + _TraceRay(hitPos + n * 1e-4f, reflectDir, depth + 1, isInteractive, renderThread, lights, rng);
+        if (!hit.diffuseTexture.GetAssetPath().empty()) {
+            hit.baseColor = GfCompMult(hit.baseColor, _SampleTexture(hit.diffuseTexture, hit.uv));
         }
-    }
 
-    // Diffuse path (if not reflected or refracted)
-    if (!lights.empty()) {
-        auto it = lights.begin();
-        std::advance(it, (size_t)(RandomFloat(rng) * lights.size()));
-        HdGeminiLight* light = it->second;
-        GfVec3f lDir;
-        float lightDist = 1e30f;
-        float lightPdf = 1.0f / (float)lights.size();
-        GfVec3f lColor(0.0f);
+        GfVec3f hitPos = currentRayOrigin + currentRayDir * hit.t;
 
-        if (light->GetLightType() == HdPrimTypeTokens->distantLight) {
-            lDir = GfMatrix4f(light->GetTransform()).TransformDir(GfVec3f(0, 0, -1)).GetNormalized();
-            lColor = light->GetColor() * light->GetIntensity();
-        } else if (light->GetLightType() == HdPrimTypeTokens->domeLight && !_envMapRowCdf.empty()) {
-            float u1 = RandomFloat(rng);
-            float u2 = RandomFloat(rng);
-            auto itY = std::lower_bound(_envMapRowCdf.begin(), _envMapRowCdf.end(), u1);
-            int y = std::clamp((int)std::distance(_envMapRowCdf.begin(), itY) - 1, 0, _envMapHeight - 1);
-            const float* colCdf = &_envMapColCdf[y * (_envMapWidth + 1)];
-            auto itX = std::lower_bound(colCdf, colCdf + _envMapWidth + 1, u2);
-            int x = std::clamp((int)std::distance(colCdf, itX) - 1, 0, _envMapWidth - 1);
-            float theta = M_PI * (float)(y + 0.5f) / (float)_envMapHeight;
-            float phi = 2.0f * M_PI * (float)(x + 0.5f) / (float)_envMapWidth;
-            lDir = GfVec3f(std::sin(theta) * std::cos(phi), std::cos(theta), std::sin(theta) * std::sin(phi));
-            size_t idx = (y * _envMapWidth + x) * 3;
-            GfVec3f texColor(_envMapPixels[idx], _envMapPixels[idx+1], _envMapPixels[idx+2]);
-            lColor = GfCompMult(texColor, light->GetColor()) * light->GetIntensity();
-            if (_envMapTotalLuminance > 0) {
-                float lum = 0.2126f * texColor[0] + 0.7152f * texColor[1] + 0.0722f * texColor[2];
-                float pdf = lum / (_envMapTotalLuminance * (M_PI / (float)_envMapHeight) * (2.0f * M_PI / (float)_envMapWidth));
-                lightPdf *= std::max(pdf, 1e-6f);
+        // Handle transparency/opacity
+        if (hit.opacity < 0.999f && RandomFloat(rng) > hit.opacity) {
+            currentRayOrigin = hitPos + currentRayDir * 1e-4f;
+            bounce--; // Don't count as a bounce
+            continue;
+        }
+
+        GfVec3f shadingNormal = hit.smoothNormal;
+        if (GfDot(shadingNormal, currentRayDir) > 0) shadingNormal = -shadingNormal;
+
+        totalRadiance += GfCompMult(throughput, hit.emission);
+
+        // --- Direct Lighting (Light Sampling) ---
+        if (!lights.empty()) {
+            auto it = lights.begin();
+            std::advance(it, (size_t)(RandomFloat(rng) * lights.size()));
+            HdGeminiLight* light = it->second;
+            
+            GfVec3f lDir;
+            float lightDist = 1e30f;
+            float lightPdf = 1.0f / (float)lights.size();
+            GfVec3f lColor(0.0f);
+
+            if (light->GetLightType() == HdPrimTypeTokens->distantLight) {
+                lDir = GfMatrix4f(light->GetTransform()).TransformDir(GfVec3f(0, 0, -1)).GetNormalized();
+                lColor = light->GetColor() * light->GetIntensity();
+            } else if (light->GetLightType() == HdPrimTypeTokens->domeLight && !_envMapRowCdf.empty()) {
+                float u1 = RandomFloat(rng);
+                float u2 = RandomFloat(rng);
+                auto itY = std::lower_bound(_envMapRowCdf.begin(), _envMapRowCdf.end(), u1);
+                int y = std::clamp((int)std::distance(_envMapRowCdf.begin(), itY) - 1, 0, _envMapHeight - 1);
+                const float* colCdf = &_envMapColCdf[y * (_envMapWidth + 1)];
+                auto itX = std::lower_bound(colCdf, colCdf + _envMapWidth + 1, u2);
+                int x = std::clamp((int)std::distance(colCdf, itX) - 1, 0, _envMapWidth - 1);
+                float theta = M_PI * (float)(y + 0.5f) / (float)_envMapHeight;
+                float phi = 2.0f * M_PI * (float)(x + 0.5f) / (float)_envMapWidth;
+                lDir = GfVec3f(std::sin(theta) * std::cos(phi), std::cos(theta), std::sin(theta) * std::sin(phi));
+                size_t idx = (y * _envMapWidth + x) * 3;
+                GfVec3f texColor(_envMapPixels[idx], _envMapPixels[idx+1], _envMapPixels[idx+2]);
+                lColor = GfCompMult(texColor, light->GetColor()) * light->GetIntensity();
+                if (_envMapTotalLuminance > 0) {
+                    float lum = 0.2126f * texColor[0] + 0.7152f * texColor[1] + 0.0722f * texColor[2];
+                    float pdf = lum / (_envMapTotalLuminance * (M_PI / (float)_envMapHeight) * (2.0f * M_PI / (float)_envMapWidth));
+                    lightPdf *= std::max(pdf, 1e-6f);
+                }
+            } else if (light->GetLightType() == HdPrimTypeTokens->rectLight) {
+                float u = RandomFloat(rng) - 0.5f;
+                float v = RandomFloat(rng) - 0.5f;
+                GfVec3f lPosLocal(u * light->GetWidth(), v * light->GetHeight(), 0.0f);
+                GfVec3f lPosWorld = GfMatrix4f(light->GetTransform()).Transform(lPosLocal);
+                GfVec3f toLight = lPosWorld - hitPos;
+                lightDist = toLight.GetLength();
+                lDir = toLight / lightDist;
+                float area = light->GetWidth() * light->GetHeight();
+                if (area > 0) {
+                    GfVec3f lNormal = GfMatrix4f(light->GetTransform()).TransformDir(GfVec3f(0, 0, -1)).GetNormalized();
+                    float cosThetaL = std::max(0.0f, GfDot(lNormal, -lDir));
+                    if (cosThetaL > 0) {
+                        lightPdf *= (lightDist * lightDist) / (area * cosThetaL);
+                        lColor = light->GetColor() * light->GetIntensity();
+                    } else {
+                        lightDist = -1.0f;
+                    }
+                }
+            } else {
+                GfVec3f lPos = GfMatrix4f(light->GetTransform()).ExtractTranslation();
+                GfVec3f toLight = lPos - hitPos;
+                lightDist = toLight.GetLength();
+                lDir = toLight / lightDist;
+                lightPdf *= (lightDist * lightDist);
+                lColor = light->GetColor() * light->GetIntensity();
             }
-        } else if (light->GetLightType() == HdPrimTypeTokens->rectLight) {
-            float u = RandomFloat(rng) - 0.5f;
-            float v = RandomFloat(rng) - 0.5f;
-            GfVec3f lPosLocal(u * light->GetWidth(), v * light->GetHeight(), 0.0f);
-            GfVec3f lPosWorld = GfMatrix4f(light->GetTransform()).Transform(lPosLocal);
-            GfVec3f toLight = lPosWorld - hitPos;
-            lightDist = toLight.GetLength();
-            lDir = toLight / lightDist;
-            float area = light->GetWidth() * light->GetHeight();
-            if (area > 0) {
-                GfVec3f lNormal = GfMatrix4f(light->GetTransform()).TransformDir(GfVec3f(0, 0, -1)).GetNormalized();
-                float cosThetaL = std::max(0.0f, GfDot(lNormal, -lDir));
-                if (cosThetaL > 0) {
-                    lightPdf *= (lightDist * lightDist) / (area * cosThetaL);
-                    lColor = light->GetColor() * light->GetIntensity();
-                } else {
-                    lightDist = -1.0f; // mark as skipped
+
+            // Apply shaping parameters (cone angle & softness) for local lights
+            if (lightDist > 0 && light->GetLightType() != HdPrimTypeTokens->domeLight && light->GetLightType() != HdPrimTypeTokens->distantLight) {
+                float coneAngle = light->GetShapingConeAngle();
+                if (coneAngle < 180.0f) {
+                    GfVec3f lNormal = GfMatrix4f(light->GetTransform()).TransformDir(GfVec3f(0, 0, -1)).GetNormalized();
+                    float cosTheta = GfDot(lNormal, -lDir);
+                    float coneAngleRad = coneAngle * (float)(M_PI / 180.0);
+                    float cosConeAngle = std::cos(coneAngleRad);
+
+                    if (cosTheta <= cosConeAngle) {
+                        lColor = GfVec3f(0.0f);
+                    } else {
+                        float softness = light->GetShapingConeSoftness();
+                        if (softness > 0.0f) {
+                            float innerAngleRad = coneAngleRad * (1.0f - softness);
+                            float cosInnerAngle = std::cos(innerAngleRad);
+                            if (cosTheta < cosInnerAngle) {
+                                float factor = (cosTheta - cosConeAngle) / (cosInnerAngle - cosConeAngle);
+                                // smoothstep
+                                factor = factor * factor * (3.0f - 2.0f * factor);
+                                lColor *= factor;
+                            }
+                        }
+                    }
                 }
             }
-        } else {
-            GfVec3f lPos = GfMatrix4f(light->GetTransform()).ExtractTranslation();
-            GfVec3f toLight = lPos - hitPos;
-            lightDist = toLight.GetLength();
-            lDir = toLight / lightDist;
-            lColor = (light->GetColor() * light->GetIntensity()) / (lightDist * lightDist);
-        }
 
-        // Apply shaping parameters (cone angle & softness) for local lights
-        if (lightDist > 0 && light->GetLightType() != HdPrimTypeTokens->domeLight && light->GetLightType() != HdPrimTypeTokens->distantLight) {
-            float coneAngle = light->GetShapingConeAngle();
-            if (coneAngle < 180.0f) {
-                GfVec3f lNormal = GfMatrix4f(light->GetTransform()).TransformDir(GfVec3f(0, 0, -1)).GetNormalized();
-                float cosTheta = GfDot(lNormal, -lDir);
-                float coneAngleRad = coneAngle * (float)(M_PI / 180.0);
-                float cosConeAngle = std::cos(coneAngleRad);
-
-                if (cosTheta <= cosConeAngle) {
-                    lColor = GfVec3f(0.0f);
-                } else {
-                    float softness = light->GetShapingConeSoftness();
-                    if (softness > 0.0f) {
-                        float innerAngleRad = coneAngleRad * (1.0f - softness);
-                        float cosInnerAngle = std::cos(innerAngleRad);
-                        if (cosTheta < cosInnerAngle) {
-                            float factor = (cosTheta - cosConeAngle) / (cosInnerAngle - cosConeAngle);
-                            // smoothstep
-                            factor = factor * factor * (3.0f - 2.0f * factor);
-                            lColor *= factor;
-                        }
+            if (lightDist > 0 && (lColor[0] > 0 || lColor[1] > 0 || lColor[2] > 0)) {
+                float nDotL = std::max(0.0f, GfDot(shadingNormal, lDir));
+                if (nDotL > 0) {
+                    HitRecord shadowHit;
+                    shadowHit.t = lightDist - 1e-3f;
+                    GfVec3f shadowOrigin = hitPos + shadingNormal * 1e-4f;
+                    if (!this->_IntersectTLAS(0, shadowOrigin, lDir, shadowHit, renderThread)) {
+                        GfVec3f bsdf = hit.baseColor / (float)M_PI;
+                        totalRadiance += GfCompMult(throughput, GfCompMult(bsdf, lColor)) * (nDotL / (lightPdf + 1e-6f));
                     }
                 }
             }
         }
 
-        if (lightDist > 0 && (lColor[0] > 0 || lColor[1] > 0 || lColor[2] > 0)) {
-            float nDotL = std::max(0.0f, GfDot(shadingNormal, lDir));
-            if (nDotL > 0) {
-                HitRecord shadowHit;
-                shadowHit.t = lightDist - 1e-3f;
-                if (!this->_IntersectTLAS(0, shadowOrigin, lDir, shadowHit, renderThread)) {
-                    GfVec3f bsdf = hit.baseColor / (float)M_PI;
-                    result += GfCompMult(bsdf, lColor) * (nDotL / (lightPdf + 1e-6f));
-                }
+        // --- Indirect Path Selection (BSDF Sampling) ---
+        float fresnel = FresnelDielectric(GfDot(currentRayDir, shadingNormal), hit.ior);
+        float reflectProb = fresnel;
+        if (hit.metallic > 0.0f) reflectProb = std::max(reflectProb, hit.metallic);
+        
+        float randVal = RandomFloat(rng);
+
+        if (randVal < reflectProb) {
+            // Reflection
+            GfVec3f reflectDir = (currentRayDir - 2.0f * GfDot(currentRayDir, shadingNormal) * shadingNormal).GetNormalized();
+            if (hit.roughness > 0.0f) {
+                reflectDir = AlignToNormal(SampleCosineHemisphere(RandomFloat(rng), RandomFloat(rng)), reflectDir);
+                if (GfDot(reflectDir, shadingNormal) < 0) reflectDir = (reflectDir - 2.0f * GfDot(reflectDir, shadingNormal) * shadingNormal).GetNormalized();
             }
+            currentRayDir = reflectDir;
+            currentRayOrigin = hitPos + shadingNormal * 1e-4f;
+        } else {
+            float remainingProb = (randVal - reflectProb) / (1.0f - reflectProb);
+            if (hit.transmission > 1e-6f && remainingProb < hit.transmission) {
+                // Refraction
+                float etaI = 1.0f, etaT = hit.ior;
+                GfVec3f n = shadingNormal;
+                float cosThetaI = GfDot(currentRayDir, n);
+                if (cosThetaI > 0) {
+                    std::swap(etaI, etaT);
+                    n = -n;
+                    cosThetaI = -cosThetaI;
+                }
+                float eta = etaI / etaT;
+                float k = 1.0f - eta * eta * (1.0f - cosThetaI * cosThetaI);
+                if (k >= 0) {
+                    GfVec3f refractDir = (eta * currentRayDir - (eta * cosThetaI + std::sqrt(k)) * n).GetNormalized();
+                    currentRayDir = refractDir;
+                    currentRayOrigin = hitPos - n * 1e-4f;
+                    throughput = GfCompMult(throughput, hit.transmissionColor);
+                } else {
+                    // Total Internal Reflection
+                    GfVec3f reflectDir = (currentRayDir - 2.0f * GfDot(currentRayDir, n) * n).GetNormalized();
+                    currentRayDir = reflectDir;
+                    currentRayOrigin = hitPos + n * 1e-4f;
+                }
+            } else {
+                // Diffuse
+                GfVec3f diffuseDir = AlignToNormal(SampleCosineHemisphere(RandomFloat(rng), RandomFloat(rng)), shadingNormal);
+                float nDotL = std::max(0.0f, GfDot(shadingNormal, diffuseDir));
+                float pdf = nDotL / (float)M_PI;
+                if (pdf < 1e-6f) break;
+                
+                throughput = GfCompMult(throughput, hit.baseColor); 
+                currentRayDir = diffuseDir;
+                currentRayOrigin = hitPos + shadingNormal * 1e-4f;
+            }
+        }
+
+        // --- Russian Roulette ---
+        if (bounce > 3) {
+            float p = std::max(throughput[0], std::max(throughput[1], throughput[2]));
+            if (RandomFloat(rng) > p) break;
+            throughput /= p;
         }
     }
 
-    if (!isInteractive && depth < 3) {
-        GfVec3f bounceDir = AlignToNormal(SampleCosineHemisphere(RandomFloat(rng), RandomFloat(rng)), shadingNormal);
-        float nDotL = std::max(0.0f, GfDot(shadingNormal, bounceDir));
-        float pdf = nDotL / (float)M_PI;
-        if (pdf > 1e-6f) {
-            GfVec3f indirect = _TraceRay(shadowOrigin, bounceDir, depth + 1, isInteractive, renderThread, lights, rng);
-            GfVec3f bsdf = hit.baseColor / (float)M_PI;
-            result += GfCompMult(bsdf, indirect) * (nDotL / pdf);
-        }
-    } else if (isInteractive) {
-        result += hit.baseColor * 0.2f;
-    }
-    return result;
+    return totalRadiance;
 }
 
 void

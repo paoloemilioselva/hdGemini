@@ -354,9 +354,12 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
         
         // Map original faces to material IDs (GeomSubsets)
         HdGeomSubsets geomSubsets = topology.GetGeomSubsets();
+
         std::vector<SdfPath> faceMaterialPaths(topology.GetNumFaces(), defaultMaterialId);
         
+        std::cout << "[Gemini] Mesh " << id.GetText() << " splitting into subsets (Faces: " << topology.GetNumFaces() << "):" << std::endl;
         for (const auto& subset : geomSubsets) {
+            std::cout << "[Gemini]   Subset " << subset.id.GetText() << " | Material: " << subset.materialId.GetText() << " | Face count: " << subset.indices.size() << std::endl;
             for (int faceIdx : subset.indices) {
                 if (faceIdx >= 0 && (size_t)faceIdx < faceMaterialPaths.size()) {
                     faceMaterialPaths[faceIdx] = subset.materialId;
@@ -374,12 +377,25 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
         std::map<SdfPath, GroupedData> grouped;
 
         for (size_t i = 0; i < allTriangulatedIndices.size(); ++i) {
-            // Correct face index decoding: 
-            // - Shift right by 2 is typical for subdivided meshes where faceIndex is in high bits
-            // - Masking with 0x0FFFFFFF is used for non-shifted face indices
-            int faceIdx = trianglePrimitiveParams[i] >> 2;
-            if (faceIdx < 0 || (size_t)faceIdx >= faceMaterialPaths.size()) {
-                faceIdx = trianglePrimitiveParams[i] & 0x0FFFFFFF;
+            // Robust face index decoding: try various strategies
+            int rawParam = trianglePrimitiveParams[i];
+            int faceIdx = -1;
+
+            // Strategy 1: Modern shift (>> 3)
+            int candidate = rawParam >> 3;
+            if (candidate >= 0 && candidate < (int)faceMaterialPaths.size()) {
+                faceIdx = candidate;
+            } else {
+                // Strategy 2: Bitmask (& 0x0FFFFFFF)
+                candidate = rawParam & 0x0FFFFFFF;
+                if (candidate >= 0 && candidate < (int)faceMaterialPaths.size()) {
+                    faceIdx = candidate;
+                } else {
+                    // Strategy 3: Just the raw value (some versions use this)
+                    if (rawParam >= 0 && rawParam < (int)faceMaterialPaths.size()) {
+                        faceIdx = rawParam;
+                    }
+                }
             }
 
             SdfPath matPath = defaultMaterialId;

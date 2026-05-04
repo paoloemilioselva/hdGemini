@@ -638,7 +638,7 @@ GfVec3f HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVec3f& ray
             GfVec3f toLight = lPos - hitPos;
             lightDist = toLight.GetLength();
             lDir = toLight / lightDist;
-            lColor = light->GetColor() * light->GetIntensity();
+            lColor = (light->GetColor() * light->GetIntensity()) / (lightDist * lightDist);
         }
 
         // Apply shaping parameters (cone angle & softness) for local lights

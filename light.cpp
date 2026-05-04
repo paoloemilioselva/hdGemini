@@ -5,6 +5,7 @@
 #include "pxr/imaging/hd/tokens.h"
 
 #include <cmath>
+#include <iostream>
 
 PXR_NAMESPACE_USING_DIRECTIVE
 
@@ -15,6 +16,10 @@ HdGeminiLight::HdGeminiLight(SdfPath const& id, TfToken const& lightType)
     , _exposure(0.0f)
     , _transform(1.0)
     , _lightType(lightType)
+    , _width(1.0f)
+    , _height(1.0f)
+    , _shapingConeAngle(180.0f)
+    , _shapingConeSoftness(0.0f)
 {
 }
 
@@ -69,6 +74,12 @@ HdGeminiLight::Sync(HdSceneDelegate *sceneDelegate,
             if (heightVal.IsHolding<float>()) {
                 _height = heightVal.UncheckedGet<float>();
             }
+        }
+        
+        std::cout << "[Gemini] Syncing light " << id.GetText() << " (type: " << _lightType.GetText() << "):" << std::endl;
+        std::cout << "[Gemini]   Intensity: " << _intensity << " | Exposure: " << _exposure << " | Final: " << GetIntensity() << std::endl;
+        if (_shapingConeAngle < 180.0f) {
+            std::cout << "[Gemini]   Shaping: Angle=" << _shapingConeAngle << " | Softness=" << _shapingConeSoftness << std::endl;
         }
     }
 

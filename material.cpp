@@ -18,6 +18,7 @@ HdGeminiMaterial::HdGeminiMaterial(SdfPath const& id)
     , _opacity(1.0f)
     , _ior(1.5f)
     , _transmission(0.0f)
+    , _transmissionColor(1.0f)
     , _emissionColor(1.0f)
     , _emission(0.0f)
 {
@@ -88,6 +89,8 @@ static void _ProcessNodeUpstream(
                 material->SetIor(param.second.UncheckedGet<float>());
             } else if ((param.first == TfToken("transmission") || param.first == TfToken("transmission_weight")) && param.second.IsHolding<float>()) {
                 material->SetTransmission(param.second.UncheckedGet<float>());
+            } else if (param.first == TfToken("transmission_color") && param.second.IsHolding<GfVec3f>()) {
+                material->SetTransmissionColor(param.second.UncheckedGet<GfVec3f>());
             } else if ((param.first == TfToken("emission") || param.first == TfToken("emission_weight")) && param.second.IsHolding<float>()) {
                 material->SetEmission(param.second.UncheckedGet<float>());
             } else if (param.first == TfToken("emission_color") && param.second.IsHolding<GfVec3f>()) {
@@ -114,6 +117,8 @@ static void _ProcessNodeUpstream(
                 material->SetIor(param.second.UncheckedGet<float>());
             } else if (param.first == TfToken("transmission_weight") && param.second.IsHolding<float>()) {
                 material->SetTransmission(param.second.UncheckedGet<float>());
+            } else if (param.first == TfToken("transmission_color") && param.second.IsHolding<GfVec3f>()) {
+                material->SetTransmissionColor(param.second.UncheckedGet<GfVec3f>());
             } else if (param.first == TfToken("emission_luminance") && param.second.IsHolding<float>()) {
                 material->SetEmission(param.second.UncheckedGet<float>());
             } else if (param.first == TfToken("emission_color") && param.second.IsHolding<GfVec3f>()) {
@@ -219,7 +224,8 @@ HdGeminiMaterial::Sync(HdSceneDelegate *sceneDelegate,
                 _ProcessNodeUpstream(network, terminalPath, visited, this);
                 
                 std::cout << "[Gemini]   Final Params: Diffuse=" << _diffuseColor << " | Emission=" << (_emissionColor * _emission) 
-                          << " (Color=" << _emissionColor << ", Weight=" << _emission << ") | Opacity=" << _opacity << std::endl;
+                          << " (Color=" << _emissionColor << ", Weight=" << _emission << ") | Opacity=" << _opacity 
+                          << " | Transmission=" << _transmission << " (Color=" << _transmissionColor << ")" << std::endl;
             } else {
                 std::cout << "[Gemini]   No terminals found in network!" << std::endl;
             }

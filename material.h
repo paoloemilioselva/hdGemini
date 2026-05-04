@@ -37,6 +37,9 @@ public:
     float GetTransmission() const { return _transmission; }
     void SetTransmission(float v) { _transmission = v; }
 
+    const GfVec3f& GetTransmissionColor() const { return _transmissionColor; }
+    void SetTransmissionColor(const GfVec3f& v) { _transmissionColor = v; }
+
     const GfVec3f& GetEmissionColor() const { return _emissionColor; }
     void SetEmissionColor(const GfVec3f& v) { _emissionColor = v; }
 
@@ -53,6 +56,7 @@ public:
     float _opacity;
     float _ior;
     float _transmission;
+    GfVec3f _transmissionColor;
     GfVec3f _emissionColor;
     float _emission;
 

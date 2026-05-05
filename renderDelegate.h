@@ -25,6 +25,12 @@ PXR_NAMESPACE_USING_DIRECTIVE
 
 TF_DECLARE_PUBLIC_TOKENS(HdGeminiAovTokens, HD_GEMINI_AOV_TOKENS);
 
+#define HD_GEMINI_RENDER_SETTINGS_TOKENS \
+    (enableDenoiser)                     \
+    (targetSampleCount)
+
+TF_DECLARE_PUBLIC_TOKENS(HdGeminiRenderSettingsTokens, HD_GEMINI_RENDER_SETTINGS_TOKENS);
+
 class HdGeminiRenderParam;
 class HdGeminiMesh;
 class HdGeminiInstancer;
@@ -72,6 +78,10 @@ public:
     virtual void CommitResources(HdChangeTracker *tracker) override;
 
     virtual HdAovDescriptor GetDefaultAovDescriptor(TfToken const& name) const override;
+
+    virtual HdRenderSettingDescriptorList GetRenderSettingDescriptors() const override;
+    virtual VtValue GetRenderSetting(TfToken const& key) const override;
+    virtual void SetRenderSetting(TfToken const& key, VtValue const& value) override;
 
     void AddMesh(const SdfPath& id, HdGeminiMesh* mesh);
     void RemoveMesh(const SdfPath& id);

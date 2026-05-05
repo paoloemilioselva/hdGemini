@@ -18,6 +18,7 @@
 PXR_NAMESPACE_USING_DIRECTIVE
 
 TF_DEFINE_PUBLIC_TOKENS(HdGeminiAovTokens, HD_GEMINI_AOV_TOKENS);
+TF_DEFINE_PUBLIC_TOKENS(HdGeminiRenderSettingsTokens, HD_GEMINI_RENDER_SETTINGS_TOKENS);
 
 const TfTokenVector HdGeminiRenderDelegate::SUPPORTED_RPRIM_TYPES =
 {
@@ -288,6 +289,54 @@ HdGeminiRenderDelegate::GetDefaultAovDescriptor(TfToken const& name) const
         return HdAovDescriptor(HdFormatFloat32Vec3, false, VtValue(GfVec3f(0.0f)));
     }
     return HdAovDescriptor();
+}
+
+HdRenderSettingDescriptorList
+HdGeminiRenderDelegate::GetRenderSettingDescriptors() const
+{
+    HdRenderSettingDescriptorList list;
+    list.push_back({
+        "Enable Denoiser",
+        HdGeminiRenderSettingsTokens->enableDenoiser,
+        VtValue(true)
+    });
+    list.push_back({
+        "Target Sample Count",
+        HdGeminiRenderSettingsTokens->targetSampleCount,
+        VtValue(32)
+    });
+    return list;
+}
+
+VtValue
+HdGeminiRenderDelegate::GetRenderSetting(TfToken const& key) const
+{
+    VtValue v = HdRenderDelegate::GetRenderSetting(key);
+    if (!v.IsEmpty()) {
+        return v;
+    }
+    
+    if (key == HdGeminiRenderSettingsTokens->enableDenoiser) {
+        return VtValue(true);
+    } else if (key == HdGeminiRenderSettingsTokens->targetSampleCount) {
+        return VtValue(32);
+    }
+    return VtValue();
+}
+
+void
+HdGeminiRenderDelegate::SetRenderSetting(TfToken const& key, VtValue const& value)
+{
+    if (key == HdGeminiRenderSettingsTokens->enableDenoiser) {
+        if (value.IsHolding<bool>()) {
+            _renderer.SetEnableDenoiser(value.Get<bool>());
+        }
+    } else if (key == HdGeminiRenderSettingsTokens->targetSampleCount) {
+        if (value.IsHolding<int>()) {
+            _renderer.SetTargetSampleCount(value.Get<int>());
+        }
+    }
+    HdRenderDelegate::SetRenderSetting(key, value);
 }
 
 void

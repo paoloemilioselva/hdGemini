@@ -39,8 +39,13 @@ public:
     void MarkAovBuffersUnconverged();
     bool IsConverged() const { return _isConverged; }
 
+    void SetEnableDenoiser(bool enable) { _enableDenoiser = enable; }
+    void SetTargetSampleCount(int samples) { _targetSampleCount = samples; }
+
 private:
     bool _isConverged = false;
+    bool _enableDenoiser = true;
+    int _targetSampleCount = 32;
 
     struct MeshInstance {
         HdGeminiMesh* mesh;

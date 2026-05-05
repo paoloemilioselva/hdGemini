@@ -180,8 +180,10 @@ HdGeminiRenderer::Render(HdRenderThread *renderThread, HdGeminiRenderDelegate* d
         _resolutionLevel = 1;
         _frameCount++;
         
-        if (_frameCount == 32) {
-            _Denoise();
+        if (_frameCount >= _targetSampleCount) {
+            if (_enableDenoiser) {
+                _Denoise();
+            }
             _isConverged = true;
             for (auto const& binding : _aovBindings) {
                 if (binding.renderBuffer) {

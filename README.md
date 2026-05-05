@@ -2,11 +2,23 @@
 
 **hdGemini** is a custom Hydra Render Delegate for Pixar's Universal Scene Description (USD). It implements a CPU-based, physically-based Monte Carlo path tracer designed to seamlessly integrate into Hydra-based viewports like `usdview`.
 
-![hdGemini Render Preview](render_preview.png)
+<p align="center">
+  <img src="images/preview4.png" width="48%" />
+  <img src="images/preview1.png" width="48%" />
+</p>
+<p align="center">
+  <img src="images/preview2.png" width="48%" />
+  <img src="images/preview3.png" width="48%" />
+</p>
 
 ## Features
 
 - **Monte Carlo Path Tracing**: Full global illumination via stochastic path tracing, featuring Multiple Importance Sampling (MIS) using the power heuristic and Russian Roulette for robust, unbiased rendering.
+- **AI Denoising Pipeline**:
+  - Integrated **Intel Open Image Denoise (OIDN)** v2.2.2 for rapid noise reduction.
+  - Automated binary download and linking via `FetchContent` in CMake.
+  - Custom AOVs (`albedo`, `normal`) seamlessly extract unlit color and shading normals on the first bounce to guide the denoiser.
+  - Interactive Hydra Render Settings controls: `Enable Denoiser` and `Target Sample Count` directly exposed in the `usdview` UI.
 - **Physical Materials**: Extensive support for physically-based rendering workflows.
   - Prioritized resolution for **MaterialX** (`mtlx`) and **OpenPBR** surface shaders via the SdrRegistry.
   - Accurate physical refraction, handling Transmission, IOR (Index of Refraction), and Transmission Color (tinting).

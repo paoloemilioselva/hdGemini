@@ -180,9 +180,14 @@ HdGeminiRenderer::Render(HdRenderThread *renderThread, HdGeminiRenderDelegate* d
         _resolutionLevel = 1;
         _frameCount++;
         
-        // Denoise every few frames if fully converged or periodically
-        if (_frameCount % 16 == 0) {
+        if (_frameCount == 32) {
             _Denoise();
+            _isConverged = true;
+            for (auto const& binding : _aovBindings) {
+                if (binding.renderBuffer) {
+                    static_cast<HdGeminiRenderBuffer*>(binding.renderBuffer)->SetConverged(true);
+                }
+            }
         }
     }
 }
@@ -867,6 +872,7 @@ HdGeminiRenderer::Clear()
 {
     _resolutionLevel = 4;
     _frameCount = 0;
+    _isConverged = false;
     for (auto const& binding : _aovBindings) {
         if (binding.renderBuffer && !binding.clearValue.IsEmpty()) {
             HdGeminiRenderBuffer* rb = static_cast<HdGeminiRenderBuffer*>(binding.renderBuffer);

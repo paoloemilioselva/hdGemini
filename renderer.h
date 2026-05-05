@@ -37,9 +37,11 @@ public:
     void Render(HdRenderThread *renderThread, HdGeminiRenderDelegate* delegate);
     void Clear();
     void MarkAovBuffersUnconverged();
-    bool IsConverged() const { return false; } // Keep accumulating samples
+    bool IsConverged() const { return _isConverged; }
 
 private:
+    bool _isConverged = false;
+
     struct MeshInstance {
         HdGeminiMesh* mesh;
         const HdGeminiMesh::Subset* subset;

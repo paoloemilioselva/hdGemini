@@ -35,6 +35,8 @@ public:
     virtual bool IsConverged() const override { return _converged.load(); }
     void SetConverged(bool converged) { _converged.store(converged); }
 
+    void GetFloatBuffer(std::vector<float>& outFloats) const;
+
     void WriteSample(GfVec3i const& pixel, GfVec4f const& color);
     void Write(GfVec3i const& pixel, size_t numComponents, float const* value);
     void Write(GfVec3i const& pixel, size_t numComponents, int const* value);

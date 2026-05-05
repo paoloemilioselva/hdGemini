@@ -17,6 +17,8 @@
 
 PXR_NAMESPACE_USING_DIRECTIVE
 
+TF_DEFINE_PUBLIC_TOKENS(HdGeminiAovTokens, HD_GEMINI_AOV_TOKENS);
+
 const TfTokenVector HdGeminiRenderDelegate::SUPPORTED_RPRIM_TYPES =
 {
     HdPrimTypeTokens->mesh,
@@ -280,6 +282,10 @@ HdGeminiRenderDelegate::GetDefaultAovDescriptor(TfToken const& name) const
                                VtValue(GfVec4f(0.0f)));
     } else if (name == HdAovTokens->depth) {
         return HdAovDescriptor(HdFormatFloat32, false, VtValue(1.0f));
+    } else if (name == HdGeminiAovTokens->albedo) {
+        return HdAovDescriptor(HdFormatFloat32Vec3, false, VtValue(GfVec3f(0.0f)));
+    } else if (name == HdGeminiAovTokens->normal) {
+        return HdAovDescriptor(HdFormatFloat32Vec3, false, VtValue(GfVec3f(0.0f)));
     }
     return HdAovDescriptor();
 }

@@ -50,6 +50,38 @@ endif()
 include(cmake/FindUsd.cmake)
 include(cmake/FindTBB.cmake)
 
+# --- Open Image Denoise (OIDN) ---
+find_package(OpenImageDenoise QUIET)
+if(NOT OpenImageDenoise_FOUND)
+    message(STATUS "OIDN not found locally. Downloading binary release for Windows...")
+    include(FetchContent)
+    FetchContent_Declare(
+        oidn_bin
+        URL https://github.com/OpenImageDenoise/oidn/releases/download/v2.2.2/oidn-2.2.2.x64.windows.zip
+    )
+    FetchContent_Populate(oidn_bin)
+    set(OpenImageDenoise_ROOT ${oidn_bin_SOURCE_DIR} CACHE PATH "OIDN root directory")
+    set(OpenImageDenoise_DIR ${OpenImageDenoise_ROOT}/lib/cmake/OpenImageDenoise)
+    find_package(OpenImageDenoise REQUIRED)
+else()
+    # Try to derive ROOT from DIR if it was found via cached DIR
+    if(NOT OpenImageDenoise_ROOT AND OpenImageDenoise_DIR)
+        get_filename_component(OpenImageDenoise_ROOT "${OpenImageDenoise_DIR}/../../.." ABSOLUTE)
+    endif()
+endif()
+
+if(OpenImageDenoise_FOUND)
+    set(OIDN_LIBRARIES OpenImageDenoise)
+    add_definitions(-DHDGEMINI_HAS_OIDN)
+    message(STATUS "OIDN found. Denoising enabled. ROOT: ${OpenImageDenoise_ROOT}")
+    
+    # Copy OIDN DLLs to the build folder for runtime discovery
+    file(GLOB OIDN_DLLS "${OpenImageDenoise_ROOT}/bin/*.dll")
+    foreach(DLL ${OIDN_DLLS})
+        file(COPY ${DLL} DESTINATION ${CMAKE_BINARY_DIR})
+    endforeach()
+endif()
+
 add_library( ${DELEGATE_NAME} SHARED
     rendererPlugin.cpp
     rendererPlugin.h
@@ -96,6 +128,7 @@ target_link_libraries(
     ${USD_LIBS}
     usd_sdr.lib
     TBB::tbb
+    ${OIDN_LIBRARIES}
 )
 
 set(_installation_folder "")
@@ -108,4 +141,10 @@ elseif( _target_name MATCHES "usd" )
     set(_installation_folder "C:/Users/paolo/Desktop/usd-26.03-extra")
     install(TARGETS ${DELEGATE_NAME} RUNTIME DESTINATION ${_installation_folder}/plugin/usd)
     install(FILES ${CMAKE_SOURCE_DIR}/usd-extra/plugInfo.json DESTINATION ${_installation_folder}/plugin/usd/${DELEGATE_NAME}/resources )
+    
+    # Install OIDN DLLs
+    if(OpenImageDenoise_FOUND)
+        file(GLOB OIDN_DLLS "${OpenImageDenoise_ROOT}/bin/*.dll")
+        install(FILES ${OIDN_DLLS} DESTINATION ${_installation_folder}/lib)
+    endif()
 endif()

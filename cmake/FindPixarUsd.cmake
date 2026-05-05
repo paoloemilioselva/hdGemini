@@ -2,7 +2,8 @@ set(TBB_ROOT_DIR ${USD_ROOT} )
 if(NOT BOOST_FROM_USD)
     set( BOOST_FROM_USD 1_78)
 endif()
-set(BOOST_ROOT "${USD_ROOT}/include/boost-${BOOST_FROM_USD}" )
+set(BOOST_ROOT "${USD_ROOT}" )
+set(Boost_INCLUDE_DIRS "${USD_ROOT}/include/boost-${BOOST_FROM_USD}" "${USD_ROOT}/include")
 MESSAGE(STATUS "USD_VERSION = " ${USD_VERSION} )
 MESSAGE(STATUS "USD_ROOT = " ${USD_ROOT} )
 MESSAGE(STATUS "TBB_ROOT_DIR = " ${TBB_ROOT_DIR} )
@@ -28,7 +29,7 @@ find_package_handle_standard_args(USD
 )
 
 find_package(Boost REQUIRED)
-include_directories( ${BOOST_ROOT} )
+include_directories( ${Boost_INCLUDE_DIRS} )
 
 set (_usd_libs
     usd_usdImagingGL

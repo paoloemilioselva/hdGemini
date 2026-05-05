@@ -19,6 +19,12 @@
 
 PXR_NAMESPACE_USING_DIRECTIVE
 
+#define HD_GEMINI_AOV_TOKENS \
+    (albedo)                 \
+    (normal)
+
+TF_DECLARE_PUBLIC_TOKENS(HdGeminiAovTokens, HD_GEMINI_AOV_TOKENS);
+
 class HdGeminiRenderParam;
 class HdGeminiMesh;
 class HdGeminiInstancer;

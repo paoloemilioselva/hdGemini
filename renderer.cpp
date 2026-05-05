@@ -21,6 +21,10 @@
 #include <thread>
 #include <chrono>
 
+#ifdef HDGEMINI_HAS_OIDN
+#include <OpenImageDenoise/oidn.hpp>
+#endif
+
 #ifndef M_PI
 #define M_PI 3.14159265358979323846f
 #endif
@@ -138,9 +142,17 @@ HdGeminiRenderer::SetAovBindings(const HdRenderPassAovBindingVector& aovBindings
 void
 HdGeminiRenderer::Render(HdRenderThread *renderThread, HdGeminiRenderDelegate* delegate)
 {
+    _colorBuffer = nullptr;
+    _albedoBuffer = nullptr;
+    _normalBuffer = nullptr;
+
     for (auto const& binding : _aovBindings) {
         if (binding.renderBuffer) {
-            static_cast<HdGeminiRenderBuffer*>(binding.renderBuffer)->SetConverged(false);
+            HdGeminiRenderBuffer* rb = static_cast<HdGeminiRenderBuffer*>(binding.renderBuffer);
+            rb->SetConverged(false);
+            if (binding.aovName == HdAovTokens->color) _colorBuffer = rb;
+            else if (binding.aovName == HdGeminiAovTokens->albedo) _albedoBuffer = rb;
+            else if (binding.aovName == HdGeminiAovTokens->normal) _normalBuffer = rb;
         }
     }
 
@@ -162,6 +174,11 @@ HdGeminiRenderer::Render(HdRenderThread *renderThread, HdGeminiRenderDelegate* d
     } else {
         _resolutionLevel = 1;
         _frameCount++;
+        
+        // Denoise every few frames if fully converged or periodically
+        if (_frameCount % 16 == 0) {
+            _Denoise();
+        }
     }
 }
 
@@ -519,7 +536,7 @@ static float PowerHeuristic(float f, float g) {
     return f2 / (f2 + g2);
 }
 
-GfVec3f HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVec3f& rayDir, int depth, bool isInteractive, HdRenderThread* renderThread, uint32_t& rng) const
+GfVec3f HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVec3f& rayDir, int depth, bool isInteractive, HdRenderThread* renderThread, uint32_t& rng, GfVec3f* outAlbedo, GfVec3f* outNormal) const
 {
     GfVec3f throughput(1.0f);
     GfVec3f totalRadiance(0.0f);
@@ -533,12 +550,19 @@ GfVec3f HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVec3f& ray
 
         HitRecord hit;
         if (!this->_IntersectTLAS(currentRayOrigin, currentRayDir, hit, renderThread)) {
-            totalRadiance += GfCompMult(throughput, _SampleEnvironment(currentRayDir));
+            GfVec3f env = _SampleEnvironment(currentRayDir);
+            if (bounce == 0 && outAlbedo) *outAlbedo = env;
+            totalRadiance += GfCompMult(throughput, env);
             break;
         }
 
         if (!hit.diffuseTexture.GetAssetPath().empty()) {
             hit.baseColor = GfCompMult(hit.baseColor, _SampleTexture(hit.diffuseTexture, hit.uv));
+        }
+
+        if (bounce == 0) {
+            if (outAlbedo) *outAlbedo = hit.baseColor;
+            if (outNormal) *outNormal = hit.smoothNormal;
         }
 
         GfVec3f hitPos = currentRayOrigin + currentRayDir * hit.t;
@@ -722,21 +746,62 @@ GfVec3f HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVec3f& ray
 }
 
 void
+HdGeminiRenderer::_Denoise()
+{
+#ifdef HDGEMINI_HAS_OIDN
+    unsigned int width = _dataWindow.GetWidth();
+    unsigned int height = _dataWindow.GetHeight();
+    if (width == 0 || height == 0 || !_colorBuffer) return;
+
+    std::vector<float> color, albedo, normal;
+    _colorBuffer->GetFloatBuffer(color);
+    if (_albedoBuffer) _albedoBuffer->GetFloatBuffer(albedo);
+    if (_normalBuffer) _normalBuffer->GetFloatBuffer(normal);
+
+    std::vector<float> output(width * height * 3);
+
+    try {
+        oidn::DeviceRef device = oidn::newDevice();
+        device.commit();
+
+        oidn::FilterRef filter = device.newFilter("RT");
+        filter.setImage("color", color.data(), oidn::Format::Float3, width, height);
+        if (!albedo.empty()) filter.setImage("albedo", albedo.data(), oidn::Format::Float3, width, height);
+        if (!normal.empty()) filter.setImage("normal", normal.data(), oidn::Format::Float3, width, height);
+        filter.setImage("output", output.data(), oidn::Format::Float3, width, height);
+        filter.set("hdr", true);
+        filter.commit();
+        filter.execute();
+
+        const char* errorMessage;
+        if (device.getError(errorMessage) != oidn::Error::None) {
+             std::cerr << "[Gemini] OIDN Error: " << errorMessage << std::endl;
+             return;
+        }
+
+        // Write back to color buffer
+        for (unsigned int y = 0; y < height; ++y) {
+            for (unsigned int x = 0; x < width; ++x) {
+                size_t idx = (y * width + x) * 3;
+                float pixel[4] = { output[idx], output[idx+1], output[idx+2], 1.0f };
+                _colorBuffer->Write(GfVec3i(x, y, 0), 4, pixel);
+            }
+        }
+        _colorBuffer->Resolve();
+
+    } catch (std::exception& e) {
+        std::cerr << "[Gemini] OIDN Exception: " << e.what() << std::endl;
+    }
+#endif
+}
+
+void
 HdGeminiRenderer::_RenderTiles(HdRenderThread *renderThread, HdGeminiRenderDelegate* delegate)
 {
     unsigned int width = _dataWindow.GetWidth();
     unsigned int height = _dataWindow.GetHeight();
-    if (width == 0 || height == 0 || _aovBindings.empty()) return;
+    if (width == 0 || height == 0 || !_colorBuffer) return;
     
-    HdGeminiRenderBuffer* colorBuffer = nullptr;
-    for (auto const& binding : _aovBindings) {
-        if (binding.aovName == HdAovTokens->color) {
-            colorBuffer = static_cast<HdGeminiRenderBuffer*>(binding.renderBuffer);
-            break;
-        }
-    }
-    
-    if (!colorBuffer) return;
     GfVec3f cameraPosWorld(_inverseViewMatrix.Transform(GfVec3f(0, 0, 0)));
     std::lock_guard<std::recursive_mutex> lock(delegate->GetSceneLock());
     int res = _resolutionLevel;
@@ -764,21 +829,28 @@ HdGeminiRenderer::_RenderTiles(HdRenderThread *renderThread, HdGeminiRenderDeleg
                     GfVec3f nearPlanePointCam(_inverseProjMatrix.Transform(GfVec3f(ndcX, ndcY, -1.0f)));
                     GfVec3f nearPlanePointWorld(_inverseViewMatrix.Transform(nearPlanePointCam));
                     GfVec3f rayDirWorld = (nearPlanePointWorld - cameraPosWorld).GetNormalized();
-                    GfVec3f hitColor = _TraceRay(cameraPosWorld, rayDirWorld, 0, isInteractive, renderThread, rng);
+                    
+                    GfVec3f albedo(0.0f), normal(0.0f);
+                    GfVec3f hitColor = _TraceRay(cameraPosWorld, rayDirWorld, 0, isInteractive, renderThread, rng, &albedo, &normal);
+                    
                     if (isInteractive) {
                         GfVec4f finalColor(hitColor[0], hitColor[1], hitColor[2], 1.0f);
                         for (int dy = 0; dy < res && y + dy < height; ++dy) {
                             for (int dx = 0; dx < res && x + dx < width; ++dx) {
-                                colorBuffer->Write(GfVec3i(x + dx, y + dy, 0), 4, finalColor.data());
+                                _colorBuffer->Write(GfVec3i(x + dx, y + dy, 0), 4, finalColor.data());
                             }
                         }
                     } else {
-                        colorBuffer->WriteSample(GfVec3i(x, y, 0), GfVec4f(hitColor[0], hitColor[1], hitColor[2], 1.0f));
+                        _colorBuffer->WriteSample(GfVec3i(x, y, 0), GfVec4f(hitColor[0], hitColor[1], hitColor[2], 1.0f));
+                        if (_albedoBuffer) _albedoBuffer->WriteSample(GfVec3i(x, y, 0), GfVec4f(albedo[0], albedo[1], albedo[2], 1.0f));
+                        if (_normalBuffer) _normalBuffer->WriteSample(GfVec3i(x, y, 0), GfVec4f(normal[0], normal[1], normal[2], 1.0f));
                     }
                 }
                 std::this_thread::yield();
             }
-            if (!renderThread->IsStopRequested()) colorBuffer->ResolveBucket(startX, startY, endX, endY);
+            if (!renderThread->IsStopRequested()) _colorBuffer->ResolveBucket(startX, startY, endX, endY);
+            if (!renderThread->IsStopRequested() && _albedoBuffer) _albedoBuffer->ResolveBucket(startX, startY, endX, endY);
+            if (!renderThread->IsStopRequested() && _normalBuffer) _normalBuffer->ResolveBucket(startX, startY, endX, endY);
         }
     });
 }

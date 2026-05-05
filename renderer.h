@@ -85,10 +85,12 @@ private:
     void _BuildTLAS(HdRenderThread *renderThread);
     void _SubdivideTLAS(int nodeIdx, int start, int end, HdRenderThread *renderThread);
     bool _IntersectTLAS(const GfVec3f& rayOrigin, const GfVec3f& rayDir, HitRecord& hit, HdRenderThread* renderThread) const;
-    GfVec3f _TraceRay(const GfVec3f& rayOrigin, const GfVec3f& rayDir, int depth, bool isInteractive, HdRenderThread* renderThread, uint32_t& rng) const;
+    GfVec3f _TraceRay(const GfVec3f& rayOrigin, const GfVec3f& rayDir, int depth, bool isInteractive, HdRenderThread* renderThread, uint32_t& rng, GfVec3f* outAlbedo = nullptr, GfVec3f* outNormal = nullptr) const;
     GfVec3f _SampleEnvironment(const GfVec3f& rayDir) const;
     GfVec3f _SampleTexture(const SdfAssetPath& path, const GfVec2f& uv) const;
     GfVec3f _SampleTextureData(const TextureData& data, const GfVec2f& uv) const;
+
+    void _Denoise();
 
     HdRenderPassAovBindingVector _aovBindings;
     GfRect2i _dataWindow;
@@ -98,10 +100,16 @@ private:
     GfMatrix4d _inverseProjMatrix;
     std::vector<MeshInstance> _instances;
     std::vector<HdGeminiLight*> _activeLights;
+    int _resolutionLevel = 4;
+    int _frameCount = 0;
+    
+    // Cached AOV buffers
+    class HdGeminiRenderBuffer* _colorBuffer = nullptr;
+    class HdGeminiRenderBuffer* _albedoBuffer = nullptr;
+    class HdGeminiRenderBuffer* _normalBuffer = nullptr;
+
     std::vector<TLASNode> _tlasNodes;
     std::vector<int> _tlasInstanceIndices;
-    int _resolutionLevel;
-    int _frameCount;
 
     std::vector<float> _envMapPixels;
     int _envMapWidth = 0;

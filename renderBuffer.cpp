@@ -95,6 +95,19 @@ HdGeminiRenderBuffer::Write(GfVec3i const& pixel, size_t numComponents, int cons
 }
 
 void
+HdGeminiRenderBuffer::GetFloatBuffer(std::vector<float>& outFloats) const
+{
+    std::lock_guard<std::mutex> lock((const_cast<HdGeminiRenderBuffer*>(this))->_bufferMutex);
+    outFloats.resize(_width * _height * 3);
+    for (size_t i = 0; i < _width * _height; ++i) {
+        float invCount = (_sampleCount[i] > 0) ? (1.0f / (float)_sampleCount[i]) : 1.0f;
+        outFloats[i * 3 + 0] = _accumBuffer[i * 4 + 0] * invCount;
+        outFloats[i * 3 + 1] = _accumBuffer[i * 4 + 1] * invCount;
+        outFloats[i * 3 + 2] = _accumBuffer[i * 4 + 2] * invCount;
+    }
+}
+
+void
 HdGeminiRenderBuffer::WriteSample(GfVec3i const& pixel, GfVec4f const& color)
 {
     std::lock_guard<std::mutex> lock(_bufferMutex);

@@ -114,6 +114,11 @@ HdGeminiRenderer::HdGeminiRenderer()
     , _resolutionLevel(4)
     , _frameCount(0)
 {
+#ifdef HDGEMINI_HAS_OIDN
+    std::cout << "[Gemini] Renderer initialized WITH Open Image Denoise (OIDN) support." << std::endl;
+#else
+    std::cout << "[Gemini] Renderer initialized WITHOUT Open Image Denoise (OIDN) support." << std::endl;
+#endif
 }
 
 HdGeminiRenderer::~HdGeminiRenderer() = default;
@@ -753,6 +758,8 @@ HdGeminiRenderer::_Denoise()
     unsigned int height = _dataWindow.GetHeight();
     if (width == 0 || height == 0 || !_colorBuffer) return;
 
+    std::cout << "[Gemini] Running OIDN Denoiser on frame " << _frameCount << "..." << std::endl;
+
     std::vector<float> color, albedo, normal;
     _colorBuffer->GetFloatBuffer(color);
     if (_albedoBuffer) _albedoBuffer->GetFloatBuffer(albedo);
@@ -761,7 +768,7 @@ HdGeminiRenderer::_Denoise()
     std::vector<float> output(width * height * 3);
 
     try {
-        oidn::DeviceRef device = oidn::newDevice();
+        oidn::DeviceRef device = oidn::newDevice(oidn::DeviceType::CPU);
         device.commit();
 
         oidn::FilterRef filter = device.newFilter("RT");

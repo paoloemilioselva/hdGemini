@@ -514,13 +514,57 @@ GfVec3f HdGeminiRenderer::_SampleTexture(const SdfAssetPath& path, const GfVec2f
     HDGEMINI_LOG << "[Gemini]   Texture loaded: " << data.width << "x" << data.height << std::endl;
     data.pixels.assign(data.width * data.height * 3, 0.0f);
 
+    HioFormat format = image->GetFormat();
+    int channels = HioGetComponentCount(format);
+    bool isFloat = (format == HioFormatFloat32 || format == HioFormatFloat32Vec2 || format == HioFormatFloat32Vec3 || format == HioFormatFloat32Vec4 ||
+                    format == HioFormatFloat16 || format == HioFormatFloat16Vec2 || format == HioFormatFloat16Vec3 || format == HioFormatFloat16Vec4);
+    bool isSrgb = (format == HioFormatUNorm8srgb || format == HioFormatUNorm8Vec2srgb || format == HioFormatUNorm8Vec3srgb || format == HioFormatUNorm8Vec4srgb);
+
     HioImage::StorageSpec spec;
-    spec.format = HioFormatFloat32Vec3;
+    spec.format = format;
     spec.width = data.width;
     spec.height = data.height;
-    spec.data = data.pixels.data();
-    if (!image->Read(spec)) {
-        HDGEMINI_LOG << "[Gemini]   Failed to read texture pixels: " << path.GetAssetPath() << std::endl;
+
+    if (isFloat) {
+        // Just read as Float32 regardless of original float type (HioImage converts internally for floats usually, but let's be safe and read as Float32)
+        spec.format = channels == 4 ? HioFormatFloat32Vec4 : (channels == 3 ? HioFormatFloat32Vec3 : (channels == 2 ? HioFormatFloat32Vec2 : HioFormatFloat32));
+        std::vector<float> rawData(data.width * data.height * channels);
+        spec.data = rawData.data();
+        if (!image->Read(spec)) {
+            HDGEMINI_LOG << "[Gemini]   Failed to read texture pixels (float): " << path.GetAssetPath() << std::endl;
+        } else {
+            for (int i = 0; i < data.width * data.height; ++i) {
+                data.pixels[i*3+0] = rawData[i*channels+0];
+                data.pixels[i*3+1] = channels > 1 ? rawData[i*channels+1] : rawData[i*channels+0];
+                data.pixels[i*3+2] = channels > 2 ? rawData[i*channels+2] : rawData[i*channels+0];
+            }
+        }
+    } else {
+        // Read as UNorm8
+        spec.format = channels == 4 ? (isSrgb ? HioFormatUNorm8Vec4srgb : HioFormatUNorm8Vec4) :
+                      (channels == 3 ? (isSrgb ? HioFormatUNorm8Vec3srgb : HioFormatUNorm8Vec3) :
+                      (channels == 2 ? (isSrgb ? HioFormatUNorm8Vec2srgb : HioFormatUNorm8Vec2) : 
+                      (isSrgb ? HioFormatUNorm8srgb : HioFormatUNorm8)));
+                      
+        std::vector<unsigned char> rawData(data.width * data.height * channels);
+        spec.data = rawData.data();
+        if (!image->Read(spec)) {
+            HDGEMINI_LOG << "[Gemini]   Failed to read texture pixels (unorm8): " << path.GetAssetPath() << std::endl;
+        } else {
+            for (int i = 0; i < data.width * data.height; ++i) {
+                float r = rawData[i*channels+0] / 255.0f;
+                float g = channels > 1 ? rawData[i*channels+1] / 255.0f : r;
+                float b = channels > 2 ? rawData[i*channels+2] / 255.0f : r;
+                if (isSrgb) {
+                    r = std::pow(r, 2.2f);
+                    g = std::pow(g, 2.2f);
+                    b = std::pow(b, 2.2f);
+                }
+                data.pixels[i*3+0] = r;
+                data.pixels[i*3+1] = g;
+                data.pixels[i*3+2] = b;
+            }
+        }
     }
 
     _textureCache[path.GetAssetPath()] = std::move(data);

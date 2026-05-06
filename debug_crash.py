@@ -12,7 +12,7 @@ except ImportError as e:
     print(f"Failed to import USD: {e}")
     sys.exit(1)
 
-scene_path = r"C:\Users\paolo\Desktop\code\collectiveproject001\shots\s001_001\index.usda"
+scene_path = r"..\assets\full_assets\OpenChessSet\chess_set.usda"
 print(f"Loading scene: {scene_path}")
 stage = Usd.Stage.Open(scene_path)
 if not stage:

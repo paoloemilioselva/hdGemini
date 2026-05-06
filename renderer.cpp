@@ -782,7 +782,8 @@ GfVec3f HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVec3f& ray
                     shadowHit.t = lightDist - 1e-3f;
                     GfVec3f shadowOrigin = hitPos + shadingNormal * 1e-4f;
                     if (!this->_IntersectTLAS(shadowOrigin, lDir, shadowHit, renderThread)) {
-                        GfVec3f bsdf = hit.baseColor / (float)M_PI;
+                        GfVec3f diffuseWeight = hit.baseColor * (1.0f - hit.metallic) * (1.0f - hit.transmission);
+                        GfVec3f bsdf = diffuseWeight / (float)M_PI;
                         totalRadiance += GfCompMult(throughput, GfCompMult(bsdf, lColor)) * (nDotL / (lightPdf + 1e-6f));
                     }
                 }
@@ -806,7 +807,7 @@ GfVec3f HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVec3f& ray
         }
 
         // --- Indirect Path Selection (BSDF Sampling) ---
-        float fresnel = FresnelDielectric(GfDot(currentRayDir, shadingNormal), hit.ior);
+        float fresnel = FresnelDielectric(GfDot(currentRayDir, hit.smoothNormal), hit.ior);
         float reflectProb = fresnel * hit.specular;
         if (hit.metallic > 0.0f) reflectProb = std::max(reflectProb, hit.metallic);
         
@@ -831,23 +832,28 @@ GfVec3f HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVec3f& ray
             if (hit.transmission > 1e-6f && remainingProb < hit.transmission) {
                 // Refraction
                 float etaI = 1.0f, etaT = hit.ior;
-                GfVec3f n = shadingNormal;
-                float cosThetaI = GfDot(currentRayDir, n);
-                if (cosThetaI > 0) {
-                    std::swap(etaI, etaT);
-                    n = -n;
-                    cosThetaI = -cosThetaI;
-                }
+                if (isInside) std::swap(etaI, etaT);
+                
                 float eta = etaI / etaT;
+                GfVec3f n = shadingNormal;
+                float cosThetaI = GfDot(currentRayDir, n); // < 0
                 float k = 1.0f - eta * eta * (1.0f - cosThetaI * cosThetaI);
+                
                 if (k >= 0) {
                     GfVec3f refractDir = (eta * currentRayDir - (eta * cosThetaI + std::sqrt(k)) * n).GetNormalized();
+                    
+                    // Simple roughness perturbation for refraction
+                    if (hit.roughness > 0.0f) {
+                        refractDir = AlignToNormal(SampleCosineHemisphere(RandomFloat(rng), RandomFloat(rng)), refractDir);
+                        if (GfDot(refractDir, n) > 0) refractDir = (refractDir - 2.0f * GfDot(refractDir, n) * n).GetNormalized();
+                    }
+                    
                     currentRayDir = refractDir;
                     currentRayOrigin = hitPos - n * 1e-4f;
                     throughput = GfCompMult(throughput, hit.transmissionColor);
                 } else {
                     // Total Internal Reflection
-                    GfVec3f reflectDir = (currentRayDir - 2.0f * GfDot(currentRayDir, n) * n).GetNormalized();
+                    GfVec3f reflectDir = (currentRayDir - 2.0f * cosThetaI * n).GetNormalized();
                     currentRayDir = reflectDir;
                     currentRayOrigin = hitPos + n * 1e-4f;
                 }

@@ -526,7 +526,8 @@ GfVec3f HdGeminiRenderer::_SampleTexture(const SdfAssetPath& path, const GfVec2f
     int channels = HioGetComponentCount(format);
     bool isFloat = (format == HioFormatFloat32 || format == HioFormatFloat32Vec2 || format == HioFormatFloat32Vec3 || format == HioFormatFloat32Vec4 ||
                     format == HioFormatFloat16 || format == HioFormatFloat16Vec2 || format == HioFormatFloat16Vec3 || format == HioFormatFloat16Vec4);
-    bool isSrgb = !forceLinear && (format == HioFormatUNorm8srgb || format == HioFormatUNorm8Vec2srgb || format == HioFormatUNorm8Vec3srgb || format == HioFormatUNorm8Vec4srgb);
+    bool isOriginalSrgb = (format == HioFormatUNorm8srgb || format == HioFormatUNorm8Vec2srgb || format == HioFormatUNorm8Vec3srgb || format == HioFormatUNorm8Vec4srgb);
+    bool applySrgb = isOriginalSrgb && !forceLinear;
 
     HioImage::StorageSpec spec;
     spec.format = format;
@@ -548,11 +549,11 @@ GfVec3f HdGeminiRenderer::_SampleTexture(const SdfAssetPath& path, const GfVec2f
             }
         }
     } else {
-        // Read as UNorm8
-        spec.format = channels == 4 ? (isSrgb ? HioFormatUNorm8Vec4srgb : HioFormatUNorm8Vec4) :
-                      (channels == 3 ? (isSrgb ? HioFormatUNorm8Vec3srgb : HioFormatUNorm8Vec3) :
-                      (channels == 2 ? (isSrgb ? HioFormatUNorm8Vec2srgb : HioFormatUNorm8Vec2) : 
-                      (isSrgb ? HioFormatUNorm8srgb : HioFormatUNorm8)));
+        // Read as UNorm8 using original format
+        spec.format = channels == 4 ? (isOriginalSrgb ? HioFormatUNorm8Vec4srgb : HioFormatUNorm8Vec4) :
+                      (channels == 3 ? (isOriginalSrgb ? HioFormatUNorm8Vec3srgb : HioFormatUNorm8Vec3) :
+                      (channels == 2 ? (isOriginalSrgb ? HioFormatUNorm8Vec2srgb : HioFormatUNorm8Vec2) : 
+                      (isOriginalSrgb ? HioFormatUNorm8srgb : HioFormatUNorm8)));
                       
         std::vector<unsigned char> rawData(data.width * data.height * channels);
         spec.data = rawData.data();
@@ -563,7 +564,7 @@ GfVec3f HdGeminiRenderer::_SampleTexture(const SdfAssetPath& path, const GfVec2f
                 float r = rawData[i*channels+0] / 255.0f;
                 float g = channels > 1 ? rawData[i*channels+1] / 255.0f : r;
                 float b = channels > 2 ? rawData[i*channels+2] / 255.0f : r;
-                if (isSrgb) {
+                if (applySrgb) {
                     r = std::pow(r, 2.2f);
                     g = std::pow(g, 2.2f);
                     b = std::pow(b, 2.2f);
@@ -639,15 +640,15 @@ GfVec3f HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVec3f& ray
         }
 
         if (!hit.metallicTexture.GetAssetPath().empty()) {
-            hit.metallic = hit.metallic * _SampleTexture(hit.metallicTexture, hit.uv)[0];
+            hit.metallic = hit.metallic * _SampleTexture(hit.metallicTexture, hit.uv, true)[0];
         }
 
         if (!hit.roughnessTexture.GetAssetPath().empty()) {
-            hit.roughness = hit.roughness * _SampleTexture(hit.roughnessTexture, hit.uv)[0];
+            hit.roughness = hit.roughness * _SampleTexture(hit.roughnessTexture, hit.uv, true)[0];
         }
 
         if (!hit.normalTexture.GetAssetPath().empty()) {
-            GfVec3f nTex = _SampleTexture(hit.normalTexture, hit.uv);
+            GfVec3f nTex = _SampleTexture(hit.normalTexture, hit.uv, true);
             nTex = nTex * 2.0f - GfVec3f(1.0f);
             
             GfVec3f n = hit.smoothNormal;
@@ -656,6 +657,11 @@ GfVec3f HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVec3f& ray
             
             t = (t - n * GfDot(t, n)).GetNormalized();
             b = (b - n * GfDot(b, n) - t * GfDot(b, t)).GetNormalized();
+            
+            // Adjust bitangent sign if necessary (handedness)
+            if (GfDot(GfCross(n, t), b) < 0.0f) {
+                b = -b;
+            }
             
             hit.smoothNormal = (t * nTex[0] + b * nTex[1] + n * nTex[2]).GetNormalized();
         }

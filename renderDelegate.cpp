@@ -305,6 +305,16 @@ HdGeminiRenderDelegate::GetRenderSettingDescriptors() const
         HdGeminiRenderSettingsTokens->targetSampleCount,
         VtValue(32)
     });
+    list.push_back({
+        "Max Reflection Bounces",
+        HdGeminiRenderSettingsTokens->maxReflectionBounces,
+        VtValue(8)
+    });
+    list.push_back({
+        "Max Refraction Bounces",
+        HdGeminiRenderSettingsTokens->maxRefractionBounces,
+        VtValue(8)
+    });
     return list;
 }
 
@@ -320,6 +330,10 @@ HdGeminiRenderDelegate::GetRenderSetting(TfToken const& key) const
         return VtValue(true);
     } else if (key == HdGeminiRenderSettingsTokens->targetSampleCount) {
         return VtValue(32);
+    } else if (key == HdGeminiRenderSettingsTokens->maxReflectionBounces) {
+        return VtValue(8);
+    } else if (key == HdGeminiRenderSettingsTokens->maxRefractionBounces) {
+        return VtValue(8);
     }
     return VtValue();
 }
@@ -334,6 +348,14 @@ HdGeminiRenderDelegate::SetRenderSetting(TfToken const& key, VtValue const& valu
     } else if (key == HdGeminiRenderSettingsTokens->targetSampleCount) {
         if (value.IsHolding<int>()) {
             _renderer.SetTargetSampleCount(value.Get<int>());
+        }
+    } else if (key == HdGeminiRenderSettingsTokens->maxReflectionBounces) {
+        if (value.IsHolding<int>()) {
+            _renderer.SetMaxReflectionBounces(value.Get<int>());
+        }
+    } else if (key == HdGeminiRenderSettingsTokens->maxRefractionBounces) {
+        if (value.IsHolding<int>()) {
+            _renderer.SetMaxRefractionBounces(value.Get<int>());
         }
     }
     HdRenderDelegate::SetRenderSetting(key, value);

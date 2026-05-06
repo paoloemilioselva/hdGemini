@@ -41,11 +41,15 @@ public:
 
     void SetEnableDenoiser(bool enable) { _enableDenoiser = enable; }
     void SetTargetSampleCount(int samples) { _targetSampleCount = samples; }
+    void SetMaxReflectionBounces(int bounces) { _maxReflectionBounces = bounces; }
+    void SetMaxRefractionBounces(int bounces) { _maxRefractionBounces = bounces; }
 
 private:
     bool _isConverged = false;
     bool _enableDenoiser = true;
     int _targetSampleCount = 32;
+    int _maxReflectionBounces = 8;
+    int _maxRefractionBounces = 8;
 
     struct MeshInstance {
         HdGeminiMesh* mesh;

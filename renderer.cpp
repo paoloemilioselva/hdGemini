@@ -622,7 +622,10 @@ GfVec3f HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVec3f& ray
     GfVec3f currentRayOrigin = rayOrigin;
     GfVec3f currentRayDir = rayDir;
 
-    const int maxDepth = isInteractive ? 2 : 8;
+    int reflectionBounces = 0;
+    int refractionBounces = 0;
+
+    const int maxDepth = isInteractive ? 2 : 32;
 
     for (int bounce = 0; bounce < maxDepth; ++bounce) {
         if (renderThread->IsStopRequested()) break;
@@ -807,6 +810,8 @@ GfVec3f HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVec3f& ray
         if (hit.coat > 0.0f && !isInside) {
             float coatFresnel = hit.coat * FresnelDielectric(GfDot(currentRayDir, shadingNormal), hit.coatIor);
             if (RandomFloat(rng) < coatFresnel) {
+                if (reflectionBounces >= (isInteractive ? 1 : _maxReflectionBounces)) break;
+                reflectionBounces++;
                 GfVec3f reflectDir = (currentRayDir - 2.0f * GfDot(currentRayDir, shadingNormal) * shadingNormal).GetNormalized();
                 if (hit.coatRoughness > 0.0f) {
                     reflectDir = AlignToNormal(SampleCosineHemisphere(RandomFloat(rng), RandomFloat(rng)), reflectDir);
@@ -828,6 +833,8 @@ GfVec3f HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVec3f& ray
 
         if (randVal < reflectProb) {
             // Reflection
+            if (reflectionBounces >= (isInteractive ? 1 : _maxReflectionBounces)) break;
+            reflectionBounces++;
             GfVec3f reflectDir = (currentRayDir - 2.0f * GfDot(currentRayDir, shadingNormal) * shadingNormal).GetNormalized();
             if (hit.roughness > 0.0f) {
                 reflectDir = AlignToNormal(SampleCosineHemisphere(RandomFloat(rng), RandomFloat(rng)), reflectDir);
@@ -853,6 +860,8 @@ GfVec3f HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVec3f& ray
                 float k = 1.0f - eta * eta * (1.0f - cosThetaI * cosThetaI);
                 
                 if (k >= 0) {
+                    if (refractionBounces >= (isInteractive ? 1 : _maxRefractionBounces)) break;
+                    refractionBounces++;
                     GfVec3f refractDir = (eta * currentRayDir - (eta * cosThetaI + std::sqrt(k)) * n).GetNormalized();
                     
                     // Simple roughness perturbation for refraction
@@ -866,6 +875,8 @@ GfVec3f HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVec3f& ray
                     throughput = GfCompMult(throughput, hit.transmissionColor);
                 } else {
                     // Total Internal Reflection
+                    if (reflectionBounces >= (isInteractive ? 1 : _maxReflectionBounces)) break;
+                    reflectionBounces++;
                     GfVec3f reflectDir = (currentRayDir - 2.0f * cosThetaI * n).GetNormalized();
                     currentRayDir = reflectDir;
                     currentRayOrigin = hitPos + n * 1e-4f;

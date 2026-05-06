@@ -27,7 +27,9 @@ TF_DECLARE_PUBLIC_TOKENS(HdGeminiAovTokens, HD_GEMINI_AOV_TOKENS);
 
 #define HD_GEMINI_RENDER_SETTINGS_TOKENS \
     (enableDenoiser)                     \
-    (targetSampleCount)
+    (targetSampleCount)                  \
+    (maxReflectionBounces)               \
+    (maxRefractionBounces)
 
 TF_DECLARE_PUBLIC_TOKENS(HdGeminiRenderSettingsTokens, HD_GEMINI_RENDER_SETTINGS_TOKENS);
 

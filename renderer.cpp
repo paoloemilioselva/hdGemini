@@ -427,6 +427,9 @@ bool HdGeminiRenderer::_IntersectTLAS(const GfVec3f& rayOrigin, const GfVec3f& r
                             hit.transmissionColor = inst.material->GetTransmissionColor();
                             hit.emission = inst.material->GetEmissionColor() * inst.material->GetEmission();
                             hit.diffuseTexture = inst.material->GetDiffuseTexture();
+                            hit.normalTexture = inst.material->GetNormalTexture();
+                            hit.metallicTexture = inst.material->GetMetallicTexture();
+                            hit.roughnessTexture = inst.material->GetRoughnessTexture();
 
                             hit.coat = inst.material->GetCoat();
                             hit.coatColor = inst.material->GetCoatColor();
@@ -628,6 +631,26 @@ GfVec3f HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVec3f& ray
 
         if (!hit.diffuseTexture.GetAssetPath().empty()) {
             hit.baseColor = GfCompMult(hit.baseColor, _SampleTexture(hit.diffuseTexture, hit.uv));
+        }
+
+        if (!hit.metallicTexture.GetAssetPath().empty()) {
+            hit.metallic = hit.metallic * _SampleTexture(hit.metallicTexture, hit.uv)[0];
+        }
+
+        if (!hit.roughnessTexture.GetAssetPath().empty()) {
+            hit.roughness = hit.roughness * _SampleTexture(hit.roughnessTexture, hit.uv)[0];
+        }
+
+        if (!hit.normalTexture.GetAssetPath().empty()) {
+            GfVec3f nTex = _SampleTexture(hit.normalTexture, hit.uv);
+            nTex = nTex * 2.0f - GfVec3f(1.0f);
+            
+            GfVec3f n = hit.smoothNormal;
+            GfVec3f up = std::abs(n[1]) < 0.999f ? GfVec3f(0, 1, 0) : GfVec3f(1, 0, 0);
+            GfVec3f t = GfCross(up, n).GetNormalized();
+            GfVec3f b = GfCross(n, t);
+            
+            hit.smoothNormal = (t * nTex[0] + b * nTex[1] + n * nTex[2]).GetNormalized();
         }
 
         if (bounce == 0) {

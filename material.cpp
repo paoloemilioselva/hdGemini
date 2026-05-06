@@ -168,6 +168,22 @@ static void _ProcessNodeUpstream(
                     HDGEMINI_LOG << "[Gemini]       Mapped diffuse texture: " << material->GetDiffuseTexture().GetAssetPath() << std::endl;
                 }
             }
+        } else if (targetInput == TfToken("metalness") || targetInput == TfToken("base_metalness")) {
+            for (auto const& param : node.parameters) {
+                if ((param.first == TfToken("file") || param.first == TfToken("texcoord")) && 
+                    param.second.IsHolding<SdfAssetPath>()) {
+                    material->SetMetallicTexture(param.second.UncheckedGet<SdfAssetPath>());
+                    HDGEMINI_LOG << "[Gemini]       Mapped metallic texture: " << material->GetMetallicTexture().GetAssetPath() << std::endl;
+                }
+            }
+        } else if (targetInput == TfToken("specular_roughness") || targetInput == TfToken("roughness")) {
+            for (auto const& param : node.parameters) {
+                if ((param.first == TfToken("file") || param.first == TfToken("texcoord")) && 
+                    param.second.IsHolding<SdfAssetPath>()) {
+                    material->SetRoughnessTexture(param.second.UncheckedGet<SdfAssetPath>());
+                    HDGEMINI_LOG << "[Gemini]       Mapped roughness texture: " << material->GetRoughnessTexture().GetAssetPath() << std::endl;
+                }
+            }
         } else if (targetInput == TfToken("emissiveColor") || targetInput == TfToken("emission_color") || targetInput == TfToken("emission") || targetInput == TfToken("emission_luminance")) {
              for (auto const& param : node.parameters) {
                 if ((param.first == TfToken("file") || param.first == TfToken("texcoord")) && 
@@ -183,7 +199,8 @@ static void _ProcessNodeUpstream(
              for (auto const& param : node.parameters) {
                 if ((param.first == TfToken("file") || param.first == TfToken("texcoord")) && 
                     param.second.IsHolding<SdfAssetPath>()) {
-                    HDGEMINI_LOG << "[Gemini]       Mapped normal texture (skipping for now): " << param.second.UncheckedGet<SdfAssetPath>().GetAssetPath() << std::endl;
+                    material->SetNormalTexture(param.second.UncheckedGet<SdfAssetPath>());
+                    HDGEMINI_LOG << "[Gemini]       Mapped normal texture: " << material->GetNormalTexture().GetAssetPath() << std::endl;
                 }
             }
         }

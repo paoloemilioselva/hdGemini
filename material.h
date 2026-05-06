@@ -88,9 +88,17 @@ public:
     const SdfAssetPath& GetDiffuseTexture() const { return _diffuseTexture; }
     void SetDiffuseTexture(const SdfAssetPath& v) { _diffuseTexture = v; }
 
+    const SdfAssetPath& GetNormalTexture() const { return _normalTexture; }
+    void SetNormalTexture(const SdfAssetPath& v) { _normalTexture = v; }
+
+    const SdfAssetPath& GetMetallicTexture() const { return _metallicTexture; }
+    void SetMetallicTexture(const SdfAssetPath& v) { _metallicTexture = v; }
+
+    const SdfAssetPath& GetRoughnessTexture() const { return _roughnessTexture; }
+    void SetRoughnessTexture(const SdfAssetPath& v) { _roughnessTexture = v; }
+
     private:
-    GfVec3f _diffuseColor;
-    float _metallic;
+    GfVec3f _diffuseColor;    float _metallic;
     float _roughness;
     GfVec3f _specularColor;
     float _specular;
@@ -113,6 +121,9 @@ public:
     float _diffuseRoughness;
 
     SdfAssetPath _diffuseTexture;
+    SdfAssetPath _normalTexture;
+    SdfAssetPath _metallicTexture;
+    SdfAssetPath _roughnessTexture;
 };
 
 #endif // HD_GEMINI_MATERIAL_H

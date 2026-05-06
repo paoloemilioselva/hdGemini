@@ -79,6 +79,9 @@ private:
         GfVec3f transmissionColor = GfVec3f(1.0f);
         GfVec3f emission = GfVec3f(0.0f);
         SdfAssetPath diffuseTexture;
+        SdfAssetPath normalTexture;
+        SdfAssetPath metallicTexture;
+        SdfAssetPath roughnessTexture;
         bool hit = false;
         
         float coat = 0.0f;

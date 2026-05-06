@@ -643,11 +643,11 @@ GfVec3f HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVec3f& ray
         }
 
         if (!hit.metallicTexture.GetAssetPath().empty()) {
-            hit.metallic = hit.metallic * _SampleTexture(hit.metallicTexture, hit.uv, true)[0];
+            hit.metallic = _SampleTexture(hit.metallicTexture, hit.uv, true)[0];
         }
 
         if (!hit.roughnessTexture.GetAssetPath().empty()) {
-            hit.roughness = hit.roughness * _SampleTexture(hit.roughnessTexture, hit.uv, true)[0];
+            hit.roughness = _SampleTexture(hit.roughnessTexture, hit.uv, true)[0];
         }
 
         if (!hit.normalTexture.GetAssetPath().empty()) {

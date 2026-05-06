@@ -111,7 +111,7 @@ HdGeminiRenderer::HdGeminiRenderer()
     , _projMatrix(1.0)
     , _inverseViewMatrix(1.0)
     , _inverseProjMatrix(1.0)
-    , _resolutionLevel(4)
+    , _resolutionLevel(2)
     , _frameCount(0)
 {
 #ifdef HDGEMINI_HAS_OIDN
@@ -1020,7 +1020,7 @@ HdGeminiRenderer::_RenderTiles(HdRenderThread *renderThread, HdGeminiRenderDeleg
 void
 HdGeminiRenderer::Clear()
 {
-    _resolutionLevel = 4;
+    _resolutionLevel = 2;
     _frameCount = 0;
     _isConverged = false;
     for (auto const& binding : _aovBindings) {

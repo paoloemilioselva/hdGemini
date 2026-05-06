@@ -169,11 +169,7 @@ void
 HdGeminiRenderBuffer::Clear(size_t numComponents, float const* value)
 {
     std::lock_guard<std::mutex> lock(_bufferMutex);
-    size_t formatSize = HdDataSizeOfFormat(_format);
-    for (size_t i = 0; i < _width * _height; ++i) {
-        uint8_t *dst = &_renderBuffer[i * formatSize];
-        _WriteOutput(_format, dst, numComponents, value);
-    }
+    // Do not visually clear the buffer to prevent black flashes, just reset the accumulators
     _accumBuffer.assign(_width * _height * 4, 0.0f);
     _sampleCount.assign(_width * _height, 0);
 }
@@ -182,11 +178,7 @@ void
 HdGeminiRenderBuffer::Clear(size_t numComponents, int const* value)
 {
     std::lock_guard<std::mutex> lock(_bufferMutex);
-    size_t formatSize = HdDataSizeOfFormat(_format);
-    for (size_t i = 0; i < _width * _height; ++i) {
-        uint8_t *dst = &_renderBuffer[i * formatSize];
-        _WriteOutput(_format, dst, numComponents, value);
-    }
+    // Do not visually clear the buffer to prevent black flashes, just reset the accumulators
     _accumBuffer.assign(_width * _height * 4, 0.0f);
     _sampleCount.assign(_width * _height, 0);
 }

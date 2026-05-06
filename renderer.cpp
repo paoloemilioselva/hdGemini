@@ -416,15 +416,29 @@ bool HdGeminiRenderer::_IntersectTLAS(const GfVec3f& rayOrigin, const GfVec3f& r
                         hit.baseColor = instSmoothColor; // Use interpolated vertex color
                         
                         if (inst.material) {
-                            hit.baseColor = GfCompMult(hit.baseColor, inst.material->GetDiffuseColor());
+                            hit.baseColor = inst.material->GetDiffuseColor();
                             hit.metallic = inst.material->GetMetallic();
                             hit.roughness = inst.material->GetRoughness();
+                            hit.specularColor = inst.material->GetSpecularColor();
+                            hit.specular = inst.material->GetSpecular();
                             hit.opacity = inst.material->GetOpacity();
                             hit.ior = inst.material->GetIor();
                             hit.transmission = inst.material->GetTransmission();
                             hit.transmissionColor = inst.material->GetTransmissionColor();
                             hit.emission = inst.material->GetEmissionColor() * inst.material->GetEmission();
                             hit.diffuseTexture = inst.material->GetDiffuseTexture();
+
+                            hit.coat = inst.material->GetCoat();
+                            hit.coatColor = inst.material->GetCoatColor();
+                            hit.coatRoughness = inst.material->GetCoatRoughness();
+                            hit.coatIor = inst.material->GetCoatIor();
+                            hit.transmissionDepth = inst.material->GetTransmissionDepth();
+                            hit.transmissionScatter = inst.material->GetTransmissionScatter();
+                            hit.sheen = inst.material->GetSheen();
+                            hit.sheenColor = inst.material->GetSheenColor();
+                            hit.sheenRoughness = inst.material->GetSheenRoughness();
+                            hit.thinWalled = inst.material->GetThinWalled();
+                            hit.diffuseRoughness = inst.material->GetDiffuseRoughness();
                         }
                         hit.hit = true;
                         wasHit = true;
@@ -586,8 +600,24 @@ GfVec3f HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVec3f& ray
             continue;
         }
 
+        bool isInside = GfDot(hit.smoothNormal, currentRayDir) > 0;
+
+        // --- Beer's Law (Transmission Depth) ---
+        if (isInside && hit.transmissionDepth > 0.0f) {
+            GfVec3f scatter = hit.transmissionScatter;
+            if (scatter[0] <= 0 && scatter[1] <= 0 && scatter[2] <= 0) scatter = hit.transmissionColor;
+            GfVec3f sigma_a(
+                -std::log(std::clamp(scatter[0], 1e-5f, 1.0f)) / hit.transmissionDepth,
+                -std::log(std::clamp(scatter[1], 1e-5f, 1.0f)) / hit.transmissionDepth,
+                -std::log(std::clamp(scatter[2], 1e-5f, 1.0f)) / hit.transmissionDepth
+            );
+            throughput[0] *= std::exp(-sigma_a[0] * hit.t);
+            throughput[1] *= std::exp(-sigma_a[1] * hit.t);
+            throughput[2] *= std::exp(-sigma_a[2] * hit.t);
+        }
+
         GfVec3f shadingNormal = hit.smoothNormal;
-        if (GfDot(shadingNormal, currentRayDir) > 0) shadingNormal = -shadingNormal;
+        if (isInside) shadingNormal = -shadingNormal;
 
         totalRadiance += GfCompMult(throughput, hit.emission);
 
@@ -692,9 +722,25 @@ GfVec3f HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVec3f& ray
             }
         }
 
+        // --- Coat Layer ---
+        if (hit.coat > 0.0f && !isInside) {
+            float coatFresnel = hit.coat * FresnelDielectric(GfDot(currentRayDir, shadingNormal), hit.coatIor);
+            if (RandomFloat(rng) < coatFresnel) {
+                GfVec3f reflectDir = (currentRayDir - 2.0f * GfDot(currentRayDir, shadingNormal) * shadingNormal).GetNormalized();
+                if (hit.coatRoughness > 0.0f) {
+                    reflectDir = AlignToNormal(SampleCosineHemisphere(RandomFloat(rng), RandomFloat(rng)), reflectDir);
+                    if (GfDot(reflectDir, shadingNormal) < 0) reflectDir = (reflectDir - 2.0f * GfDot(reflectDir, shadingNormal) * shadingNormal).GetNormalized();
+                }
+                currentRayDir = reflectDir;
+                currentRayOrigin = hitPos + shadingNormal * 1e-4f;
+                throughput = GfCompMult(throughput, hit.coatColor);
+                continue;
+            }
+        }
+
         // --- Indirect Path Selection (BSDF Sampling) ---
         float fresnel = FresnelDielectric(GfDot(currentRayDir, shadingNormal), hit.ior);
-        float reflectProb = fresnel;
+        float reflectProb = fresnel * hit.specular;
         if (hit.metallic > 0.0f) reflectProb = std::max(reflectProb, hit.metallic);
         
         float randVal = RandomFloat(rng);
@@ -708,6 +754,11 @@ GfVec3f HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVec3f& ray
             }
             currentRayDir = reflectDir;
             currentRayOrigin = hitPos + shadingNormal * 1e-4f;
+            
+            GfVec3f reflTint(1.0f);
+            if (hit.metallic > 0.0f) reflTint = hit.baseColor;
+            else reflTint = hit.specularColor;
+            throughput = GfCompMult(throughput, reflTint);
         } else {
             float remainingProb = (randVal - reflectProb) / (1.0f - reflectProb);
             if (hit.transmission > 1e-6f && remainingProb < hit.transmission) {

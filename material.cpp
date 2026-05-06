@@ -13,15 +13,28 @@ PXR_NAMESPACE_USING_DIRECTIVE
 
 HdGeminiMaterial::HdGeminiMaterial(SdfPath const& id)
     : HdMaterial(id)
-    , _diffuseColor(0.8f)
+    , _diffuseColor(1.0f)
     , _metallic(0.0f)
     , _roughness(0.5f)
+    , _specularColor(1.0f)
+    , _specular(1.0f)
     , _opacity(1.0f)
     , _ior(1.5f)
     , _transmission(0.0f)
     , _transmissionColor(1.0f)
+    , _transmissionDepth(0.0f)
+    , _transmissionScatter(0.0f)
     , _emissionColor(1.0f)
     , _emission(0.0f)
+    , _coat(0.0f)
+    , _coatColor(1.0f)
+    , _coatRoughness(0.1f)
+    , _coatIor(1.5f)
+    , _sheen(0.0f)
+    , _sheenColor(1.0f)
+    , _sheenRoughness(0.3f)
+    , _thinWalled(false)
+    , _diffuseRoughness(0.0f)
 {
 }
 
@@ -61,6 +74,8 @@ static void _ProcessNodeUpstream(
                 material->SetMetallic(param.second.UncheckedGet<float>());
             } else if (param.first == TfToken("roughness") && param.second.IsHolding<float>()) {
                 material->SetRoughness(param.second.UncheckedGet<float>());
+            } else if (param.first == TfToken("specularColor") && param.second.IsHolding<GfVec3f>()) {
+                material->SetSpecularColor(param.second.UncheckedGet<GfVec3f>());
             } else if (param.first == TfToken("opacity") && param.second.IsHolding<float>()) {
                 material->SetOpacity(param.second.UncheckedGet<float>());
             } else if (param.first == TfToken("ior") && param.second.IsHolding<float>()) {
@@ -82,6 +97,10 @@ static void _ProcessNodeUpstream(
                 baseColor = param.second.UncheckedGet<GfVec3f>();
             } else if (param.first == TfToken("metalness") && param.second.IsHolding<float>()) {
                 material->SetMetallic(param.second.UncheckedGet<float>());
+            } else if ((param.first == TfToken("specular") || param.first == TfToken("specular_weight")) && param.second.IsHolding<float>()) {
+                material->SetSpecular(param.second.UncheckedGet<float>());
+            } else if (param.first == TfToken("specular_color") && param.second.IsHolding<GfVec3f>()) {
+                material->SetSpecularColor(param.second.UncheckedGet<GfVec3f>());
             } else if ((param.first == TfToken("specular_roughness") || param.first == TfToken("roughness")) && param.second.IsHolding<float>()) {
                 material->SetRoughness(param.second.UncheckedGet<float>());
             } else if (param.first == TfToken("opacity") && param.second.IsHolding<float>()) {
@@ -110,6 +129,10 @@ static void _ProcessNodeUpstream(
                 baseColor = param.second.UncheckedGet<GfVec3f>();
             } else if (param.first == TfToken("base_metalness") && param.second.IsHolding<float>()) {
                 material->SetMetallic(param.second.UncheckedGet<float>());
+            } else if (param.first == TfToken("specular_weight") && param.second.IsHolding<float>()) {
+                material->SetSpecular(param.second.UncheckedGet<float>());
+            } else if (param.first == TfToken("specular_color") && param.second.IsHolding<GfVec3f>()) {
+                material->SetSpecularColor(param.second.UncheckedGet<GfVec3f>());
             } else if (param.first == TfToken("specular_roughness") && param.second.IsHolding<float>()) {
                 material->SetRoughness(param.second.UncheckedGet<float>());
             } else if (param.first == TfToken("geometry_opacity") && param.second.IsHolding<float>()) {

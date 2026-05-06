@@ -71,6 +71,8 @@ private:
         GfVec3f baseColor = GfVec3f(1.0f);
         float metallic = 0.0f;
         float roughness = 0.5f;
+        GfVec3f specularColor = GfVec3f(1.0f);
+        float specular = 1.0f;
         float opacity = 1.0f;
         float ior = 1.5f;
         float transmission = 0.0f;
@@ -78,6 +80,18 @@ private:
         GfVec3f emission = GfVec3f(0.0f);
         SdfAssetPath diffuseTexture;
         bool hit = false;
+        
+        float coat = 0.0f;
+        GfVec3f coatColor = GfVec3f(1.0f);
+        float coatRoughness = 0.1f;
+        float coatIor = 1.5f;
+        float transmissionDepth = 0.0f;
+        GfVec3f transmissionScatter = GfVec3f(0.0f);
+        float sheen = 0.0f;
+        GfVec3f sheenColor = GfVec3f(1.0f);
+        float sheenRoughness = 0.3f;
+        bool thinWalled = false;
+        float diffuseRoughness = 0.0f;
     };
 
     struct TextureData {

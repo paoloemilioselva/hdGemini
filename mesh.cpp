@@ -408,6 +408,10 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
                 g.normals.push_back(_normals[i * 3 + 0]);
                 g.normals.push_back(_normals[i * 3 + 1]);
                 g.normals.push_back(_normals[i * 3 + 2]);
+            } else if (_normals.size() == _points.size()) {
+                g.normals.push_back(_normals[allTriangulatedIndices[i][0]]);
+                g.normals.push_back(_normals[allTriangulatedIndices[i][1]]);
+                g.normals.push_back(_normals[allTriangulatedIndices[i][2]]);
             }
         }
 

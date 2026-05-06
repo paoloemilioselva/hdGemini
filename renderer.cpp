@@ -405,13 +405,16 @@ bool HdGeminiRenderer::_IntersectTLAS(const GfVec3f& rayOrigin, const GfVec3f& r
                 GfVec3f instNormal;
                 GfVec2f instUv;
                 GfVec3f instSmoothNormal;
+                GfVec3f instDpdu, instDpdv;
                 GfVec3f instSmoothColor;
                 int matIdx = -1;
-                if (inst.subset->bvh.Intersect(objRayOrigin, objRayDir, instT, instNormal, instUv, instSmoothNormal, instSmoothColor, matIdx)) {
+                if (inst.subset->bvh.Intersect(objRayOrigin, objRayDir, instT, instNormal, instUv, instSmoothNormal, instDpdu, instDpdv, instSmoothColor, matIdx)) {
                     if (instT < hit.t) {
                         hit.t = instT;
                         hit.normal = inst.transform.TransformDir(instNormal).GetNormalized();
                         hit.smoothNormal = inst.transform.TransformDir(instSmoothNormal).GetNormalized();
+                        hit.dpdu = inst.transform.TransformDir(instDpdu).GetNormalized();
+                        hit.dpdv = inst.transform.TransformDir(instDpdv).GetNormalized();
                         hit.uv = instUv;
                         hit.baseColor = instSmoothColor; // Use interpolated vertex color
                         
@@ -478,13 +481,15 @@ GfVec3f HdGeminiRenderer::_SampleEnvironment(const GfVec3f& rayDir) const
     return color;
 }
 
-GfVec3f HdGeminiRenderer::_SampleTexture(const SdfAssetPath& path, const GfVec2f& uv) const
+GfVec3f HdGeminiRenderer::_SampleTexture(const SdfAssetPath& path, const GfVec2f& uv, bool forceLinear) const
 {
     if (path.GetAssetPath().empty()) return GfVec3f(1.0f);
 
+    std::string cacheKey = path.GetAssetPath() + (forceLinear ? "_lin" : "_srgb");
+
     {
         std::lock_guard<std::mutex> lock(_textureMutex);
-        auto it = _textureCache.find(path.GetAssetPath());
+        auto it = _textureCache.find(cacheKey);
         if (it != _textureCache.end()) {
             const TextureData& data = it->second;
             if (data.pixels.empty()) return GfVec3f(1.0f);
@@ -496,7 +501,7 @@ GfVec3f HdGeminiRenderer::_SampleTexture(const SdfAssetPath& path, const GfVec2f
     std::lock_guard<std::mutex> lock(_textureMutex);
     
     // Check again in case another thread loaded it while we were waiting for the lock
-    auto it = _textureCache.find(path.GetAssetPath());
+    auto it = _textureCache.find(cacheKey);
     if (it != _textureCache.end()) {
         const TextureData& data = it->second;
         if (data.pixels.empty()) return GfVec3f(1.0f);
@@ -507,7 +512,7 @@ GfVec3f HdGeminiRenderer::_SampleTexture(const SdfAssetPath& path, const GfVec2f
     HioImageSharedPtr image = HioImage::OpenForReading(path.GetResolvedPath());
     if (!image) {
         HDGEMINI_LOG << "[Gemini]   Failed to open texture: " << path.GetResolvedPath() << std::endl;
-        _textureCache[path.GetAssetPath()] = TextureData();
+        _textureCache[cacheKey] = TextureData();
         return GfVec3f(1.0f);
     }
 
@@ -521,7 +526,7 @@ GfVec3f HdGeminiRenderer::_SampleTexture(const SdfAssetPath& path, const GfVec2f
     int channels = HioGetComponentCount(format);
     bool isFloat = (format == HioFormatFloat32 || format == HioFormatFloat32Vec2 || format == HioFormatFloat32Vec3 || format == HioFormatFloat32Vec4 ||
                     format == HioFormatFloat16 || format == HioFormatFloat16Vec2 || format == HioFormatFloat16Vec3 || format == HioFormatFloat16Vec4);
-    bool isSrgb = (format == HioFormatUNorm8srgb || format == HioFormatUNorm8Vec2srgb || format == HioFormatUNorm8Vec3srgb || format == HioFormatUNorm8Vec4srgb);
+    bool isSrgb = !forceLinear && (format == HioFormatUNorm8srgb || format == HioFormatUNorm8Vec2srgb || format == HioFormatUNorm8Vec3srgb || format == HioFormatUNorm8Vec4srgb);
 
     HioImage::StorageSpec spec;
     spec.format = format;
@@ -570,8 +575,8 @@ GfVec3f HdGeminiRenderer::_SampleTexture(const SdfAssetPath& path, const GfVec2f
         }
     }
 
-    _textureCache[path.GetAssetPath()] = std::move(data);
-    return _SampleTextureData(_textureCache[path.GetAssetPath()], uv);
+    _textureCache[cacheKey] = std::move(data);
+    return _SampleTextureData(_textureCache[cacheKey], uv);
 }
 
 GfVec3f HdGeminiRenderer::_SampleTextureData(const TextureData& data, const GfVec2f& uv) const
@@ -646,9 +651,11 @@ GfVec3f HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVec3f& ray
             nTex = nTex * 2.0f - GfVec3f(1.0f);
             
             GfVec3f n = hit.smoothNormal;
-            GfVec3f up = std::abs(n[1]) < 0.999f ? GfVec3f(0, 1, 0) : GfVec3f(1, 0, 0);
-            GfVec3f t = GfCross(up, n).GetNormalized();
-            GfVec3f b = GfCross(n, t);
+            GfVec3f t = hit.dpdu;
+            GfVec3f b = hit.dpdv;
+            
+            t = (t - n * GfDot(t, n)).GetNormalized();
+            b = (b - n * GfDot(b, n) - t * GfDot(b, t)).GetNormalized();
             
             hit.smoothNormal = (t * nTex[0] + b * nTex[1] + n * nTex[2]).GetNormalized();
         }

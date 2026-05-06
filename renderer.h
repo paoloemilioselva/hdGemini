@@ -67,6 +67,8 @@ private:
         float t = 1e30f;
         GfVec3f normal;
         GfVec3f smoothNormal;
+        GfVec3f dpdu = GfVec3f(1, 0, 0);
+        GfVec3f dpdv = GfVec3f(0, 1, 0);
         GfVec2f uv = GfVec2f(0.0f);
         GfVec3f baseColor = GfVec3f(1.0f);
         float metallic = 0.0f;
@@ -111,7 +113,7 @@ private:
     bool _IntersectTLAS(const GfVec3f& rayOrigin, const GfVec3f& rayDir, HitRecord& hit, HdRenderThread* renderThread) const;
     GfVec3f _TraceRay(const GfVec3f& rayOrigin, const GfVec3f& rayDir, int depth, bool isInteractive, HdRenderThread* renderThread, uint32_t& rng, GfVec3f* outAlbedo = nullptr, GfVec3f* outNormal = nullptr) const;
     GfVec3f _SampleEnvironment(const GfVec3f& rayDir) const;
-    GfVec3f _SampleTexture(const SdfAssetPath& path, const GfVec2f& uv) const;
+    GfVec3f _SampleTexture(const SdfAssetPath& path, const GfVec2f& uv, bool forceLinear = false) const;
     GfVec3f _SampleTextureData(const TextureData& data, const GfVec2f& uv) const;
 
     void _Denoise();

@@ -113,6 +113,27 @@ void BVH::Build(const VtVec3fArray& points, const VtVec3iArray& indices, const V
             tri.c0 = tri.c1 = tri.c2 = GfVec3f(1.0f);
         }
 
+        // Compute tangent and bitangent (dpdu, dpdv)
+        GfVec3f edge1 = tri.v1 - tri.v0;
+        GfVec3f edge2 = tri.v2 - tri.v0;
+        GfVec2f deltaUV1 = tri.uv1 - tri.uv0;
+        GfVec2f deltaUV2 = tri.uv2 - tri.uv0;
+
+        float f = deltaUV1[0] * deltaUV2[1] - deltaUV2[0] * deltaUV1[1];
+        if (std::abs(f) > 1e-8f) {
+            f = 1.0f / f;
+            tri.dpdu = (edge1 * deltaUV2[1] - edge2 * deltaUV1[1]) * f;
+            tri.dpdv = (edge2 * deltaUV1[0] - edge1 * deltaUV2[0]) * f;
+            tri.dpdu.Normalize();
+            tri.dpdv.Normalize();
+        } else {
+            // Fallback tangent frame
+            GfVec3f n = GfCross(edge1, edge2).GetNormalized();
+            GfVec3f up = std::abs(n[1]) < 0.999f ? GfVec3f(0, 1, 0) : GfVec3f(1, 0, 0);
+            tri.dpdu = GfCross(up, n).GetNormalized();
+            tri.dpdv = GfCross(n, tri.dpdu).GetNormalized();
+        }
+
         tri.materialIndex = (i < materialIndices.size()) ? materialIndices[i] : -1;
         tri.centroid = (tri.v0 + tri.v1 + tri.v2) / 3.0f;
         _triangles.push_back(tri);
@@ -174,12 +195,12 @@ void BVH::_Subdivide(int nodeIdx, int start, int end) {
     _Subdivide(leftChildIdx + 1, i, end);
 }
 
-bool BVH::Intersect(const GfVec3f& rayOrigin, const GfVec3f& rayDir, float& t, GfVec3f& normal, GfVec2f& uv, GfVec3f& smoothNormal, GfVec3f& smoothColor, int& materialIndex) const {
+bool BVH::Intersect(const GfVec3f& rayOrigin, const GfVec3f& rayDir, float& t, GfVec3f& normal, GfVec2f& uv, GfVec3f& smoothNormal, GfVec3f& dpdu, GfVec3f& dpdv, GfVec3f& smoothColor, int& materialIndex) const {
     if (_nodes.empty()) return false;
-    return _IntersectNode(0, rayOrigin, rayDir, t, normal, uv, smoothNormal, smoothColor, materialIndex);
+    return _IntersectNode(0, rayOrigin, rayDir, t, normal, uv, smoothNormal, dpdu, dpdv, smoothColor, materialIndex);
 }
 
-bool BVH::_IntersectNode(int nodeIdx, const GfVec3f& rayOrigin, const GfVec3f& rayDir, float& t, GfVec3f& normal, GfVec2f& uv, GfVec3f& smoothNormal, GfVec3f& smoothColor, int& materialIndex) const {
+bool BVH::_IntersectNode(int nodeIdx, const GfVec3f& rayOrigin, const GfVec3f& rayDir, float& t, GfVec3f& normal, GfVec2f& uv, GfVec3f& smoothNormal, GfVec3f& dpdu, GfVec3f& dpdv, GfVec3f& smoothColor, int& materialIndex) const {
     const BVHNode& node = _nodes[nodeIdx];
     float tAabb;
     if (!IntersectAABB(rayOrigin, rayDir, node.bounds, tAabb)) return false;
@@ -203,6 +224,8 @@ bool BVH::_IntersectNode(int nodeIdx, const GfVec3f& rayOrigin, const GfVec3f& r
                     } else {
                         smoothNormal = normal;
                     }
+                    dpdu = tri.dpdu;
+                    dpdv = tri.dpdv;
                     smoothColor = (tri.c0 * w + tri.c1 * triU + tri.c2 * triV);
                     materialIndex = tri.materialIndex;
                     hit = true;
@@ -211,8 +234,8 @@ bool BVH::_IntersectNode(int nodeIdx, const GfVec3f& rayOrigin, const GfVec3f& r
         }
         return hit;
     } else {
-        bool hitLeft = _IntersectNode(node.leftChild, rayOrigin, rayDir, t, normal, uv, smoothNormal, smoothColor, materialIndex);
-        bool hitRight = _IntersectNode(node.leftChild + 1, rayOrigin, rayDir, t, normal, uv, smoothNormal, smoothColor, materialIndex);
+        bool hitLeft = _IntersectNode(node.leftChild, rayOrigin, rayDir, t, normal, uv, smoothNormal, dpdu, dpdv, smoothColor, materialIndex);
+        bool hitRight = _IntersectNode(node.leftChild + 1, rayOrigin, rayDir, t, normal, uv, smoothNormal, dpdu, dpdv, smoothColor, materialIndex);
         return hitLeft || hitRight;
     }
 }

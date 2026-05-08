@@ -3,12 +3,12 @@
 **hdGemini** is a custom Hydra Render Delegate for Pixar's Universal Scene Description (USD). It implements a CPU-based, physically-based Monte Carlo path tracer designed to seamlessly integrate into Hydra-based viewports like `usdview`.
 
 <p align="center">
+  <img src="images/preview5.png" width="48%" />
   <img src="images/preview4.png" width="48%" />
-  <img src="images/preview1.png" width="48%" />
 </p>
 <p align="center">
+  <img src="images/preview1.png" width="48%" />
   <img src="images/preview2.png" width="48%" />
-  <img src="images/preview3.png" width="48%" />
 </p>
 
 ## Features
@@ -18,11 +18,17 @@
   - Integrated **Intel Open Image Denoise (OIDN)** v2.2.2 for rapid noise reduction.
   - Automated binary download and linking via `FetchContent` in CMake.
   - Custom AOVs (`albedo`, `normal`) seamlessly extract unlit color and shading normals on the first bounce to guide the denoiser.
-  - Interactive Hydra Render Settings controls: `Enable Denoiser` and `Target Sample Count` directly exposed in the `usdview` UI.
+  - Full Float32 HDR color AOV output preserving unclamped highlights for post-processing.
 - **Physical Materials**: Extensive support for physically-based rendering workflows.
   - Prioritized resolution for **MaterialX** (`mtlx`) and **OpenPBR** surface shaders via the SdrRegistry.
-  - Accurate physical refraction, handling Transmission, IOR (Index of Refraction), and Transmission Color (tinting).
-  - Fresnel (dielectric) reflections and specular roughness support.
+  - Full `standard_surface` support including Base Color, Roughness, Metallic, Clearcoat, Sheen, Subsurface Scattering (diffuse approximation), and physical Emission.
+  - Accurate physical refraction, handling Transmission, IOR (Index of Refraction), Transmission Depth/Scatter (Beer's Law volume absorption), and Thin-Walled properties.
+- **Physical Camera & Optical Effects**:
+  - **Depth of Field**: Accurate synthetic lens sampling with configurable Focal Length, F-Stop, Focus Distance, and polygonal Bokeh Blades.
+  - **Physical Exposure**: Image luminance scaling based on photographic EV100 equations (ISO, Shutter Speed, Aperture).
+  - **Optical Distortion**: Radial Lens Distortion (barrel/pincushion) evaluated accurately during primary ray generation.
+  - **Post-Processing**: Integrated Chromatic Aberration and HDR Lens Flare (bloom) applied cleanly after the AI denoising pass.
+  - All camera effects and rendering toggles (like hiding the IBL background) are dynamically exposed and adjustable in real-time within `usdview`'s Render Settings panel.
 - **Advanced Geometry Handling**:
   - Robust **GeomSubset** splitting: Multi-material meshes are physically partitioned into isolated sub-meshes under the hood, ensuring perfect sub-mesh material assignments even with complex n-gon encodings.
   - **Face-Varying Primvars**: Accurate slicing and interpolation of UVs, normals, and vertex colors for all mesh subsets.

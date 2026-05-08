@@ -30,7 +30,16 @@ TF_DECLARE_PUBLIC_TOKENS(HdGeminiAovTokens, HD_GEMINI_AOV_TOKENS);
     (targetSampleCount)                  \
     (maxReflectionBounces)               \
     (maxRefractionBounces)               \
-    (resolutionLevel)
+    (resolutionLevel)                    \
+    (enableDoF)                          \
+    (focalLength)                        \
+    (fStop)                              \
+    (focusDistance)                      \
+    (bokehBlades)                        \
+    (enablePhysicalCamera)               \
+    (iso)                                \
+    (shutterSpeed)                       \
+    (enableLensFlare)
 
 TF_DECLARE_PUBLIC_TOKENS(HdGeminiRenderSettingsTokens, HD_GEMINI_RENDER_SETTINGS_TOKENS);
 

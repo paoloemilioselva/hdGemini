@@ -320,6 +320,51 @@ HdGeminiRenderDelegate::GetRenderSettingDescriptors() const
         HdGeminiRenderSettingsTokens->resolutionLevel,
         VtValue(2)
     });
+    list.push_back({
+        "Enable Depth of Field",
+        HdGeminiRenderSettingsTokens->enableDoF,
+        VtValue(false)
+    });
+    list.push_back({
+        "Focal Length (mm)",
+        HdGeminiRenderSettingsTokens->focalLength,
+        VtValue(50.0f)
+    });
+    list.push_back({
+        "F-Stop (Aperture)",
+        HdGeminiRenderSettingsTokens->fStop,
+        VtValue(5.6f)
+    });
+    list.push_back({
+        "Focus Distance",
+        HdGeminiRenderSettingsTokens->focusDistance,
+        VtValue(10.0f)
+    });
+    list.push_back({
+        "Bokeh Blades",
+        HdGeminiRenderSettingsTokens->bokehBlades,
+        VtValue(0)
+    });
+    list.push_back({
+        "Enable Physical Camera Exposure",
+        HdGeminiRenderSettingsTokens->enablePhysicalCamera,
+        VtValue(false)
+    });
+    list.push_back({
+        "ISO",
+        HdGeminiRenderSettingsTokens->iso,
+        VtValue(100.0f)
+    });
+    list.push_back({
+        "Shutter Speed",
+        HdGeminiRenderSettingsTokens->shutterSpeed,
+        VtValue(0.02f)
+    });
+    list.push_back({
+        "Enable Lens Flare",
+        HdGeminiRenderSettingsTokens->enableLensFlare,
+        VtValue(false)
+    });
     return list;
 }
 
@@ -341,6 +386,24 @@ HdGeminiRenderDelegate::GetRenderSetting(TfToken const& key) const
         return VtValue(8);
     } else if (key == HdGeminiRenderSettingsTokens->resolutionLevel) {
         return VtValue(2);
+    } else if (key == HdGeminiRenderSettingsTokens->enableDoF) {
+        return VtValue(false);
+    } else if (key == HdGeminiRenderSettingsTokens->focalLength) {
+        return VtValue(50.0f);
+    } else if (key == HdGeminiRenderSettingsTokens->fStop) {
+        return VtValue(5.6f);
+    } else if (key == HdGeminiRenderSettingsTokens->focusDistance) {
+        return VtValue(10.0f);
+    } else if (key == HdGeminiRenderSettingsTokens->bokehBlades) {
+        return VtValue(0);
+    } else if (key == HdGeminiRenderSettingsTokens->enablePhysicalCamera) {
+        return VtValue(false);
+    } else if (key == HdGeminiRenderSettingsTokens->iso) {
+        return VtValue(100.0f);
+    } else if (key == HdGeminiRenderSettingsTokens->shutterSpeed) {
+        return VtValue(0.02f);
+    } else if (key == HdGeminiRenderSettingsTokens->enableLensFlare) {
+        return VtValue(false);
     }
     return VtValue();
 }
@@ -368,6 +431,24 @@ HdGeminiRenderDelegate::SetRenderSetting(TfToken const& key, VtValue const& valu
         if (value.IsHolding<int>()) {
             _renderer.SetResolutionLevel(value.Get<int>());
         }
+    } else if (key == HdGeminiRenderSettingsTokens->enableDoF) {
+        if (value.IsHolding<bool>()) _renderer.SetEnableDoF(value.Get<bool>());
+    } else if (key == HdGeminiRenderSettingsTokens->focalLength) {
+        if (value.IsHolding<float>()) _renderer.SetFocalLength(value.Get<float>());
+    } else if (key == HdGeminiRenderSettingsTokens->fStop) {
+        if (value.IsHolding<float>()) _renderer.SetFStop(value.Get<float>());
+    } else if (key == HdGeminiRenderSettingsTokens->focusDistance) {
+        if (value.IsHolding<float>()) _renderer.SetFocusDistance(value.Get<float>());
+    } else if (key == HdGeminiRenderSettingsTokens->bokehBlades) {
+        if (value.IsHolding<int>()) _renderer.SetBokehBlades(value.Get<int>());
+    } else if (key == HdGeminiRenderSettingsTokens->enablePhysicalCamera) {
+        if (value.IsHolding<bool>()) _renderer.SetEnablePhysicalCamera(value.Get<bool>());
+    } else if (key == HdGeminiRenderSettingsTokens->iso) {
+        if (value.IsHolding<float>()) _renderer.SetISO(value.Get<float>());
+    } else if (key == HdGeminiRenderSettingsTokens->shutterSpeed) {
+        if (value.IsHolding<float>()) _renderer.SetShutterSpeed(value.Get<float>());
+    } else if (key == HdGeminiRenderSettingsTokens->enableLensFlare) {
+        if (value.IsHolding<bool>()) _renderer.SetEnableLensFlare(value.Get<bool>());
     }
     HdRenderDelegate::SetRenderSetting(key, value);
 }

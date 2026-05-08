@@ -44,6 +44,16 @@ public:
     void SetMaxReflectionBounces(int bounces) { _maxReflectionBounces = bounces; }
     void SetMaxRefractionBounces(int bounces) { _maxRefractionBounces = bounces; }
     void SetResolutionLevel(int level) { _initialResolutionLevel = level; }
+    
+    void SetEnableDoF(bool enable) { _enableDoF = enable; }
+    void SetFocalLength(float fl) { _focalLength = fl; }
+    void SetFStop(float fStop) { _fStop = fStop; }
+    void SetFocusDistance(float fd) { _focusDistance = fd; }
+    void SetBokehBlades(int blades) { _bokehBlades = blades; }
+    void SetEnablePhysicalCamera(bool enable) { _enablePhysicalCamera = enable; }
+    void SetISO(float iso) { _iso = iso; }
+    void SetShutterSpeed(float shutterSpeed) { _shutterSpeed = shutterSpeed; }
+    void SetEnableLensFlare(bool enable) { _enableLensFlare = enable; }
 
 private:
     bool _isConverged = false;
@@ -52,6 +62,16 @@ private:
     int _maxReflectionBounces = 8;
     int _maxRefractionBounces = 8;
     int _initialResolutionLevel = 2;
+    
+    bool _enableDoF = false;
+    float _focalLength = 50.0f;
+    float _fStop = 5.6f;
+    float _focusDistance = 10.0f;
+    int _bokehBlades = 0;
+    bool _enablePhysicalCamera = false;
+    float _iso = 100.0f;
+    float _shutterSpeed = 0.02f;
+    bool _enableLensFlare = false;
 
     struct MeshInstance {
         HdGeminiMesh* mesh;
@@ -128,6 +148,7 @@ private:
     GfVec3f _SampleTextureData(const TextureData& data, const GfVec2f& uv) const;
 
     void _Denoise();
+    void _ApplyPostProcess();
 
     HdRenderPassAovBindingVector _aovBindings;
     GfRect2i _dataWindow;

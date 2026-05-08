@@ -184,6 +184,9 @@ HdGeminiRenderer::Render(HdRenderThread *renderThread, HdGeminiRenderDelegate* d
             if (_enableDenoiser) {
                 _Denoise();
             }
+            if (_enableLensFlare) {
+                _ApplyPostProcess();
+            }
             _isConverged = true;
             for (auto const& binding : _aovBindings) {
                 if (binding.renderBuffer) {
@@ -982,6 +985,90 @@ HdGeminiRenderer::_Denoise()
 }
 
 void
+HdGeminiRenderer::_ApplyPostProcess()
+{
+    unsigned int width = _dataWindow.GetWidth();
+    unsigned int height = _dataWindow.GetHeight();
+    if (width == 0 || height == 0 || !_colorBuffer) return;
+
+    std::vector<float> color;
+    _colorBuffer->GetFloatBuffer(color);
+
+    std::vector<float> bloom(width * height * 3, 0.0f);
+    float threshold = 2.0f; // Extract bright pixels
+    
+    for (unsigned int i = 0; i < width * height; ++i) {
+        float r = color[i*3];
+        float g = color[i*3+1];
+        float b = color[i*3+2];
+        float lum = 0.2126f * r + 0.7152f * g + 0.0722f * b;
+        if (lum > threshold) {
+            bloom[i*3] = r - threshold;
+            bloom[i*3+1] = g - threshold;
+            bloom[i*3+2] = b - threshold;
+        }
+    }
+
+    int blurSize = std::max(1, (int)std::min(width, height) / 20);
+    std::vector<float> blurred(width * height * 3, 0.0f);
+    
+    for (unsigned int y = 0; y < height; ++y) {
+        for (unsigned int x = 0; x < width; ++x) {
+            size_t idx = (y * width + x) * 3;
+            if (bloom[idx] == 0 && bloom[idx+1] == 0 && bloom[idx+2] == 0) continue;
+            
+            for (int d = -blurSize; d <= blurSize; d += 2) {
+                if (d == 0) continue;
+                float weight = 1.0f / (std::abs(d) + 1.0f);
+                
+                // Horizontal
+                if ((int)x + d >= 0 && (int)x + d < (int)width) {
+                    size_t b_idx = (y * width + (x + d)) * 3;
+                    blurred[b_idx] += bloom[idx] * weight;
+                    blurred[b_idx+1] += bloom[idx+1] * weight;
+                    blurred[b_idx+2] += bloom[idx+2] * weight;
+                }
+                // Vertical
+                if ((int)y + d >= 0 && (int)y + d < (int)height) {
+                    size_t b_idx = ((y + d) * width + x) * 3;
+                    blurred[b_idx] += bloom[idx] * weight;
+                    blurred[b_idx+1] += bloom[idx+1] * weight;
+                    blurred[b_idx+2] += bloom[idx+2] * weight;
+                }
+                // Diagonal 1
+                if ((int)x + d >= 0 && (int)x + d < (int)width && (int)y + d >= 0 && (int)y + d < (int)height) {
+                    size_t b_idx = ((y + d) * width + (x + d)) * 3;
+                    blurred[b_idx] += bloom[idx] * weight * 0.5f;
+                    blurred[b_idx+1] += bloom[idx+1] * weight * 0.5f;
+                    blurred[b_idx+2] += bloom[idx+2] * weight * 0.5f;
+                }
+                // Diagonal 2
+                if ((int)x + d >= 0 && (int)x + d < (int)width && (int)y - d >= 0 && (int)y - d < (int)height) {
+                    size_t b_idx = ((y - d) * width + (x + d)) * 3;
+                    blurred[b_idx] += bloom[idx] * weight * 0.5f;
+                    blurred[b_idx+1] += bloom[idx+1] * weight * 0.5f;
+                    blurred[b_idx+2] += bloom[idx+2] * weight * 0.5f;
+                }
+            }
+        }
+    }
+
+    for (unsigned int y = 0; y < height; ++y) {
+        for (unsigned int x = 0; x < width; ++x) {
+            size_t idx = (y * width + x) * 3;
+            float pixel[4] = { 
+                color[idx] + blurred[idx] * 0.1f, 
+                color[idx+1] + blurred[idx+1] * 0.1f, 
+                color[idx+2] + blurred[idx+2] * 0.1f, 
+                1.0f 
+            };
+            _colorBuffer->Write(GfVec3i(x, y, 0), 4, pixel);
+        }
+    }
+    _colorBuffer->Resolve();
+}
+
+void
 HdGeminiRenderer::_RenderTiles(HdRenderThread *renderThread, HdGeminiRenderDelegate* delegate)
 {
     unsigned int width = _dataWindow.GetWidth();
@@ -1012,13 +1099,57 @@ HdGeminiRenderer::_RenderTiles(HdRenderThread *renderThread, HdGeminiRenderDeleg
                     uint32_t rng = (uint32_t)(y * width + x) ^ (uint32_t)(_frameCount * 12345);
                     float ndcX = (2.0f * (x + res * RandomFloat(rng)) / width) - 1.0f;
                     float ndcY = (2.0f * (y + res * RandomFloat(rng)) / height) - 1.0f;
-                    GfVec3f nearPlanePointCam(_inverseProjMatrix.Transform(GfVec3f(ndcX, ndcY, -1.0f)));
-                    GfVec3f nearPlanePointWorld(_inverseViewMatrix.Transform(nearPlanePointCam));
-                    GfVec3f rayDirWorld = (nearPlanePointWorld - cameraPosWorld).GetNormalized();
+                    GfVec3f nearPlanePointCam = GfVec3f(_inverseProjMatrix.Transform(GfVec3d(ndcX, ndcY, -1.0)));
+                    
+                    GfVec3f rayOriginWorld = cameraPosWorld;
+                    GfVec3f rayDirWorld;
+
+                    if (_enableDoF) {
+                        // Assuming focusDistance is in scene units, and focalLength is in mm.
+                        // We use focalLength / 10.0f to get cm, assuming 1 unit = 1 cm.
+                        float apertureRadius = (_focalLength / 10.0f) / (2.0f * _fStop);
+                        
+                        float lensU, lensV;
+                        if (_bokehBlades < 3) {
+                            float r = std::sqrt(RandomFloat(rng));
+                            float theta = 2.0f * M_PI * RandomFloat(rng);
+                            lensU = r * std::cos(theta);
+                            lensV = r * std::sin(theta);
+                        } else {
+                            // Generate point in regular polygon
+                            float theta = 2.0f * M_PI * RandomFloat(rng);
+                            float r = std::sqrt(RandomFloat(rng));
+                            float sectorAngle = 2.0f * M_PI / _bokehBlades;
+                            float sector = std::floor(theta / sectorAngle);
+                            float angleInSector = theta - sector * sectorAngle;
+                            float d = std::cos(sectorAngle / 2.0f) / std::cos(sectorAngle / 2.0f - angleInSector);
+                            lensU = r * d * std::cos(theta);
+                            lensV = r * d * std::sin(theta);
+                        }
+                        lensU *= apertureRadius;
+                        lensV *= apertureRadius;
+
+                        GfVec3f lensPointCam(lensU, lensV, 0.0f);
+                        GfVec3f focalPointCam = nearPlanePointCam * _focusDistance;
+                        
+                        GfVec3f lensPointWorld = GfVec3f(_inverseViewMatrix.Transform(GfVec3d(lensPointCam)));
+                        GfVec3f focalPointWorld = GfVec3f(_inverseViewMatrix.Transform(GfVec3d(focalPointCam)));
+                        
+                        rayOriginWorld = lensPointWorld;
+                        rayDirWorld = (focalPointWorld - lensPointWorld).GetNormalized();
+                    } else {
+                        GfVec3f nearPlanePointWorld = GfVec3f(_inverseViewMatrix.Transform(GfVec3d(nearPlanePointCam)));
+                        rayDirWorld = (nearPlanePointWorld - cameraPosWorld).GetNormalized();
+                    }
                     
                     GfVec3f albedo(0.0f), normal(0.0f);
-                    GfVec3f hitColor = _TraceRay(cameraPosWorld, rayDirWorld, 0, isInteractive, renderThread, rng, &albedo, &normal);
+                    GfVec3f hitColor = _TraceRay(rayOriginWorld, rayDirWorld, 0, isInteractive, renderThread, rng, &albedo, &normal);
                     
+                    if (_enablePhysicalCamera) {
+                        float exposureMultiplier = (_iso / 100.0f) * _shutterSpeed / (_fStop * _fStop) * 100.0f;
+                        hitColor *= exposureMultiplier;
+                    }
+
                     if (isInteractive) {
                         GfVec4f finalColor(hitColor[0], hitColor[1], hitColor[2], 1.0f);
                         for (int dy = 0; dy < res && y + dy < height; ++dy) {

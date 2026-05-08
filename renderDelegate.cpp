@@ -315,6 +315,11 @@ HdGeminiRenderDelegate::GetRenderSettingDescriptors() const
         HdGeminiRenderSettingsTokens->maxRefractionBounces,
         VtValue(8)
     });
+    list.push_back({
+        "Resolution Level",
+        HdGeminiRenderSettingsTokens->resolutionLevel,
+        VtValue(2)
+    });
     return list;
 }
 
@@ -334,6 +339,8 @@ HdGeminiRenderDelegate::GetRenderSetting(TfToken const& key) const
         return VtValue(8);
     } else if (key == HdGeminiRenderSettingsTokens->maxRefractionBounces) {
         return VtValue(8);
+    } else if (key == HdGeminiRenderSettingsTokens->resolutionLevel) {
+        return VtValue(2);
     }
     return VtValue();
 }
@@ -356,6 +363,10 @@ HdGeminiRenderDelegate::SetRenderSetting(TfToken const& key, VtValue const& valu
     } else if (key == HdGeminiRenderSettingsTokens->maxRefractionBounces) {
         if (value.IsHolding<int>()) {
             _renderer.SetMaxRefractionBounces(value.Get<int>());
+        }
+    } else if (key == HdGeminiRenderSettingsTokens->resolutionLevel) {
+        if (value.IsHolding<int>()) {
+            _renderer.SetResolutionLevel(value.Get<int>());
         }
     }
     HdRenderDelegate::SetRenderSetting(key, value);

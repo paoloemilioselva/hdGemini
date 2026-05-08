@@ -111,7 +111,7 @@ HdGeminiRenderer::HdGeminiRenderer()
     , _projMatrix(1.0)
     , _inverseViewMatrix(1.0)
     , _inverseProjMatrix(1.0)
-    , _resolutionLevel(2)
+    , _resolutionLevel(_initialResolutionLevel)
     , _frameCount(0)
 {
 #ifdef HDGEMINI_HAS_OIDN
@@ -843,9 +843,7 @@ GfVec3f HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVec3f& ray
             currentRayDir = reflectDir;
             currentRayOrigin = hitPos + shadingNormal * 1e-4f;
             
-            GfVec3f reflTint(1.0f);
-            if (hit.metallic > 0.0f) reflTint = hit.baseColor;
-            else reflTint = hit.specularColor;
+            GfVec3f reflTint = hit.specularColor * (1.0f - hit.metallic) + hit.baseColor * hit.metallic;
             throughput = GfCompMult(throughput, reflTint);
         } else {
             float remainingProb = (randVal - reflectProb) / (1.0f - reflectProb);

@@ -43,6 +43,7 @@ public:
     void SetTargetSampleCount(int samples) { _targetSampleCount = samples; }
     void SetMaxReflectionBounces(int bounces) { _maxReflectionBounces = bounces; }
     void SetMaxRefractionBounces(int bounces) { _maxRefractionBounces = bounces; }
+    void SetResolutionLevel(int level) { _initialResolutionLevel = level; }
 
 private:
     bool _isConverged = false;
@@ -50,6 +51,7 @@ private:
     int _targetSampleCount = 32;
     int _maxReflectionBounces = 8;
     int _maxRefractionBounces = 8;
+    int _initialResolutionLevel = 2;
 
     struct MeshInstance {
         HdGeminiMesh* mesh;

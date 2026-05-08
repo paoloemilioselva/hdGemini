@@ -184,7 +184,7 @@ HdGeminiRenderer::Render(HdRenderThread *renderThread, HdGeminiRenderDelegate* d
             if (_enableDenoiser) {
                 _Denoise();
             }
-            if (_enableLensFlare) {
+            if (_enableLensFlare || _chromaticAberration > 0.0f) {
                 _ApplyPostProcess();
             }
             _isConverged = true;
@@ -997,75 +997,122 @@ HdGeminiRenderer::_ApplyPostProcess()
     unsigned int height = _dataWindow.GetHeight();
     if (width == 0 || height == 0 || !_colorBuffer) return;
 
-    std::vector<float> color;
-    _colorBuffer->GetFloatBuffer(color);
-
-    std::vector<float> bloom(width * height * 3, 0.0f);
-    float threshold = 2.0f; // Extract bright pixels
-    
-    for (unsigned int i = 0; i < width * height; ++i) {
-        float r = color[i*3];
-        float g = color[i*3+1];
-        float b = color[i*3+2];
-        float lum = 0.2126f * r + 0.7152f * g + 0.0722f * b;
-        if (lum > threshold) {
-            bloom[i*3] = r - threshold;
-            bloom[i*3+1] = g - threshold;
-            bloom[i*3+2] = b - threshold;
+    std::vector<float> color(width * height * 3, 0.0f);
+    const float* mappedColor = (const float*)_colorBuffer->Map();
+    if (mappedColor) {
+        for (unsigned int i = 0; i < width * height; ++i) {
+            color[i*3+0] = mappedColor[i*4+0];
+            color[i*3+1] = mappedColor[i*4+1];
+            color[i*3+2] = mappedColor[i*4+2];
         }
     }
+    _colorBuffer->Unmap();
 
-    int blurSize = std::max(1, (int)std::min(width, height) / 20);
-    std::vector<float> blurred(width * height * 3, 0.0f);
-    
-    for (unsigned int y = 0; y < height; ++y) {
-        for (unsigned int x = 0; x < width; ++x) {
-            size_t idx = (y * width + x) * 3;
-            if (bloom[idx] == 0 && bloom[idx+1] == 0 && bloom[idx+2] == 0) continue;
-            
-            for (int d = -blurSize; d <= blurSize; d += 2) {
-                if (d == 0) continue;
-                float weight = 1.0f / (std::abs(d) + 1.0f);
+    std::vector<float> finalColor = color;
+
+    if (_enableLensFlare) {
+        std::vector<float> bloom(width * height * 3, 0.0f);
+        float threshold = 2.0f; // Extract bright pixels
+        
+        for (unsigned int i = 0; i < width * height; ++i) {
+            float r = color[i*3];
+            float g = color[i*3+1];
+            float b = color[i*3+2];
+            float lum = 0.2126f * r + 0.7152f * g + 0.0722f * b;
+            if (lum > threshold) {
+                bloom[i*3] = r - threshold;
+                bloom[i*3+1] = g - threshold;
+                bloom[i*3+2] = b - threshold;
+            }
+        }
+
+        int blurSize = std::max(1, (int)std::min(width, height) / 20);
+        std::vector<float> blurred(width * height * 3, 0.0f);
+        
+        for (unsigned int y = 0; y < height; ++y) {
+            for (unsigned int x = 0; x < width; ++x) {
+                size_t idx = (y * width + x) * 3;
+                if (bloom[idx] == 0 && bloom[idx+1] == 0 && bloom[idx+2] == 0) continue;
                 
-                // Horizontal
-                if ((int)x + d >= 0 && (int)x + d < (int)width) {
-                    size_t b_idx = (y * width + (x + d)) * 3;
-                    blurred[b_idx] += bloom[idx] * weight;
-                    blurred[b_idx+1] += bloom[idx+1] * weight;
-                    blurred[b_idx+2] += bloom[idx+2] * weight;
-                }
-                // Vertical
-                if ((int)y + d >= 0 && (int)y + d < (int)height) {
-                    size_t b_idx = ((y + d) * width + x) * 3;
-                    blurred[b_idx] += bloom[idx] * weight;
-                    blurred[b_idx+1] += bloom[idx+1] * weight;
-                    blurred[b_idx+2] += bloom[idx+2] * weight;
-                }
-                // Diagonal 1
-                if ((int)x + d >= 0 && (int)x + d < (int)width && (int)y + d >= 0 && (int)y + d < (int)height) {
-                    size_t b_idx = ((y + d) * width + (x + d)) * 3;
-                    blurred[b_idx] += bloom[idx] * weight * 0.5f;
-                    blurred[b_idx+1] += bloom[idx+1] * weight * 0.5f;
-                    blurred[b_idx+2] += bloom[idx+2] * weight * 0.5f;
-                }
-                // Diagonal 2
-                if ((int)x + d >= 0 && (int)x + d < (int)width && (int)y - d >= 0 && (int)y - d < (int)height) {
-                    size_t b_idx = ((y - d) * width + (x + d)) * 3;
-                    blurred[b_idx] += bloom[idx] * weight * 0.5f;
-                    blurred[b_idx+1] += bloom[idx+1] * weight * 0.5f;
-                    blurred[b_idx+2] += bloom[idx+2] * weight * 0.5f;
+                for (int d = -blurSize; d <= blurSize; d += 2) {
+                    if (d == 0) continue;
+                    float weight = 1.0f / (std::abs(d) + 1.0f);
+                    
+                    // Horizontal
+                    if ((int)x + d >= 0 && (int)x + d < (int)width) {
+                        size_t b_idx = (y * width + (x + d)) * 3;
+                        blurred[b_idx] += bloom[idx] * weight;
+                        blurred[b_idx+1] += bloom[idx+1] * weight;
+                        blurred[b_idx+2] += bloom[idx+2] * weight;
+                    }
+                    // Vertical
+                    if ((int)y + d >= 0 && (int)y + d < (int)height) {
+                        size_t b_idx = ((y + d) * width + x) * 3;
+                        blurred[b_idx] += bloom[idx] * weight;
+                        blurred[b_idx+1] += bloom[idx+1] * weight;
+                        blurred[b_idx+2] += bloom[idx+2] * weight;
+                    }
+                    // Diagonal 1
+                    if ((int)x + d >= 0 && (int)x + d < (int)width && (int)y + d >= 0 && (int)y + d < (int)height) {
+                        size_t b_idx = ((y + d) * width + (x + d)) * 3;
+                        blurred[b_idx] += bloom[idx] * weight * 0.5f;
+                        blurred[b_idx+1] += bloom[idx+1] * weight * 0.5f;
+                        blurred[b_idx+2] += bloom[idx+2] * weight * 0.5f;
+                    }
+                    // Diagonal 2
+                    if ((int)x + d >= 0 && (int)x + d < (int)width && (int)y - d >= 0 && (int)y - d < (int)height) {
+                        size_t b_idx = ((y - d) * width + (x + d)) * 3;
+                        blurred[b_idx] += bloom[idx] * weight * 0.5f;
+                        blurred[b_idx+1] += bloom[idx+1] * weight * 0.5f;
+                        blurred[b_idx+2] += bloom[idx+2] * weight * 0.5f;
+                    }
                 }
             }
         }
+        for (unsigned int i = 0; i < width * height; ++i) {
+            finalColor[i*3] += blurred[i*3] * 0.1f;
+            finalColor[i*3+1] += blurred[i*3+1] * 0.1f;
+            finalColor[i*3+2] += blurred[i*3+2] * 0.1f;
+        }
+    }
+
+    if (_chromaticAberration > 0.0f) {
+        std::vector<float> caColor = finalColor;
+        float maxDist = std::sqrt((float)(width * width + height * height)) * 0.5f;
+        for (unsigned int y = 0; y < height; ++y) {
+            for (unsigned int x = 0; x < width; ++x) {
+                float dx = (float)x - width * 0.5f;
+                float dy = (float)y - height * 0.5f;
+                float dist = std::sqrt(dx * dx + dy * dy);
+                float dirX = (dist > 0.0f) ? dx / dist : 0.0f;
+                float dirY = (dist > 0.0f) ? dy / dist : 0.0f;
+
+                float shift = _chromaticAberration * (dist / maxDist);
+
+                int rx = std::clamp((int)(x - dirX * shift), 0, (int)width - 1);
+                int ry = std::clamp((int)(y - dirY * shift), 0, (int)height - 1);
+                int bx = std::clamp((int)(x + dirX * shift), 0, (int)width - 1);
+                int by = std::clamp((int)(y + dirY * shift), 0, (int)height - 1);
+
+                size_t idx = (y * width + x) * 3;
+                size_t ridx = (ry * width + rx) * 3;
+                size_t bidx = (by * width + bx) * 3;
+
+                caColor[idx] = finalColor[ridx]; // R shifted inwards
+                // caColor[idx+1] is unchanged G
+                caColor[idx+2] = finalColor[bidx+2]; // B shifted outwards
+            }
+        }
+        finalColor = caColor;
     }
 
     for (unsigned int y = 0; y < height; ++y) {
         for (unsigned int x = 0; x < width; ++x) {
             size_t idx = (y * width + x) * 3;
             float pixel[4] = { 
-                color[idx] + blurred[idx] * 0.1f, 
-                color[idx+1] + blurred[idx+1] * 0.1f, 
-                color[idx+2] + blurred[idx+2] * 0.1f, 
+                finalColor[idx], 
+                finalColor[idx+1], 
+                finalColor[idx+2], 
                 1.0f 
             };
             _colorBuffer->Write(GfVec3i(x, y, 0), 4, pixel);
@@ -1105,6 +1152,14 @@ HdGeminiRenderer::_RenderTiles(HdRenderThread *renderThread, HdGeminiRenderDeleg
                     uint32_t rng = (uint32_t)(y * width + x) ^ (uint32_t)(_frameCount * 12345);
                     float ndcX = (2.0f * (x + res * RandomFloat(rng)) / width) - 1.0f;
                     float ndcY = (2.0f * (y + res * RandomFloat(rng)) / height) - 1.0f;
+                    
+                    if (_lensDistortion != 0.0f) {
+                        float r2 = ndcX * ndcX + ndcY * ndcY;
+                        float f = 1.0f + _lensDistortion * r2;
+                        ndcX *= f;
+                        ndcY *= f;
+                    }
+
                     GfVec3f nearPlanePointCam = GfVec3f(_inverseProjMatrix.Transform(GfVec3d(ndcX, ndcY, -1.0)));
                     
                     GfVec3f rayOriginWorld = cameraPosWorld;

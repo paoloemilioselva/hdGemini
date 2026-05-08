@@ -370,6 +370,16 @@ HdGeminiRenderDelegate::GetRenderSettingDescriptors() const
         HdGeminiRenderSettingsTokens->renderIblBackground,
         VtValue(true)
     });
+    list.push_back({
+        "Lens Distortion",
+        HdGeminiRenderSettingsTokens->lensDistortion,
+        VtValue(0.0f)
+    });
+    list.push_back({
+        "Chromatic Aberration",
+        HdGeminiRenderSettingsTokens->chromaticAberration,
+        VtValue(0.0f)
+    });
     return list;
 }
 
@@ -411,6 +421,10 @@ HdGeminiRenderDelegate::GetRenderSetting(TfToken const& key) const
         return VtValue(false);
     } else if (key == HdGeminiRenderSettingsTokens->renderIblBackground) {
         return VtValue(true);
+    } else if (key == HdGeminiRenderSettingsTokens->lensDistortion) {
+        return VtValue(0.0f);
+    } else if (key == HdGeminiRenderSettingsTokens->chromaticAberration) {
+        return VtValue(0.0f);
     }
     return VtValue();
 }
@@ -472,6 +486,10 @@ HdGeminiRenderDelegate::SetRenderSetting(TfToken const& key, VtValue const& valu
         if (value.IsHolding<bool>()) { _renderer.SetEnableLensFlare(value.Get<bool>()); changed = true; }
     } else if (key == HdGeminiRenderSettingsTokens->renderIblBackground) {
         if (value.IsHolding<bool>()) { _renderer.SetRenderIblBackground(value.Get<bool>()); changed = true; }
+    } else if (key == HdGeminiRenderSettingsTokens->lensDistortion) {
+        _renderer.SetLensDistortion(getFloat(value, 0.0f)); changed = true;
+    } else if (key == HdGeminiRenderSettingsTokens->chromaticAberration) {
+        _renderer.SetChromaticAberration(getFloat(value, 0.0f)); changed = true;
     }
 
     if (changed) {

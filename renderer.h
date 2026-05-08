@@ -55,6 +55,8 @@ public:
     void SetShutterSpeed(float shutterSpeed) { _shutterSpeed = shutterSpeed; }
     void SetEnableLensFlare(bool enable) { _enableLensFlare = enable; }
     void SetRenderIblBackground(bool render) { _renderIblBackground = render; }
+    void SetLensDistortion(float distortion) { _lensDistortion = distortion; }
+    void SetChromaticAberration(float ca) { _chromaticAberration = ca; }
 
 private:
     bool _isConverged = false;
@@ -74,6 +76,8 @@ private:
     float _shutterSpeed = 0.02f;
     bool _enableLensFlare = false;
     bool _renderIblBackground = true;
+    float _lensDistortion = 0.0f;
+    float _chromaticAberration = 0.0f;
 
     struct MeshInstance {
         HdGeminiMesh* mesh;

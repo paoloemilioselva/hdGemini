@@ -79,6 +79,21 @@ public:
     float GetSheenRoughness() const { return _sheenRoughness; }
     void SetSheenRoughness(float v) { _sheenRoughness = v; }
 
+    float GetSubsurface() const { return _subsurface; }
+    void SetSubsurface(float v) { _subsurface = v; }
+
+    const GfVec3f& GetSubsurfaceColor() const { return _subsurfaceColor; }
+    void SetSubsurfaceColor(const GfVec3f& v) { _subsurfaceColor = v; }
+
+    const GfVec3f& GetSubsurfaceRadius() const { return _subsurfaceRadius; }
+    void SetSubsurfaceRadius(const GfVec3f& v) { _subsurfaceRadius = v; }
+
+    float GetSubsurfaceScale() const { return _subsurfaceScale; }
+    void SetSubsurfaceScale(float v) { _subsurfaceScale = v; }
+
+    float GetSubsurfaceAnisotropy() const { return _subsurfaceAnisotropy; }
+    void SetSubsurfaceAnisotropy(float v) { _subsurfaceAnisotropy = v; }
+
     bool GetThinWalled() const { return _thinWalled; }
     void SetThinWalled(bool v) { _thinWalled = v; }
     
@@ -117,6 +132,11 @@ public:
     float _sheen;
     GfVec3f _sheenColor;
     float _sheenRoughness;
+    float _subsurface;
+    GfVec3f _subsurfaceColor;
+    GfVec3f _subsurfaceRadius;
+    float _subsurfaceScale;
+    float _subsurfaceAnisotropy;
     bool _thinWalled;
     float _diffuseRoughness;
 

@@ -443,6 +443,11 @@ bool HdGeminiRenderer::_IntersectTLAS(const GfVec3f& rayOrigin, const GfVec3f& r
                             hit.sheen = inst.material->GetSheen();
                             hit.sheenColor = inst.material->GetSheenColor();
                             hit.sheenRoughness = inst.material->GetSheenRoughness();
+                            hit.subsurface = inst.material->GetSubsurface();
+                            hit.subsurfaceColor = inst.material->GetSubsurfaceColor();
+                            hit.subsurfaceRadius = inst.material->GetSubsurfaceRadius();
+                            hit.subsurfaceScale = inst.material->GetSubsurfaceScale();
+                            hit.subsurfaceAnisotropy = inst.material->GetSubsurfaceAnisotropy();
                             hit.thinWalled = inst.material->GetThinWalled();
                             hit.diffuseRoughness = inst.material->GetDiffuseRoughness();
                         }

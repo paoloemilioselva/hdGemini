@@ -101,6 +101,11 @@ private:
         float sheen = 0.0f;
         GfVec3f sheenColor = GfVec3f(1.0f);
         float sheenRoughness = 0.3f;
+        float subsurface = 0.0f;
+        GfVec3f subsurfaceColor = GfVec3f(1.0f);
+        GfVec3f subsurfaceRadius = GfVec3f(1.0f);
+        float subsurfaceScale = 1.0f;
+        float subsurfaceAnisotropy = 0.0f;
         bool thinWalled = false;
         float diffuseRoughness = 0.0f;
     };

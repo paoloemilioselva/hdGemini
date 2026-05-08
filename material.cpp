@@ -33,6 +33,11 @@ HdGeminiMaterial::HdGeminiMaterial(SdfPath const& id)
     , _sheen(0.0f)
     , _sheenColor(1.0f)
     , _sheenRoughness(0.3f)
+    , _subsurface(0.0f)
+    , _subsurfaceColor(1.0f)
+    , _subsurfaceRadius(1.0f)
+    , _subsurfaceScale(1.0f)
+    , _subsurfaceAnisotropy(0.0f)
     , _thinWalled(false)
     , _diffuseRoughness(0.0f)
 {
@@ -111,6 +116,38 @@ static void _ProcessNodeUpstream(
                 material->SetTransmission(param.second.UncheckedGet<float>());
             } else if (param.first == TfToken("transmission_color") && param.second.IsHolding<GfVec3f>()) {
                 material->SetTransmissionColor(param.second.UncheckedGet<GfVec3f>());
+            } else if (param.first == TfToken("transmission_depth") && param.second.IsHolding<float>()) {
+                material->SetTransmissionDepth(param.second.UncheckedGet<float>());
+            } else if (param.first == TfToken("transmission_scatter") && param.second.IsHolding<GfVec3f>()) {
+                material->SetTransmissionScatter(param.second.UncheckedGet<GfVec3f>());
+            } else if ((param.first == TfToken("subsurface") || param.first == TfToken("subsurface_weight")) && param.second.IsHolding<float>()) {
+                material->SetSubsurface(param.second.UncheckedGet<float>());
+            } else if (param.first == TfToken("subsurface_color") && param.second.IsHolding<GfVec3f>()) {
+                material->SetSubsurfaceColor(param.second.UncheckedGet<GfVec3f>());
+            } else if (param.first == TfToken("subsurface_radius") && param.second.IsHolding<GfVec3f>()) {
+                material->SetSubsurfaceRadius(param.second.UncheckedGet<GfVec3f>());
+            } else if (param.first == TfToken("subsurface_scale") && param.second.IsHolding<float>()) {
+                material->SetSubsurfaceScale(param.second.UncheckedGet<float>());
+            } else if (param.first == TfToken("subsurface_anisotropy") && param.second.IsHolding<float>()) {
+                material->SetSubsurfaceAnisotropy(param.second.UncheckedGet<float>());
+            } else if ((param.first == TfToken("sheen") || param.first == TfToken("sheen_weight")) && param.second.IsHolding<float>()) {
+                material->SetSheen(param.second.UncheckedGet<float>());
+            } else if (param.first == TfToken("sheen_color") && param.second.IsHolding<GfVec3f>()) {
+                material->SetSheenColor(param.second.UncheckedGet<GfVec3f>());
+            } else if (param.first == TfToken("sheen_roughness") && param.second.IsHolding<float>()) {
+                material->SetSheenRoughness(param.second.UncheckedGet<float>());
+            } else if ((param.first == TfToken("coat") || param.first == TfToken("coat_weight")) && param.second.IsHolding<float>()) {
+                material->SetCoat(param.second.UncheckedGet<float>());
+            } else if (param.first == TfToken("coat_color") && param.second.IsHolding<GfVec3f>()) {
+                material->SetCoatColor(param.second.UncheckedGet<GfVec3f>());
+            } else if (param.first == TfToken("coat_roughness") && param.second.IsHolding<float>()) {
+                material->SetCoatRoughness(param.second.UncheckedGet<float>());
+            } else if ((param.first == TfToken("coat_IOR") || param.first == TfToken("coat_ior")) && param.second.IsHolding<float>()) {
+                material->SetCoatIor(param.second.UncheckedGet<float>());
+            } else if (param.first == TfToken("thin_walled") && param.second.IsHolding<bool>()) {
+                material->SetThinWalled(param.second.UncheckedGet<bool>());
+            } else if (param.first == TfToken("diffuse_roughness") && param.second.IsHolding<float>()) {
+                material->SetDiffuseRoughness(param.second.UncheckedGet<float>());
             } else if ((param.first == TfToken("emission") || param.first == TfToken("emission_weight")) && param.second.IsHolding<float>()) {
                 material->SetEmission(param.second.UncheckedGet<float>());
             } else if (param.first == TfToken("emission_color") && param.second.IsHolding<GfVec3f>()) {
@@ -143,6 +180,36 @@ static void _ProcessNodeUpstream(
                 material->SetTransmission(param.second.UncheckedGet<float>());
             } else if (param.first == TfToken("transmission_color") && param.second.IsHolding<GfVec3f>()) {
                 material->SetTransmissionColor(param.second.UncheckedGet<GfVec3f>());
+            } else if (param.first == TfToken("transmission_depth") && param.second.IsHolding<float>()) {
+                material->SetTransmissionDepth(param.second.UncheckedGet<float>());
+            } else if (param.first == TfToken("transmission_scatter") && param.second.IsHolding<GfVec3f>()) {
+                material->SetTransmissionScatter(param.second.UncheckedGet<GfVec3f>());
+            } else if (param.first == TfToken("subsurface_weight") && param.second.IsHolding<float>()) {
+                material->SetSubsurface(param.second.UncheckedGet<float>());
+            } else if (param.first == TfToken("subsurface_color") && param.second.IsHolding<GfVec3f>()) {
+                material->SetSubsurfaceColor(param.second.UncheckedGet<GfVec3f>());
+            } else if (param.first == TfToken("subsurface_radius") && param.second.IsHolding<GfVec3f>()) {
+                material->SetSubsurfaceRadius(param.second.UncheckedGet<GfVec3f>());
+            } else if (param.first == TfToken("subsurface_radius_scale") && param.second.IsHolding<float>()) {
+                material->SetSubsurfaceScale(param.second.UncheckedGet<float>());
+            } else if (param.first == TfToken("subsurface_anisotropy") && param.second.IsHolding<float>()) {
+                material->SetSubsurfaceAnisotropy(param.second.UncheckedGet<float>());
+            } else if (param.first == TfToken("fuzz_weight") && param.second.IsHolding<float>()) {
+                material->SetSheen(param.second.UncheckedGet<float>());
+            } else if (param.first == TfToken("fuzz_color") && param.second.IsHolding<GfVec3f>()) {
+                material->SetSheenColor(param.second.UncheckedGet<GfVec3f>());
+            } else if (param.first == TfToken("fuzz_roughness") && param.second.IsHolding<float>()) {
+                material->SetSheenRoughness(param.second.UncheckedGet<float>());
+            } else if (param.first == TfToken("coat_weight") && param.second.IsHolding<float>()) {
+                material->SetCoat(param.second.UncheckedGet<float>());
+            } else if (param.first == TfToken("coat_color") && param.second.IsHolding<GfVec3f>()) {
+                material->SetCoatColor(param.second.UncheckedGet<GfVec3f>());
+            } else if (param.first == TfToken("coat_roughness") && param.second.IsHolding<float>()) {
+                material->SetCoatRoughness(param.second.UncheckedGet<float>());
+            } else if (param.first == TfToken("coat_ior") && param.second.IsHolding<float>()) {
+                material->SetCoatIor(param.second.UncheckedGet<float>());
+            } else if (param.first == TfToken("geometry_thin_walled") && param.second.IsHolding<bool>()) {
+                material->SetThinWalled(param.second.UncheckedGet<bool>());
             } else if (param.first == TfToken("emission_luminance") && param.second.IsHolding<float>()) {
                 material->SetEmission(param.second.UncheckedGet<float>());
             } else if (param.first == TfToken("emission_color") && param.second.IsHolding<GfVec3f>()) {

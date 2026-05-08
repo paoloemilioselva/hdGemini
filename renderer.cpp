@@ -691,7 +691,7 @@ GfVec3f HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVec3f& ray
         bool isInside = GfDot(hit.smoothNormal, currentRayDir) > 0;
 
         // --- Beer's Law (Transmission Depth) ---
-        if (isInside && hit.transmissionDepth > 0.0f) {
+        if (isInside && hit.transmissionDepth > 0.0f && !hit.thinWalled) {
             GfVec3f scatter = hit.transmissionScatter;
             if (scatter[0] <= 0 && scatter[1] <= 0 && scatter[2] <= 0) scatter = hit.transmissionColor;
             GfVec3f sigma_a(
@@ -803,7 +803,8 @@ GfVec3f HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVec3f& ray
                     shadowHit.t = lightDist - 1e-3f;
                     GfVec3f shadowOrigin = hitPos + shadingNormal * 1e-4f;
                     if (!this->_IntersectTLAS(shadowOrigin, lDir, shadowHit, renderThread)) {
-                        GfVec3f diffuseWeight = hit.baseColor * (1.0f - hit.metallic) * (1.0f - hit.transmission);
+                        GfVec3f finalDiffuse = hit.baseColor * (1.0f - hit.subsurface) + hit.subsurfaceColor * hit.subsurface;
+                        GfVec3f diffuseWeight = finalDiffuse * (1.0f - hit.metallic) * (1.0f - hit.transmission);
                         GfVec3f bsdf = diffuseWeight / (float)M_PI;
                         totalRadiance += GfCompMult(throughput, GfCompMult(bsdf, lColor)) * (nDotL / (lightPdf + 1e-6f));
                     }
@@ -825,6 +826,25 @@ GfVec3f HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVec3f& ray
                 currentRayDir = reflectDir;
                 currentRayOrigin = hitPos + shadingNormal * 1e-4f;
                 throughput = GfCompMult(throughput, hit.coatColor);
+                continue;
+            }
+        }
+
+        // --- Sheen Layer ---
+        if (hit.sheen > 0.0f && !isInside) {
+            float cosTheta = std::max(0.0f, GfDot(-currentRayDir, shadingNormal));
+            float sheenFresnel = hit.sheen * std::pow(1.0f - cosTheta, 5.0f);
+            if (RandomFloat(rng) < sheenFresnel) {
+                if (reflectionBounces >= (isInteractive ? 1 : _maxReflectionBounces)) break;
+                reflectionBounces++;
+                GfVec3f reflectDir = (currentRayDir - 2.0f * GfDot(currentRayDir, shadingNormal) * shadingNormal).GetNormalized();
+                if (hit.sheenRoughness > 0.0f) {
+                    reflectDir = AlignToNormal(SampleCosineHemisphere(RandomFloat(rng), RandomFloat(rng)), reflectDir);
+                    if (GfDot(reflectDir, shadingNormal) < 0) reflectDir = (reflectDir - 2.0f * GfDot(reflectDir, shadingNormal) * shadingNormal).GetNormalized();
+                }
+                currentRayDir = reflectDir;
+                currentRayOrigin = hitPos + shadingNormal * 1e-4f;
+                throughput = GfCompMult(throughput, hit.sheenColor);
                 continue;
             }
         }
@@ -891,7 +911,8 @@ GfVec3f HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVec3f& ray
                 float pdf = nDotL / (float)M_PI;
                 if (pdf < 1e-6f) break;
                 
-                throughput = GfCompMult(throughput, hit.baseColor); 
+                GfVec3f finalDiffuse = hit.baseColor * (1.0f - hit.subsurface) + hit.subsurfaceColor * hit.subsurface;
+                throughput = GfCompMult(throughput, finalDiffuse); 
                 currentRayDir = diffuseDir;
                 currentRayOrigin = hitPos + shadingNormal * 1e-4f;
             }

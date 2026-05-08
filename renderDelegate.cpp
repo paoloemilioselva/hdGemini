@@ -414,6 +414,19 @@ HdGeminiRenderDelegate::SetRenderSetting(TfToken const& key, VtValue const& valu
     VtValue current = GetRenderSetting(key);
     if (current == value) return;
 
+    auto getFloat = [](const VtValue& v, float def = 0.0f) {
+        if (v.IsHolding<float>()) return v.Get<float>();
+        if (v.IsHolding<double>()) return (float)v.Get<double>();
+        if (v.IsHolding<int>()) return (float)v.Get<int>();
+        return def;
+    };
+    auto getInt = [](const VtValue& v, int def = 0) {
+        if (v.IsHolding<int>()) return v.Get<int>();
+        if (v.IsHolding<float>()) return (int)v.Get<float>();
+        if (v.IsHolding<double>()) return (int)v.Get<double>();
+        return def;
+    };
+
     bool changed = false;
     if (key == HdGeminiRenderSettingsTokens->enableDenoiser) {
         if (value.IsHolding<bool>()) {
@@ -421,41 +434,33 @@ HdGeminiRenderDelegate::SetRenderSetting(TfToken const& key, VtValue const& valu
             changed = true;
         }
     } else if (key == HdGeminiRenderSettingsTokens->targetSampleCount) {
-        if (value.IsHolding<int>()) {
-            _renderer.SetTargetSampleCount(value.Get<int>());
-            changed = true;
-        }
+        _renderer.SetTargetSampleCount(getInt(value, 32));
+        changed = true;
     } else if (key == HdGeminiRenderSettingsTokens->maxReflectionBounces) {
-        if (value.IsHolding<int>()) {
-            _renderer.SetMaxReflectionBounces(value.Get<int>());
-            changed = true;
-        }
+        _renderer.SetMaxReflectionBounces(getInt(value, 8));
+        changed = true;
     } else if (key == HdGeminiRenderSettingsTokens->maxRefractionBounces) {
-        if (value.IsHolding<int>()) {
-            _renderer.SetMaxRefractionBounces(value.Get<int>());
-            changed = true;
-        }
+        _renderer.SetMaxRefractionBounces(getInt(value, 8));
+        changed = true;
     } else if (key == HdGeminiRenderSettingsTokens->resolutionLevel) {
-        if (value.IsHolding<int>()) {
-            _renderer.SetResolutionLevel(value.Get<int>());
-            changed = true;
-        }
+        _renderer.SetResolutionLevel(getInt(value, 2));
+        changed = true;
     } else if (key == HdGeminiRenderSettingsTokens->enableDoF) {
         if (value.IsHolding<bool>()) { _renderer.SetEnableDoF(value.Get<bool>()); changed = true; }
     } else if (key == HdGeminiRenderSettingsTokens->focalLength) {
-        if (value.IsHolding<float>()) { _renderer.SetFocalLength(value.Get<float>()); changed = true; }
+        _renderer.SetFocalLength(getFloat(value, 50.0f)); changed = true;
     } else if (key == HdGeminiRenderSettingsTokens->fStop) {
-        if (value.IsHolding<float>()) { _renderer.SetFStop(value.Get<float>()); changed = true; }
+        _renderer.SetFStop(getFloat(value, 5.6f)); changed = true;
     } else if (key == HdGeminiRenderSettingsTokens->focusDistance) {
-        if (value.IsHolding<float>()) { _renderer.SetFocusDistance(value.Get<float>()); changed = true; }
+        _renderer.SetFocusDistance(getFloat(value, 10.0f)); changed = true;
     } else if (key == HdGeminiRenderSettingsTokens->bokehBlades) {
-        if (value.IsHolding<int>()) { _renderer.SetBokehBlades(value.Get<int>()); changed = true; }
+        _renderer.SetBokehBlades(getInt(value, 0)); changed = true;
     } else if (key == HdGeminiRenderSettingsTokens->enablePhysicalCamera) {
         if (value.IsHolding<bool>()) { _renderer.SetEnablePhysicalCamera(value.Get<bool>()); changed = true; }
     } else if (key == HdGeminiRenderSettingsTokens->iso) {
-        if (value.IsHolding<float>()) { _renderer.SetISO(value.Get<float>()); changed = true; }
+        _renderer.SetISO(getFloat(value, 100.0f)); changed = true;
     } else if (key == HdGeminiRenderSettingsTokens->shutterSpeed) {
-        if (value.IsHolding<float>()) { _renderer.SetShutterSpeed(value.Get<float>()); changed = true; }
+        _renderer.SetShutterSpeed(getFloat(value, 0.02f)); changed = true;
     } else if (key == HdGeminiRenderSettingsTokens->enableLensFlare) {
         if (value.IsHolding<bool>()) { _renderer.SetEnableLensFlare(value.Get<bool>()); changed = true; }
     }

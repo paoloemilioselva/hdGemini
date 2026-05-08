@@ -54,6 +54,7 @@ public:
     void SetISO(float iso) { _iso = iso; }
     void SetShutterSpeed(float shutterSpeed) { _shutterSpeed = shutterSpeed; }
     void SetEnableLensFlare(bool enable) { _enableLensFlare = enable; }
+    void SetRenderIblBackground(bool render) { _renderIblBackground = render; }
 
 private:
     bool _isConverged = false;
@@ -72,6 +73,7 @@ private:
     float _iso = 100.0f;
     float _shutterSpeed = 0.02f;
     bool _enableLensFlare = false;
+    bool _renderIblBackground = true;
 
     struct MeshInstance {
         HdGeminiMesh* mesh;

@@ -365,6 +365,11 @@ HdGeminiRenderDelegate::GetRenderSettingDescriptors() const
         HdGeminiRenderSettingsTokens->enableLensFlare,
         VtValue(false)
     });
+    list.push_back({
+        "Render IBL Background",
+        HdGeminiRenderSettingsTokens->renderIblBackground,
+        VtValue(true)
+    });
     return list;
 }
 
@@ -404,6 +409,8 @@ HdGeminiRenderDelegate::GetRenderSetting(TfToken const& key) const
         return VtValue(0.02f);
     } else if (key == HdGeminiRenderSettingsTokens->enableLensFlare) {
         return VtValue(false);
+    } else if (key == HdGeminiRenderSettingsTokens->renderIblBackground) {
+        return VtValue(true);
     }
     return VtValue();
 }
@@ -463,6 +470,8 @@ HdGeminiRenderDelegate::SetRenderSetting(TfToken const& key, VtValue const& valu
         _renderer.SetShutterSpeed(getFloat(value, 0.02f)); changed = true;
     } else if (key == HdGeminiRenderSettingsTokens->enableLensFlare) {
         if (value.IsHolding<bool>()) { _renderer.SetEnableLensFlare(value.Get<bool>()); changed = true; }
+    } else if (key == HdGeminiRenderSettingsTokens->renderIblBackground) {
+        if (value.IsHolding<bool>()) { _renderer.SetRenderIblBackground(value.Get<bool>()); changed = true; }
     }
 
     if (changed) {

@@ -642,7 +642,13 @@ GfVec3f HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVec3f& ray
         if (!this->_IntersectTLAS(currentRayOrigin, currentRayDir, hit, renderThread)) {
             GfVec3f env = _SampleEnvironment(currentRayDir);
             if (bounce == 0 && outAlbedo) *outAlbedo = env;
-            totalRadiance += GfCompMult(throughput, env);
+            
+            if (bounce == 0 && !_renderIblBackground) {
+                // Do not add the environment map to the final pixel if background rendering is disabled for primary rays.
+                totalRadiance += GfVec3f(0.0f);
+            } else {
+                totalRadiance += GfCompMult(throughput, env);
+            }
             break;
         }
 

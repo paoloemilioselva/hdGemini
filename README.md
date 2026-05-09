@@ -13,7 +13,10 @@
 
 ## Features
 
-- **Monte Carlo Path Tracing**: Full global illumination via stochastic path tracing, featuring Multiple Importance Sampling (MIS) using the power heuristic and Russian Roulette for robust, unbiased rendering.
+- **Spectral Monte Carlo Path Tracing**: Full global illumination via stochastic path tracing operating natively in the spectral domain.
+  - Utilizes **Hero Wavelength Sampling** to efficiently evaluate 4 continuous wavelengths per ray, eliminating metamerism and enabling true physical color mixing.
+  - Features Multiple Importance Sampling (MIS) using the power heuristic and Russian Roulette for robust, unbiased rendering.
+  - Incoming RGB textures are on-the-fly "uplifted" to continuous spectra using a smooth, optimized Gaussian basis.
 - **AI Denoising Pipeline**:
   - Integrated **Intel Open Image Denoise (OIDN)** v2.2.2 for rapid noise reduction.
   - Automated binary download and linking via `FetchContent` in CMake.
@@ -21,8 +24,9 @@
   - Full Float32 HDR color AOV output preserving unclamped highlights for post-processing.
 - **Physical Materials**: Extensive support for physically-based rendering workflows.
   - Prioritized resolution for **MaterialX** (`mtlx`) and **OpenPBR** surface shaders via the SdrRegistry.
-  - Full `standard_surface` support including Base Color, Roughness, Metallic, Clearcoat, Sheen, Subsurface Scattering (diffuse approximation), and physical Emission.
+  - Full `standard_surface` support including Base Color, Roughness, Metallic, Clearcoat, Sheen, Subsurface Scattering (diffuse approximation, globally toggleable via render settings), and physical Emission.
   - Accurate physical refraction, handling Transmission, IOR (Index of Refraction), Transmission Depth/Scatter (Beer's Law volume absorption), and Thin-Walled properties.
+  - **Physical Dispersion**: Simulates wavelength-dependent Index of Refraction (IOR) using Cauchy's equation, rendering accurate rainbow dispersion through transmissive materials.
 - **Physical Camera & Optical Effects**:
   - **Depth of Field**: Accurate synthetic lens sampling with configurable Focal Length, F-Stop, Focus Distance, and polygonal Bokeh Blades.
   - **Physical Exposure**: Image luminance scaling based on photographic EV100 equations (ISO, Shutter Speed, Aperture).

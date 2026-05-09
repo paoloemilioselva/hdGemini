@@ -810,7 +810,8 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
                     GfVec3f shadowOrigin = hitPos + shadingNormal * 1e-4f;
                     if (!this->_IntersectTLAS(shadowOrigin, lDir, shadowHit, renderThread)) {
                         SampledSpectrum specLColor = RGBToSpectrum(lColor, lambda);
-                        GfVec3f finalDiffuse = hit.baseColor * (1.0f - hit.subsurface) + hit.subsurfaceColor * hit.subsurface;
+                        float effectiveSubsurface = _enableSubsurface ? hit.subsurface : 0.0f;
+                        GfVec3f finalDiffuse = hit.baseColor * (1.0f - effectiveSubsurface) + hit.subsurfaceColor * effectiveSubsurface;
                         GfVec3f diffuseWeight = finalDiffuse * (1.0f - hit.metallic) * (1.0f - hit.transmission);
                         SampledSpectrum bsdf = RGBToSpectrum(diffuseWeight / (float)M_PI, lambda);
                         totalRadiance += throughput * bsdf * specLColor * (nDotL / (lightPdf + 1e-6f));

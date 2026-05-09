@@ -296,6 +296,11 @@ HdGeminiRenderDelegate::GetRenderSettingDescriptors() const
 {
     HdRenderSettingDescriptorList list;
     list.push_back({
+        "Enable Subsurface Scattering",
+        HdGeminiRenderSettingsTokens->enableSubsurface,
+        VtValue(true)
+    });
+    list.push_back({
         "Enable Denoiser",
         HdGeminiRenderSettingsTokens->enableDenoiser,
         VtValue(true)
@@ -391,7 +396,9 @@ HdGeminiRenderDelegate::GetRenderSetting(TfToken const& key) const
         return v;
     }
     
-    if (key == HdGeminiRenderSettingsTokens->enableDenoiser) {
+    if (key == HdGeminiRenderSettingsTokens->enableSubsurface) {
+        return VtValue(true);
+    } else if (key == HdGeminiRenderSettingsTokens->enableDenoiser) {
         return VtValue(true);
     } else if (key == HdGeminiRenderSettingsTokens->targetSampleCount) {
         return VtValue(32);
@@ -449,7 +456,12 @@ HdGeminiRenderDelegate::SetRenderSetting(TfToken const& key, VtValue const& valu
     };
 
     bool changed = false;
-    if (key == HdGeminiRenderSettingsTokens->enableDenoiser) {
+    if (key == HdGeminiRenderSettingsTokens->enableSubsurface) {
+        if (value.IsHolding<bool>()) {
+            _renderer.SetEnableSubsurface(value.Get<bool>());
+            changed = true;
+        }
+    } else if (key == HdGeminiRenderSettingsTokens->enableDenoiser) {
         if (value.IsHolding<bool>()) {
             _renderer.SetEnableDenoiser(value.Get<bool>());
             changed = true;

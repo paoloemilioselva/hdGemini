@@ -40,6 +40,9 @@ public:
     void MarkAovBuffersUnconverged();
     bool IsConverged() const { return _isConverged; }
 
+    void SetEnableSubsurface(bool enable) { _enableSubsurface = enable; }
+    bool GetEnableSubsurface() const { return _enableSubsurface; }
+
     void SetEnableDenoiser(bool enable) { _enableDenoiser = enable; }
     void SetTargetSampleCount(int samples) { _targetSampleCount = samples; }
     void SetMaxReflectionBounces(int bounces) { _maxReflectionBounces = bounces; }
@@ -61,6 +64,7 @@ public:
 
 private:
     bool _isConverged = false;
+    bool _enableSubsurface = true;
     bool _enableDenoiser = true;
     int _targetSampleCount = 32;
     int _maxReflectionBounces = 8;

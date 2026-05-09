@@ -105,6 +105,8 @@ add_library( ${DELEGATE_NAME} SHARED
     renderer.h
     bvh.cpp
     bvh.h
+    spectrum.cpp
+    spectrum.h
     renderParam.h
     implicitSurfaceSceneIndexPlugin.cpp
     implicitSurfaceSceneIndexPlugin.h

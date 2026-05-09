@@ -429,6 +429,7 @@ bool HdGeminiRenderer::_IntersectTLAS(const GfVec3f& rayOrigin, const GfVec3f& r
                             hit.specular = inst.material->GetSpecular();
                             hit.opacity = inst.material->GetOpacity();
                             hit.ior = inst.material->GetIor();
+                            
                             hit.transmission = inst.material->GetTransmission();
                             hit.transmissionColor = inst.material->GetTransmissionColor();
                             hit.emission = inst.material->GetEmissionColor() * inst.material->GetEmission();
@@ -467,10 +468,10 @@ bool HdGeminiRenderer::_IntersectTLAS(const GfVec3f& rayOrigin, const GfVec3f& r
     return wasHit;
 }
 
-GfVec3f HdGeminiRenderer::_SampleEnvironment(const GfVec3f& rayDir) const
+SampledSpectrum HdGeminiRenderer::_SampleEnvironment(const GfVec3f& rayDir, const SampledWavelengths& lambda) const
 {
     if (_envMapPixels.empty()) {
-        return GfVec3f(0.0f);
+        return RGBToSpectrum(GfVec3f(0.0f), lambda);
     }
     float theta = std::acos(std::clamp(rayDir[1], -1.0f, 1.0f));
     float phi = std::atan2(rayDir[2], rayDir[0]);
@@ -483,15 +484,15 @@ GfVec3f HdGeminiRenderer::_SampleEnvironment(const GfVec3f& rayDir) const
     GfVec3f color(_envMapPixels[idx], _envMapPixels[idx+1], _envMapPixels[idx+2]);
     for (const auto& light : _activeLights) {
         if (light->GetLightType() == HdPrimTypeTokens->domeLight) {
-            return GfCompMult(color, light->GetColor()) * light->GetIntensity();
+            return RGBToSpectrum(GfCompMult(color, light->GetColor()) * light->GetIntensity(), lambda);
         }
     }
-    return color;
+    return RGBToSpectrum(color, lambda);
 }
 
-GfVec3f HdGeminiRenderer::_SampleTexture(const SdfAssetPath& path, const GfVec2f& uv, bool forceLinear) const
+SampledSpectrum HdGeminiRenderer::_SampleTexture(const SdfAssetPath& path, const GfVec2f& uv, const SampledWavelengths& lambda, bool forceLinear) const
 {
-    if (path.GetAssetPath().empty()) return GfVec3f(1.0f);
+    if (path.GetAssetPath().empty()) return RGBToSpectrum(GfVec3f(1.0f), lambda);
 
     std::string cacheKey = path.GetAssetPath() + (forceLinear ? "_lin" : "_srgb");
 
@@ -500,8 +501,8 @@ GfVec3f HdGeminiRenderer::_SampleTexture(const SdfAssetPath& path, const GfVec2f
         auto it = _textureCache.find(cacheKey);
         if (it != _textureCache.end()) {
             const TextureData& data = it->second;
-            if (data.pixels.empty()) return GfVec3f(1.0f);
-            return _SampleTextureData(data, uv);
+            if (data.pixels.empty()) return RGBToSpectrum(GfVec3f(1.0f), lambda);
+            return _SampleTextureData(data, uv, lambda);
         }
     }
 
@@ -512,8 +513,8 @@ GfVec3f HdGeminiRenderer::_SampleTexture(const SdfAssetPath& path, const GfVec2f
     auto it = _textureCache.find(cacheKey);
     if (it != _textureCache.end()) {
         const TextureData& data = it->second;
-        if (data.pixels.empty()) return GfVec3f(1.0f);
-        return _SampleTextureData(data, uv);
+        if (data.pixels.empty()) return RGBToSpectrum(GfVec3f(1.0f), lambda);
+        return _SampleTextureData(data, uv, lambda);
     }
 
     HDGEMINI_LOG << "[Gemini]   Loading texture: " << path.GetAssetPath() << std::endl;
@@ -521,7 +522,7 @@ GfVec3f HdGeminiRenderer::_SampleTexture(const SdfAssetPath& path, const GfVec2f
     if (!image) {
         HDGEMINI_LOG << "[Gemini]   Failed to open texture: " << path.GetResolvedPath() << std::endl;
         _textureCache[cacheKey] = TextureData();
-        return GfVec3f(1.0f);
+        return RGBToSpectrum(GfVec3f(1.0f), lambda);
     }
 
     TextureData data;
@@ -585,12 +586,12 @@ GfVec3f HdGeminiRenderer::_SampleTexture(const SdfAssetPath& path, const GfVec2f
     }
 
     _textureCache[cacheKey] = std::move(data);
-    return _SampleTextureData(_textureCache[cacheKey], uv);
+    return _SampleTextureData(_textureCache[cacheKey], uv, lambda);
 }
 
-GfVec3f HdGeminiRenderer::_SampleTextureData(const TextureData& data, const GfVec2f& uv) const
+SampledSpectrum HdGeminiRenderer::_SampleTextureData(const TextureData& data, const GfVec2f& uv, const SampledWavelengths& lambda) const
 {
-    if (data.pixels.empty()) return GfVec3f(1.0f);
+    if (data.pixels.empty()) return RGBToSpectrum(GfVec3f(1.0f), lambda);
 
     float u = uv[0] - std::floor(uv[0]);
     float v = 1.0f - (uv[1] - std::floor(uv[1])); // Flip V for standard image coords
@@ -614,7 +615,7 @@ GfVec3f HdGeminiRenderer::_SampleTextureData(const TextureData& data, const GfVe
     GfVec3f p01 = getPixel(x0, y1);
     GfVec3f p11 = getPixel(x1, y1);
 
-    return (p00 * (1-fx) + p10 * fx) * (1-fy) + (p01 * (1-fx) + p11 * fx) * fy;
+    return RGBToSpectrum((p00 * (1-fx) + p10 * fx) * (1-fy) + (p01 * (1-fx) + p11 * fx) * fy, lambda);
 }
 
 static float PowerHeuristic(float f, float g) {
@@ -623,10 +624,10 @@ static float PowerHeuristic(float f, float g) {
     return f2 / (f2 + g2);
 }
 
-GfVec3f HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVec3f& rayDir, int depth, bool isInteractive, HdRenderThread* renderThread, uint32_t& rng, GfVec3f* outAlbedo, GfVec3f* outNormal) const
+SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVec3f& rayDir, int depth, bool isInteractive, HdRenderThread* renderThread, uint32_t& rng, const SampledWavelengths& lambda, GfVec3f* outAlbedo, GfVec3f* outNormal) const
 {
-    GfVec3f throughput(1.0f);
-    GfVec3f totalRadiance(0.0f);
+    SampledSpectrum throughput(1.0f);
+    SampledSpectrum totalRadiance(0.0f);
     GfVec3f currentRayOrigin = rayOrigin;
     GfVec3f currentRayDir = rayDir;
 
@@ -640,32 +641,32 @@ GfVec3f HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVec3f& ray
 
         HitRecord hit;
         if (!this->_IntersectTLAS(currentRayOrigin, currentRayDir, hit, renderThread)) {
-            GfVec3f env = _SampleEnvironment(currentRayDir);
-            if (bounce == 0 && outAlbedo) *outAlbedo = env;
+            SampledSpectrum env = _SampleEnvironment(currentRayDir, lambda);
+            if (bounce == 0 && outAlbedo) *outAlbedo = SpectrumToRGB(env, lambda);
             
             if (bounce == 0 && !_renderIblBackground) {
                 // Do not add the environment map to the final pixel if background rendering is disabled for primary rays.
-                totalRadiance += GfVec3f(0.0f);
+                totalRadiance += SampledSpectrum(0.0f);
             } else {
-                totalRadiance += GfCompMult(throughput, env);
+                totalRadiance += throughput * env;
             }
             break;
         }
 
         if (!hit.diffuseTexture.GetAssetPath().empty()) {
-            hit.baseColor = GfCompMult(hit.baseColor, _SampleTexture(hit.diffuseTexture, hit.uv));
+            hit.baseColor = GfCompMult(hit.baseColor, SpectrumToRGB(_SampleTexture(hit.diffuseTexture, hit.uv, lambda), lambda));
         }
 
         if (!hit.metallicTexture.GetAssetPath().empty()) {
-            hit.metallic = _SampleTexture(hit.metallicTexture, hit.uv, true)[0];
+            hit.metallic = SpectrumToRGB(_SampleTexture(hit.metallicTexture, hit.uv, lambda, true), lambda)[0];
         }
 
         if (!hit.roughnessTexture.GetAssetPath().empty()) {
-            hit.roughness = _SampleTexture(hit.roughnessTexture, hit.uv, true)[0];
+            hit.roughness = SpectrumToRGB(_SampleTexture(hit.roughnessTexture, hit.uv, lambda, true), lambda)[0];
         }
 
         if (!hit.normalTexture.GetAssetPath().empty()) {
-            GfVec3f nTex = _SampleTexture(hit.normalTexture, hit.uv, true);
+            GfVec3f nTex = SpectrumToRGB(_SampleTexture(hit.normalTexture, hit.uv, lambda, true), lambda);
             nTex = nTex * 2.0f - GfVec3f(1.0f);
             
             GfVec3f n = hit.smoothNormal;
@@ -701,22 +702,18 @@ GfVec3f HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVec3f& ray
 
         // --- Beer's Law (Transmission Depth) ---
         if (isInside && hit.transmissionDepth > 0.0f && !hit.thinWalled) {
-            GfVec3f scatter = hit.transmissionScatter;
-            if (scatter[0] <= 0 && scatter[1] <= 0 && scatter[2] <= 0) scatter = hit.transmissionColor;
-            GfVec3f sigma_a(
-                -std::log(std::clamp(scatter[0], 1e-5f, 1.0f)) / hit.transmissionDepth,
-                -std::log(std::clamp(scatter[1], 1e-5f, 1.0f)) / hit.transmissionDepth,
-                -std::log(std::clamp(scatter[2], 1e-5f, 1.0f)) / hit.transmissionDepth
-            );
-            throughput[0] *= std::exp(-sigma_a[0] * hit.t);
-            throughput[1] *= std::exp(-sigma_a[1] * hit.t);
-            throughput[2] *= std::exp(-sigma_a[2] * hit.t);
+            SampledSpectrum transSpec = RGBToSpectrum(hit.transmissionColor, lambda);
+            SampledSpectrum sigma_a;
+            for(int i=0; i<SPECTRUM_SAMPLES; ++i) {
+                sigma_a[i] = -std::log(std::max(transSpec[i], 1e-4f)) / hit.transmissionDepth;
+                throughput[i] *= std::exp(-sigma_a[i] * hit.t);
+            }
         }
 
         GfVec3f shadingNormal = hit.smoothNormal;
         if (isInside) shadingNormal = -shadingNormal;
 
-        totalRadiance += GfCompMult(throughput, hit.emission);
+        totalRadiance += throughput * RGBToSpectrum(hit.emission, lambda);
 
         // --- Direct Lighting (Light Sampling) ---
         if (!_activeLights.empty()) {
@@ -812,10 +809,11 @@ GfVec3f HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVec3f& ray
                     shadowHit.t = lightDist - 1e-3f;
                     GfVec3f shadowOrigin = hitPos + shadingNormal * 1e-4f;
                     if (!this->_IntersectTLAS(shadowOrigin, lDir, shadowHit, renderThread)) {
+                        SampledSpectrum specLColor = RGBToSpectrum(lColor, lambda);
                         GfVec3f finalDiffuse = hit.baseColor * (1.0f - hit.subsurface) + hit.subsurfaceColor * hit.subsurface;
                         GfVec3f diffuseWeight = finalDiffuse * (1.0f - hit.metallic) * (1.0f - hit.transmission);
-                        GfVec3f bsdf = diffuseWeight / (float)M_PI;
-                        totalRadiance += GfCompMult(throughput, GfCompMult(bsdf, lColor)) * (nDotL / (lightPdf + 1e-6f));
+                        SampledSpectrum bsdf = RGBToSpectrum(diffuseWeight / (float)M_PI, lambda);
+                        totalRadiance += throughput * bsdf * specLColor * (nDotL / (lightPdf + 1e-6f));
                     }
                 }
             }
@@ -834,7 +832,7 @@ GfVec3f HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVec3f& ray
                 }
                 currentRayDir = reflectDir;
                 currentRayOrigin = hitPos + shadingNormal * 1e-4f;
-                throughput = GfCompMult(throughput, hit.coatColor);
+                throughput = throughput * RGBToSpectrum(hit.coatColor, lambda);
                 continue;
             }
         }
@@ -853,10 +851,16 @@ GfVec3f HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVec3f& ray
                 }
                 currentRayDir = reflectDir;
                 currentRayOrigin = hitPos + shadingNormal * 1e-4f;
-                throughput = GfCompMult(throughput, hit.sheenColor);
+                throughput = throughput * RGBToSpectrum(hit.sheenColor, lambda);
                 continue;
             }
         }
+
+        // Apply dispersion
+        float iorBase = hit.ior;
+        float C = 10000.0f;
+        float B = iorBase - C / (589.3f * 589.3f);
+        hit.ior = B + C / (lambda.lambda[0] * lambda.lambda[0]);
 
         // --- Indirect Path Selection (BSDF Sampling) ---
         float fresnel = FresnelDielectric(GfDot(currentRayDir, hit.smoothNormal), hit.ior);
@@ -878,7 +882,7 @@ GfVec3f HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVec3f& ray
             currentRayOrigin = hitPos + shadingNormal * 1e-4f;
             
             GfVec3f reflTint = hit.specularColor * (1.0f - hit.metallic) + hit.baseColor * hit.metallic;
-            throughput = GfCompMult(throughput, reflTint);
+            throughput = throughput * RGBToSpectrum(reflTint, lambda);
         } else {
             float remainingProb = (randVal - reflectProb) / (1.0f - reflectProb);
             if (hit.transmission > 1e-6f && remainingProb < hit.transmission) {
@@ -904,7 +908,7 @@ GfVec3f HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVec3f& ray
                     
                     currentRayDir = refractDir;
                     currentRayOrigin = hitPos - n * 1e-4f;
-                    throughput = GfCompMult(throughput, hit.transmissionColor);
+                    throughput = throughput * RGBToSpectrum(hit.transmissionColor, lambda);
                 } else {
                     // Total Internal Reflection
                     if (reflectionBounces >= (isInteractive ? 1 : _maxReflectionBounces)) break;
@@ -921,7 +925,7 @@ GfVec3f HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVec3f& ray
                 if (pdf < 1e-6f) break;
                 
                 GfVec3f finalDiffuse = hit.baseColor * (1.0f - hit.subsurface) + hit.subsurfaceColor * hit.subsurface;
-                throughput = GfCompMult(throughput, finalDiffuse); 
+                throughput = throughput * RGBToSpectrum(finalDiffuse, lambda); 
                 currentRayDir = diffuseDir;
                 currentRayOrigin = hitPos + shadingNormal * 1e-4f;
             }
@@ -929,9 +933,9 @@ GfVec3f HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVec3f& ray
 
         // --- Russian Roulette ---
         if (bounce > 3) {
-            float p = std::max(throughput[0], std::max(throughput[1], throughput[2]));
+            float p = throughput.Max();
             if (RandomFloat(rng) > p) break;
-            throughput /= p;
+            throughput = throughput * (1.0f / p);
         }
     }
 
@@ -1204,7 +1208,10 @@ HdGeminiRenderer::_RenderTiles(HdRenderThread *renderThread, HdGeminiRenderDeleg
                     }
                     
                     GfVec3f albedo(0.0f), normal(0.0f);
-                    GfVec3f hitColor = _TraceRay(rayOriginWorld, rayDirWorld, 0, isInteractive, renderThread, rng, &albedo, &normal);
+                    float u_lambda = RandomFloat(rng);
+                    SampledWavelengths lambda = SampledWavelengths::SampleUniform(u_lambda);
+                    SampledSpectrum hitSpectrum = _TraceRay(rayOriginWorld, rayDirWorld, 0, isInteractive, renderThread, rng, lambda, &albedo, &normal);
+                    GfVec3f hitColor = SpectrumToRGB(hitSpectrum, lambda);
                     
                     if (_enablePhysicalCamera) {
                         float exposureMultiplier = (_iso / 100.0f) * _shutterSpeed / (_fStop * _fStop) * 100.0f;

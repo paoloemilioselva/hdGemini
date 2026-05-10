@@ -1221,6 +1221,81 @@ HdGeminiRenderer::_Denoise()
     if (_albedoBuffer) _albedoBuffer->GetFloatBuffer(albedo);
     if (_normalBuffer) _normalBuffer->GetFloatBuffer(normal);
 
+    // --- Smart Pre-Filtering: Firefly Rejection & Chromaticity Denoise ---
+    std::vector<float> prefiltered(width * height * 3);
+    std::vector<float> clampedColor = color;
+    
+    auto getLuminance = [](float r, float g, float b) {
+        return 0.2126f * r + 0.7152f * g + 0.0722f * b;
+    };
+
+    // 1. Firefly Rejection
+    for (int y = 0; y < (int)height; ++y) {
+        for (int x = 0; x < (int)width; ++x) {
+            size_t idx = (y * width + x) * 3;
+            float r = color[idx];
+            float g = color[idx+1];
+            float b = color[idx+2];
+            float lum = getLuminance(r, g, b);
+
+            float maxNeighborLum = 0.0f;
+            for (int dy = -1; dy <= 1; ++dy) {
+                for (int dx = -1; dx <= 1; ++dx) {
+                    if (dx == 0 && dy == 0) continue;
+                    int nx = std::clamp(x + dx, 0, (int)width - 1);
+                    int ny = std::clamp(y + dy, 0, (int)height - 1);
+                    size_t nIdx = (ny * width + nx) * 3;
+                    maxNeighborLum = std::max(maxNeighborLum, getLuminance(color[nIdx], color[nIdx+1], color[nIdx+2]));
+                }
+            }
+
+            // Clamp if > 4x brightest neighbor
+            float threshold = maxNeighborLum * 4.0f + 0.5f;
+            if (lum > threshold && lum > 0.0f) {
+                float scale = threshold / lum;
+                clampedColor[idx] = r * scale;
+                clampedColor[idx+1] = g * scale;
+                clampedColor[idx+2] = b * scale;
+            }
+        }
+    }
+
+    // 2. Chromaticity Denoise
+    for (int y = 0; y < (int)height; ++y) {
+        for (int x = 0; x < (int)width; ++x) {
+            size_t idx = (y * width + x) * 3;
+            float r = clampedColor[idx];
+            float g = clampedColor[idx+1];
+            float b = clampedColor[idx+2];
+
+            // YCoCg encode original
+            float Y = 0.25f * r + 0.5f * g + 0.25f * b;
+
+            // Blur Co and Cg over 3x3
+            float sumCo = 0.0f, sumCg = 0.0f, weightSum = 0.0f;
+            for (int dy = -1; dy <= 1; ++dy) {
+                for (int dx = -1; dx <= 1; ++dx) {
+                    int nx = std::clamp(x + dx, 0, (int)width - 1);
+                    int ny = std::clamp(y + dy, 0, (int)height - 1);
+                    size_t nIdx = (ny * width + nx) * 3;
+                    float nr = clampedColor[nIdx];
+                    float ng = clampedColor[nIdx+1];
+                    float nb = clampedColor[nIdx+2];
+                    sumCo += (0.50f * nr - 0.5f * nb);
+                    sumCg += (-0.25f * nr + 0.5f * ng - 0.25f * nb);
+                    weightSum += 1.0f;
+                }
+            }
+            float Co = sumCo / weightSum;
+            float Cg = sumCg / weightSum;
+
+            // YCoCg decode
+            prefiltered[idx]   = std::max(0.0f, Y + Co - Cg);
+            prefiltered[idx+1] = std::max(0.0f, Y + Cg);
+            prefiltered[idx+2] = std::max(0.0f, Y - Co - Cg);
+        }
+    }
+
     std::vector<float> output(width * height * 3);
 
     try {
@@ -1228,7 +1303,7 @@ HdGeminiRenderer::_Denoise()
         device.commit();
 
         oidn::FilterRef filter = device.newFilter("RT");
-        filter.setImage("color", color.data(), oidn::Format::Float3, width, height);
+        filter.setImage("color", prefiltered.data(), oidn::Format::Float3, width, height);
         if (!albedo.empty()) filter.setImage("albedo", albedo.data(), oidn::Format::Float3, width, height);
         if (!normal.empty()) filter.setImage("normal", normal.data(), oidn::Format::Float3, width, height);
         filter.setImage("output", output.data(), oidn::Format::Float3, width, height);

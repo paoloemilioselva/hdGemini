@@ -16,7 +16,7 @@
 - **Spectral Monte Carlo Path Tracing**: Full global illumination via stochastic path tracing operating natively in the spectral domain.
   - Utilizes **Hero Wavelength Sampling** to efficiently evaluate 4 continuous wavelengths per ray, eliminating metamerism and enabling true physical color mixing.
   - Features Multiple Importance Sampling (MIS) using the power heuristic and Russian Roulette for robust, unbiased rendering.
-  - Incoming RGB textures are on-the-fly "uplifted" to continuous spectra using a smooth, optimized Gaussian basis.
+  - Incoming RGB textures are on-the-fly "uplifted" to continuous spectra using a smooth, optimized Gaussian basis. Scalar maps (normal, roughness, metallic) are meticulously preserved in raw RGB space to avoid precision loss.
 - **AI Denoising Pipeline**:
   - Integrated **Intel Open Image Denoise (OIDN)** v2.2.2 for rapid noise reduction.
   - Automated binary download and linking via `FetchContent` in CMake.
@@ -32,6 +32,7 @@
   - **Physical Exposure**: Image luminance scaling based on photographic EV100 equations (ISO, Shutter Speed, Aperture).
   - **Optical Distortion**: Radial Lens Distortion (barrel/pincushion) evaluated accurately during primary ray generation.
   - **Post-Processing**: Integrated Chromatic Aberration and HDR Lens Flare (bloom) applied cleanly after the AI denoising pass.
+  - **Interactive Post-Process Optimization**: Tweaking post-processing settings (Denoiser, Lens Flare, Chromatic Aberration) reinstates the pristine, accumulated HDR data from a background buffer instead of clearing the path-tracing samples, enabling real-time interactive optical adjustments.
   - All camera effects and rendering toggles (like hiding the IBL background) are dynamically exposed and adjustable in real-time within `usdview`'s Render Settings panel.
 - **Advanced Geometry Handling**:
   - Robust **GeomSubset** splitting: Multi-material meshes are physically partitioned into isolated sub-meshes under the hood, ensuring perfect sub-mesh material assignments even with complex n-gon encodings.
@@ -42,6 +43,7 @@
   - Full suite of Hydra light types: Distant, Rect, Sphere, Point, and Dome lights.
   - Advanced **Spot Light Shaping**: Supports cone angle, cone softness, and smoothstep falloff.
   - HDR **Dome Light Importance Sampling**: Generates a 2D CDF from environment maps to aggressively sample bright regions, greatly reducing noise.
+  - **Physical Sky & Sun IBL**: Analytical atmospheric scattering model (Rayleigh and Mie) alongside a procedural directional Sun, driven dynamically by a 'Time of Day' render setting for realistic sunrises, midday, and sunsets.
 - **Architecture & Performance**:
   - Accelerated Ray Tracing using an optimized iterative Top-Level Acceleration Structure (TLAS) and localized Bounding Volume Hierarchies (BVH) per sub-mesh.
   - Native instancing support via `HdInstancer`.

@@ -713,7 +713,7 @@ GfVec3f HdGeminiRenderer::_SamplePhysicalSky(const GfVec3f& rayDir, const GfVec3
     }
 
     GfVec3f sunIntensity(20.0f);
-    GfVec3f color = (totalR * betaR * phaseR + totalM * betaM * phaseM) * sunIntensity;
+    GfVec3f color = GfCompMult(GfCompMult(totalR, betaR) * phaseR + totalM * betaM * phaseM, sunIntensity);
 
     if (isectPlanet[0] >= 0.0f && isectPlanet[0] < tMax + stepSize) {
          color = color * 0.5f;
@@ -723,7 +723,7 @@ GfVec3f HdGeminiRenderer::_SamplePhysicalSky(const GfVec3f& rayDir, const GfVec3
     if (std::acos(std::clamp(mu, -1.0f, 1.0f)) < sunAngularRadius && isectPlanet[0] < 0.0f) {
         GfVec3f tau = betaR * opticalDepthR + GfVec3f(betaM * 1.1f) * opticalDepthM;
         GfVec3f attenuation(std::exp(-tau[0]), std::exp(-tau[1]), std::exp(-tau[2]));
-        color += sunIntensity * attenuation * 10.0f; 
+        color += GfCompMult(sunIntensity, attenuation) * 10.0f; 
     }
 
     return color;
@@ -1454,6 +1454,41 @@ HdGeminiRenderer::MarkAovBuffersUnconverged()
     for (auto const& binding : _aovBindings) {
         if (binding.renderBuffer) {
             static_cast<HdGeminiRenderBuffer*>(binding.renderBuffer)->SetConverged(false);
+        }
+    }
+}
+
+void
+HdGeminiRenderer::ReapplyPostProcess()
+{
+    if (!_colorBuffer || _frameCount == 0) return;
+
+    unsigned int width = _dataWindow.GetWidth();
+    unsigned int height = _dataWindow.GetHeight();
+
+    std::vector<float> accumColor;
+    _colorBuffer->GetFloatBuffer(accumColor);
+
+    for (unsigned int y = 0; y < height; ++y) {
+        for (unsigned int x = 0; x < width; ++x) {
+            size_t idx = (y * width + x) * 3;
+            float pixel[4] = { accumColor[idx], accumColor[idx+1], accumColor[idx+2], 1.0f };
+            _colorBuffer->Write(GfVec3i(x, y, 0), 4, pixel);
+        }
+    }
+    _colorBuffer->Resolve();
+
+    if (_enableDenoiser) {
+        _Denoise();
+    }
+    if (_enableLensFlare || _chromaticAberration > 0.0f) {
+        _ApplyPostProcess();
+    }
+
+    _isConverged = true;
+    for (auto const& binding : _aovBindings) {
+        if (binding.renderBuffer) {
+            static_cast<HdGeminiRenderBuffer*>(binding.renderBuffer)->SetConverged(true);
         }
     }
 }

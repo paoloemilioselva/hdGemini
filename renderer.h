@@ -38,6 +38,7 @@ public:
     void Render(HdRenderThread *renderThread, HdGeminiRenderDelegate* delegate);
     void Clear();
     void MarkAovBuffersUnconverged();
+    void ReapplyPostProcess();
     bool IsConverged() const { return _isConverged; }
 
     void SetEnableSubsurface(bool enable) { _enableSubsurface = enable; }

@@ -470,6 +470,8 @@ HdGeminiRenderDelegate::SetRenderSetting(TfToken const& key, VtValue const& valu
     };
 
     bool changed = false;
+    bool postProcessChanged = false;
+
     if (key == HdGeminiRenderSettingsTokens->enableSubsurface) {
         if (value.IsHolding<bool>()) {
             _renderer.SetEnableSubsurface(value.Get<bool>());
@@ -478,7 +480,7 @@ HdGeminiRenderDelegate::SetRenderSetting(TfToken const& key, VtValue const& valu
     } else if (key == HdGeminiRenderSettingsTokens->enableDenoiser) {
         if (value.IsHolding<bool>()) {
             _renderer.SetEnableDenoiser(value.Get<bool>());
-            changed = true;
+            postProcessChanged = true;
         }
     } else if (key == HdGeminiRenderSettingsTokens->targetSampleCount) {
         _renderer.SetTargetSampleCount(getInt(value, 32));
@@ -509,13 +511,13 @@ HdGeminiRenderDelegate::SetRenderSetting(TfToken const& key, VtValue const& valu
     } else if (key == HdGeminiRenderSettingsTokens->shutterSpeed) {
         _renderer.SetShutterSpeed(getFloat(value, 0.02f)); changed = true;
     } else if (key == HdGeminiRenderSettingsTokens->enableLensFlare) {
-        if (value.IsHolding<bool>()) { _renderer.SetEnableLensFlare(value.Get<bool>()); changed = true; }
+        if (value.IsHolding<bool>()) { _renderer.SetEnableLensFlare(value.Get<bool>()); postProcessChanged = true; }
     } else if (key == HdGeminiRenderSettingsTokens->renderIblBackground) {
         if (value.IsHolding<bool>()) { _renderer.SetRenderIblBackground(value.Get<bool>()); changed = true; }
     } else if (key == HdGeminiRenderSettingsTokens->lensDistortion) {
-        _renderer.SetLensDistortion(getFloat(value, 0.0f)); changed = true;
+        _renderer.SetLensDistortion(getFloat(value, 0.0f)); changed = true; // Lens distortion is evaluated during tracing
     } else if (key == HdGeminiRenderSettingsTokens->chromaticAberration) {
-        _renderer.SetChromaticAberration(getFloat(value, 0.0f)); changed = true;
+        _renderer.SetChromaticAberration(getFloat(value, 0.0f)); postProcessChanged = true;
     } else if (key == HdGeminiRenderSettingsTokens->physicalSkyEnable) {
         if (value.IsHolding<bool>()) { _renderer.SetPhysicalSkyEnable(value.Get<bool>()); changed = true; }
     } else if (key == HdGeminiRenderSettingsTokens->physicalSkyTime) {
@@ -524,6 +526,8 @@ HdGeminiRenderDelegate::SetRenderSetting(TfToken const& key, VtValue const& valu
 
     if (changed) {
         _renderer.Clear();
+    } else if (postProcessChanged) {
+        _renderer.ReapplyPostProcess();
     }
     
     HdRenderDelegate::SetRenderSetting(key, value);

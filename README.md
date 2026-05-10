@@ -23,6 +23,7 @@
 - **AI Denoising Pipeline**:
   - Integrated **Intel Open Image Denoise (OIDN)** v2.2.2 for rapid noise reduction.
   - Automated binary download and linking via `FetchContent` in CMake.
+  - **Smart Pre-Denoising Filter**: A custom pre-pass dynamically clamps high-variance fireflies and translates the image into YCoCg color space to spatially blur the chromaticity channels without softening structural luminance. This provides OIDN with an exceptionally stable and clean input, completely preventing artifacting.
   - Custom AOVs (`albedo`, `normal`) seamlessly extract unlit color and shading normals on the first bounce to guide the denoiser.
   - Full Float32 HDR color AOV output preserving unclamped highlights for post-processing.
 - **Physical Materials**: Extensive support for physically-based rendering workflows.

@@ -86,6 +86,15 @@ static GfVec3f SampleCosineHemisphere(float u1, float u2) {
     return GfVec3f(r * std::cos(theta), std::sqrt(1.0f - u1), r * std::sin(theta));
 }
 
+static GfVec3f SampleGGX(float u1, float u2, float roughness) {
+    float alpha = std::max(0.001f, roughness * roughness);
+    float alpha2 = alpha * alpha;
+    float phi = 2.0f * (float)M_PI * u1;
+    float cosTheta = std::sqrt((1.0f - u2) / (1.0f + (alpha2 - 1.0f) * u2));
+    float sinTheta = std::sqrt(std::max(0.0f, 1.0f - cosTheta * cosTheta));
+    return GfVec3f(sinTheta * std::cos(phi), cosTheta, sinTheta * std::sin(phi));
+}
+
 static GfVec3f AlignToNormal(const GfVec3f& sample, const GfVec3f& normal) {
     GfVec3f up = std::abs(normal[1]) < 0.999f ? GfVec3f(0, 1, 0) : GfVec3f(1, 0, 0);
     GfVec3f tangent = GfCross(up, normal).GetNormalized();
@@ -963,11 +972,48 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
                     GfVec3f shadowOrigin = hitPos + shadingNormal * 1e-4f;
                     if (!this->_IntersectTLAS(shadowOrigin, lDir, shadowHit, renderThread)) {
                         SampledSpectrum specLColor = RGBToSpectrum(lColor, lambda);
+                        
+                        GfVec3f v = -currentRayDir;
+                        GfVec3f l = lDir;
+                        GfVec3f h = (v + l).GetNormalized();
+                        float nDotL_eval = std::max(0.001f, nDotL);
+                        float nDotV_eval = std::max(0.001f, GfDot(shadingNormal, v));
+                        float nDotH = std::max(0.001f, GfDot(shadingNormal, h));
+                        float lDotH = std::max(0.001f, GfDot(l, h));
+
+                        // Specular GGX Evaluation
+                        float alpha = std::max(0.001f, hit.roughness * hit.roughness);
+                        float alpha2 = alpha * alpha;
+                        float D = alpha2 / (float)(M_PI * std::pow(nDotH * nDotH * (alpha2 - 1.0f) + 1.0f, 2.0f));
+                        float k_g = alpha / 2.0f;
+                        float G_l = nDotL_eval / (nDotL_eval * (1.0f - k_g) + k_g);
+                        float G_v = nDotV_eval / (nDotV_eval * (1.0f - k_g) + k_g);
+                        float G = G_l * G_v;
+                        
+                        GfVec3f F0 = hit.specularColor * (1.0f - hit.metallic) * 0.04f + hit.baseColor * hit.metallic;
+                        GfVec3f F = F0 + (GfVec3f(1.0f) - F0) * std::pow(1.0f - lDotH, 5.0f);
+                        GfVec3f specBsdf = (F * D * G) / (4.0f * nDotL_eval * nDotV_eval);
+
+                        // Diffuse Evaluation
                         float effectiveSubsurface = _enableSubsurface ? hit.subsurface : 0.0f;
                         GfVec3f finalDiffuse = hit.baseColor * (1.0f - effectiveSubsurface) + hit.subsurfaceColor * effectiveSubsurface;
-                        GfVec3f diffuseWeight = finalDiffuse * (1.0f - hit.metallic) * (1.0f - hit.transmission);
-                        SampledSpectrum bsdf = RGBToSpectrum(diffuseWeight / (float)M_PI, lambda);
-                        totalRadiance += throughput * bsdf * specLColor * (nDotL / (lightPdf + 1e-6f));
+                        GfVec3f diffBsdf = finalDiffuse * (1.0f - hit.metallic) * (1.0f - hit.transmission) / (float)M_PI;
+
+                        SampledSpectrum bsdf = RGBToSpectrum(diffBsdf + specBsdf, lambda);
+
+                        // PDF for MIS
+                        float fresnel_eval = FresnelDielectric(nDotV_eval, hit.ior);
+                        float reflectProb = fresnel_eval * hit.specular;
+                        if (hit.metallic > 0.0f) reflectProb = std::max(reflectProb, hit.metallic);
+                        
+                        float diffPdf = nDotL_eval / (float)M_PI;
+                        float specPdf = (D * nDotH) / (4.0f * lDotH);
+                        float bsdfPdf = reflectProb * specPdf + (1.0f - reflectProb) * (1.0f - hit.transmission) * diffPdf;
+                        
+                        bool isDeltaLight = (light->GetLightType() == HdPrimTypeTokens->distantLight);
+                        float misWeight = isDeltaLight ? 1.0f : PowerHeuristic(lightPdf, bsdfPdf);
+
+                        totalRadiance += throughput * bsdf * specLColor * (nDotL / (lightPdf + 1e-6f)) * misWeight;
                     }
                 }
             }
@@ -984,11 +1030,33 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
                     GfVec3f shadowOrigin = hitPos + shadingNormal * 1e-4f;
                     if (!this->_IntersectTLAS(shadowOrigin, physicalSunDir, shadowHit, renderThread)) {
                         SampledSpectrum specLColor = RGBToSpectrum(sunColor, lambda);
+                        
+                        GfVec3f v = -currentRayDir;
+                        GfVec3f l = physicalSunDir;
+                        GfVec3f h = (v + l).GetNormalized();
+                        float nDotL_eval = std::max(0.001f, nDotL);
+                        float nDotV_eval = std::max(0.001f, GfDot(shadingNormal, v));
+                        float nDotH = std::max(0.001f, GfDot(shadingNormal, h));
+                        float lDotH = std::max(0.001f, GfDot(l, h));
+
+                        float alpha = std::max(0.001f, hit.roughness * hit.roughness);
+                        float alpha2 = alpha * alpha;
+                        float D = alpha2 / (float)(M_PI * std::pow(nDotH * nDotH * (alpha2 - 1.0f) + 1.0f, 2.0f));
+                        float k_g = alpha / 2.0f;
+                        float G_l = nDotL_eval / (nDotL_eval * (1.0f - k_g) + k_g);
+                        float G_v = nDotV_eval / (nDotV_eval * (1.0f - k_g) + k_g);
+                        float G = G_l * G_v;
+                        
+                        GfVec3f F0 = hit.specularColor * (1.0f - hit.metallic) * 0.04f + hit.baseColor * hit.metallic;
+                        GfVec3f F = F0 + (GfVec3f(1.0f) - F0) * std::pow(1.0f - lDotH, 5.0f);
+                        GfVec3f specBsdf = (F * D * G) / (4.0f * nDotL_eval * nDotV_eval);
+
                         float effectiveSubsurface = _enableSubsurface ? hit.subsurface : 0.0f;
                         GfVec3f finalDiffuse = hit.baseColor * (1.0f - effectiveSubsurface) + hit.subsurfaceColor * effectiveSubsurface;
-                        GfVec3f diffuseWeight = finalDiffuse * (1.0f - hit.metallic) * (1.0f - hit.transmission);
-                        SampledSpectrum bsdf = RGBToSpectrum(diffuseWeight / (float)M_PI, lambda);
-                        totalRadiance += throughput * bsdf * specLColor * nDotL; // PDF is 1 for directional sun
+                        GfVec3f diffBsdf = finalDiffuse * (1.0f - hit.metallic) * (1.0f - hit.transmission) / (float)M_PI;
+
+                        SampledSpectrum bsdf = RGBToSpectrum(diffBsdf + specBsdf, lambda);
+                        totalRadiance += throughput * bsdf * specLColor * nDotL; // PDF is 1 for directional sun (Delta light MIS = 1)
                     }
                 }
             }
@@ -1000,10 +1068,15 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
             if (RandomFloat(rng) < coatFresnel) {
                 if (reflectionBounces >= (isInteractive ? 1 : _maxReflectionBounces)) break;
                 reflectionBounces++;
-                GfVec3f reflectDir = (currentRayDir - 2.0f * GfDot(currentRayDir, shadingNormal) * shadingNormal).GetNormalized();
+                GfVec3f reflectDir;
                 if (hit.coatRoughness > 0.0f) {
-                    reflectDir = AlignToNormal(SampleCosineHemisphere(RandomFloat(rng), RandomFloat(rng)), reflectDir);
-                    if (GfDot(reflectDir, shadingNormal) < 0) reflectDir = (reflectDir - 2.0f * GfDot(reflectDir, shadingNormal) * shadingNormal).GetNormalized();
+                    GfVec3f h = AlignToNormal(SampleGGX(RandomFloat(rng), RandomFloat(rng), hit.coatRoughness), shadingNormal);
+                    reflectDir = (currentRayDir - 2.0f * GfDot(currentRayDir, h) * h).GetNormalized();
+                    if (GfDot(reflectDir, shadingNormal) < 0) {
+                        reflectDir = (currentRayDir - 2.0f * GfDot(currentRayDir, shadingNormal) * shadingNormal).GetNormalized();
+                    }
+                } else {
+                    reflectDir = (currentRayDir - 2.0f * GfDot(currentRayDir, shadingNormal) * shadingNormal).GetNormalized();
                 }
                 currentRayDir = reflectDir;
                 currentRayOrigin = hitPos + shadingNormal * 1e-4f;
@@ -1019,10 +1092,15 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
             if (RandomFloat(rng) < sheenFresnel) {
                 if (reflectionBounces >= (isInteractive ? 1 : _maxReflectionBounces)) break;
                 reflectionBounces++;
-                GfVec3f reflectDir = (currentRayDir - 2.0f * GfDot(currentRayDir, shadingNormal) * shadingNormal).GetNormalized();
+                GfVec3f reflectDir;
                 if (hit.sheenRoughness > 0.0f) {
-                    reflectDir = AlignToNormal(SampleCosineHemisphere(RandomFloat(rng), RandomFloat(rng)), reflectDir);
-                    if (GfDot(reflectDir, shadingNormal) < 0) reflectDir = (reflectDir - 2.0f * GfDot(reflectDir, shadingNormal) * shadingNormal).GetNormalized();
+                    GfVec3f h = AlignToNormal(SampleGGX(RandomFloat(rng), RandomFloat(rng), hit.sheenRoughness), shadingNormal);
+                    reflectDir = (currentRayDir - 2.0f * GfDot(currentRayDir, h) * h).GetNormalized();
+                    if (GfDot(reflectDir, shadingNormal) < 0) {
+                        reflectDir = (currentRayDir - 2.0f * GfDot(currentRayDir, shadingNormal) * shadingNormal).GetNormalized();
+                    }
+                } else {
+                    reflectDir = (currentRayDir - 2.0f * GfDot(currentRayDir, shadingNormal) * shadingNormal).GetNormalized();
                 }
                 currentRayDir = reflectDir;
                 currentRayOrigin = hitPos + shadingNormal * 1e-4f;
@@ -1048,10 +1126,15 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
             // Reflection
             if (reflectionBounces >= (isInteractive ? 1 : _maxReflectionBounces)) break;
             reflectionBounces++;
-            GfVec3f reflectDir = (currentRayDir - 2.0f * GfDot(currentRayDir, shadingNormal) * shadingNormal).GetNormalized();
+            GfVec3f reflectDir;
             if (hit.roughness > 0.0f) {
-                reflectDir = AlignToNormal(SampleCosineHemisphere(RandomFloat(rng), RandomFloat(rng)), reflectDir);
-                if (GfDot(reflectDir, shadingNormal) < 0) reflectDir = (reflectDir - 2.0f * GfDot(reflectDir, shadingNormal) * shadingNormal).GetNormalized();
+                GfVec3f h = AlignToNormal(SampleGGX(RandomFloat(rng), RandomFloat(rng), hit.roughness), shadingNormal);
+                reflectDir = (currentRayDir - 2.0f * GfDot(currentRayDir, h) * h).GetNormalized();
+                if (GfDot(reflectDir, shadingNormal) < 0) {
+                    reflectDir = (currentRayDir - 2.0f * GfDot(currentRayDir, shadingNormal) * shadingNormal).GetNormalized();
+                }
+            } else {
+                reflectDir = (currentRayDir - 2.0f * GfDot(currentRayDir, shadingNormal) * shadingNormal).GetNormalized();
             }
             currentRayDir = reflectDir;
             currentRayOrigin = hitPos + shadingNormal * 1e-4f;
@@ -1075,10 +1158,16 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
                     refractionBounces++;
                     GfVec3f refractDir = (eta * currentRayDir - (eta * cosThetaI + std::sqrt(k)) * n).GetNormalized();
                     
-                    // Simple roughness perturbation for refraction
+                    // Microfacet refraction direction
                     if (hit.roughness > 0.0f) {
-                        refractDir = AlignToNormal(SampleCosineHemisphere(RandomFloat(rng), RandomFloat(rng)), refractDir);
-                        if (GfDot(refractDir, n) > 0) refractDir = (refractDir - 2.0f * GfDot(refractDir, n) * n).GetNormalized();
+                        GfVec3f h = AlignToNormal(SampleGGX(RandomFloat(rng), RandomFloat(rng), hit.roughness), n);
+                        float cosThetaI_h = GfDot(currentRayDir, h); // < 0
+                        float k_h = 1.0f - eta * eta * (1.0f - cosThetaI_h * cosThetaI_h);
+                        if (k_h >= 0.0f) {
+                            refractDir = (eta * currentRayDir - (eta * cosThetaI_h + std::sqrt(k_h)) * h).GetNormalized();
+                        } else {
+                            refractDir = (currentRayDir - 2.0f * cosThetaI_h * h).GetNormalized();
+                        }
                     }
                     
                     currentRayDir = refractDir;

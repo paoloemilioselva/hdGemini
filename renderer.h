@@ -154,9 +154,9 @@ private:
     void _SubdivideTLAS(int nodeIdx, int start, int end, HdRenderThread *renderThread);
     bool _IntersectTLAS(const GfVec3f& rayOrigin, const GfVec3f& rayDir, HitRecord& hit, HdRenderThread* renderThread) const;
     SampledSpectrum _TraceRay(const GfVec3f& rayOrigin, const GfVec3f& rayDir, int depth, bool isInteractive, HdRenderThread* renderThread, uint32_t& rng, const SampledWavelengths& lambda, GfVec3f* outAlbedo = nullptr, GfVec3f* outNormal = nullptr) const;
-    SampledSpectrum _SampleEnvironment(const GfVec3f& rayDir, const SampledWavelengths& lambda) const;
-    SampledSpectrum _SampleTexture(const SdfAssetPath& path, const GfVec2f& uv, const SampledWavelengths& lambda, bool forceLinear = false) const;
-    SampledSpectrum _SampleTextureData(const TextureData& data, const GfVec2f& uv, const SampledWavelengths& lambda) const;
+    GfVec3f _SampleEnvironment(const GfVec3f& rayDir) const;
+    GfVec3f _SampleTexture(const SdfAssetPath& path, const GfVec2f& uv, bool forceLinear = false) const;
+    GfVec3f _SampleTextureData(const TextureData& data, const GfVec2f& uv) const;
 
     void _Denoise();
     void _ApplyPostProcess();

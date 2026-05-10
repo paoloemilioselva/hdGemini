@@ -468,10 +468,10 @@ bool HdGeminiRenderer::_IntersectTLAS(const GfVec3f& rayOrigin, const GfVec3f& r
     return wasHit;
 }
 
-SampledSpectrum HdGeminiRenderer::_SampleEnvironment(const GfVec3f& rayDir, const SampledWavelengths& lambda) const
+GfVec3f HdGeminiRenderer::_SampleEnvironment(const GfVec3f& rayDir) const
 {
     if (_envMapPixels.empty()) {
-        return RGBToSpectrum(GfVec3f(0.0f), lambda);
+        return GfVec3f(0.0f);
     }
     float theta = std::acos(std::clamp(rayDir[1], -1.0f, 1.0f));
     float phi = std::atan2(rayDir[2], rayDir[0]);
@@ -484,15 +484,15 @@ SampledSpectrum HdGeminiRenderer::_SampleEnvironment(const GfVec3f& rayDir, cons
     GfVec3f color(_envMapPixels[idx], _envMapPixels[idx+1], _envMapPixels[idx+2]);
     for (const auto& light : _activeLights) {
         if (light->GetLightType() == HdPrimTypeTokens->domeLight) {
-            return RGBToSpectrum(GfCompMult(color, light->GetColor()) * light->GetIntensity(), lambda);
+            return GfCompMult(color, light->GetColor()) * light->GetIntensity();
         }
     }
-    return RGBToSpectrum(color, lambda);
+    return color;
 }
 
-SampledSpectrum HdGeminiRenderer::_SampleTexture(const SdfAssetPath& path, const GfVec2f& uv, const SampledWavelengths& lambda, bool forceLinear) const
+GfVec3f HdGeminiRenderer::_SampleTexture(const SdfAssetPath& path, const GfVec2f& uv, bool forceLinear) const
 {
-    if (path.GetAssetPath().empty()) return RGBToSpectrum(GfVec3f(1.0f), lambda);
+    if (path.GetAssetPath().empty()) return GfVec3f(1.0f);
 
     std::string cacheKey = path.GetAssetPath() + (forceLinear ? "_lin" : "_srgb");
 
@@ -501,8 +501,8 @@ SampledSpectrum HdGeminiRenderer::_SampleTexture(const SdfAssetPath& path, const
         auto it = _textureCache.find(cacheKey);
         if (it != _textureCache.end()) {
             const TextureData& data = it->second;
-            if (data.pixels.empty()) return RGBToSpectrum(GfVec3f(1.0f), lambda);
-            return _SampleTextureData(data, uv, lambda);
+            if (data.pixels.empty()) return GfVec3f(1.0f);
+            return _SampleTextureData(data, uv);
         }
     }
 
@@ -513,8 +513,8 @@ SampledSpectrum HdGeminiRenderer::_SampleTexture(const SdfAssetPath& path, const
     auto it = _textureCache.find(cacheKey);
     if (it != _textureCache.end()) {
         const TextureData& data = it->second;
-        if (data.pixels.empty()) return RGBToSpectrum(GfVec3f(1.0f), lambda);
-        return _SampleTextureData(data, uv, lambda);
+        if (data.pixels.empty()) return GfVec3f(1.0f);
+        return _SampleTextureData(data, uv);
     }
 
     HDGEMINI_LOG << "[Gemini]   Loading texture: " << path.GetAssetPath() << std::endl;
@@ -522,7 +522,7 @@ SampledSpectrum HdGeminiRenderer::_SampleTexture(const SdfAssetPath& path, const
     if (!image) {
         HDGEMINI_LOG << "[Gemini]   Failed to open texture: " << path.GetResolvedPath() << std::endl;
         _textureCache[cacheKey] = TextureData();
-        return RGBToSpectrum(GfVec3f(1.0f), lambda);
+        return GfVec3f(1.0f);
     }
 
     TextureData data;
@@ -586,12 +586,12 @@ SampledSpectrum HdGeminiRenderer::_SampleTexture(const SdfAssetPath& path, const
     }
 
     _textureCache[cacheKey] = std::move(data);
-    return _SampleTextureData(_textureCache[cacheKey], uv, lambda);
+    return _SampleTextureData(_textureCache[cacheKey], uv);
 }
 
-SampledSpectrum HdGeminiRenderer::_SampleTextureData(const TextureData& data, const GfVec2f& uv, const SampledWavelengths& lambda) const
+GfVec3f HdGeminiRenderer::_SampleTextureData(const TextureData& data, const GfVec2f& uv) const
 {
-    if (data.pixels.empty()) return RGBToSpectrum(GfVec3f(1.0f), lambda);
+    if (data.pixels.empty()) return GfVec3f(1.0f);
 
     float u = uv[0] - std::floor(uv[0]);
     float v = 1.0f - (uv[1] - std::floor(uv[1])); // Flip V for standard image coords
@@ -615,7 +615,7 @@ SampledSpectrum HdGeminiRenderer::_SampleTextureData(const TextureData& data, co
     GfVec3f p01 = getPixel(x0, y1);
     GfVec3f p11 = getPixel(x1, y1);
 
-    return RGBToSpectrum((p00 * (1-fx) + p10 * fx) * (1-fy) + (p01 * (1-fx) + p11 * fx) * fy, lambda);
+    return (p00 * (1-fx) + p10 * fx) * (1-fy) + (p01 * (1-fx) + p11 * fx) * fy;
 }
 
 static float PowerHeuristic(float f, float g) {
@@ -641,8 +641,9 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
 
         HitRecord hit;
         if (!this->_IntersectTLAS(currentRayOrigin, currentRayDir, hit, renderThread)) {
-            SampledSpectrum env = _SampleEnvironment(currentRayDir, lambda);
-            if (bounce == 0 && outAlbedo) *outAlbedo = SpectrumToRGB(env, lambda);
+            GfVec3f envRGB = _SampleEnvironment(currentRayDir);
+            SampledSpectrum env = RGBToSpectrum(envRGB, lambda);
+            if (bounce == 0 && outAlbedo) *outAlbedo = envRGB;
             
             if (bounce == 0 && !_renderIblBackground) {
                 // Do not add the environment map to the final pixel if background rendering is disabled for primary rays.
@@ -654,19 +655,19 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
         }
 
         if (!hit.diffuseTexture.GetAssetPath().empty()) {
-            hit.baseColor = GfCompMult(hit.baseColor, SpectrumToRGB(_SampleTexture(hit.diffuseTexture, hit.uv, lambda), lambda));
+            hit.baseColor = GfCompMult(hit.baseColor, _SampleTexture(hit.diffuseTexture, hit.uv));
         }
 
         if (!hit.metallicTexture.GetAssetPath().empty()) {
-            hit.metallic = SpectrumToRGB(_SampleTexture(hit.metallicTexture, hit.uv, lambda, true), lambda)[0];
+            hit.metallic = _SampleTexture(hit.metallicTexture, hit.uv, true)[0];
         }
 
         if (!hit.roughnessTexture.GetAssetPath().empty()) {
-            hit.roughness = SpectrumToRGB(_SampleTexture(hit.roughnessTexture, hit.uv, lambda, true), lambda)[0];
+            hit.roughness = _SampleTexture(hit.roughnessTexture, hit.uv, true)[0];
         }
 
         if (!hit.normalTexture.GetAssetPath().empty()) {
-            GfVec3f nTex = SpectrumToRGB(_SampleTexture(hit.normalTexture, hit.uv, lambda, true), lambda);
+            GfVec3f nTex = _SampleTexture(hit.normalTexture, hit.uv, true);
             nTex = nTex * 2.0f - GfVec3f(1.0f);
             
             GfVec3f n = hit.smoothNormal;

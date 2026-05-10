@@ -21,9 +21,11 @@
     - Path termination is efficiently handled via Russian Roulette.
   - Incoming RGB textures are on-the-fly "uplifted" to continuous spectra using a smooth, optimized Gaussian basis. Scalar maps (normal, roughness, metallic) are meticulously preserved in raw RGB space to avoid precision loss.
 - **AI Denoising Pipeline**:
-  - Integrated **Intel Open Image Denoise (OIDN)** v2.2.2 for rapid noise reduction.
+  - The denoising pipeline is split into three modular, independently toggleable stages within the `usdview` UI, allowing interactive adjustment without clearing path-tracing samples:
+    1. **Smart Firefly Filter**: A custom pre-pass that dynamically scans 3x3 pixel neighborhoods to clamp high-variance, unresolved energy spikes.
+    2. **Chromaticity Blur**: Translates the image into YCoCg color space to spatially blur the Co and Cg channels. This aggressively eliminates multi-colored path-tracing noise while perfectly preserving structural luminance sharpness.
+    3. **Intel Open Image Denoise (OIDN)**: The core AI neural network (v2.2.2) executes on the exceptionally stable pre-filtered input, preventing artifacting and producing pristine images.
   - Automated binary download and linking via `FetchContent` in CMake.
-  - **Smart Pre-Denoising Filter**: A custom pre-pass dynamically clamps high-variance fireflies and translates the image into YCoCg color space to spatially blur the chromaticity channels without softening structural luminance. This provides OIDN with an exceptionally stable and clean input, completely preventing artifacting.
   - Custom AOVs (`albedo`, `normal`) seamlessly extract unlit color and shading normals on the first bounce to guide the denoiser.
   - Full Float32 HDR color AOV output preserving unclamped highlights for post-processing.
 - **Physical Materials**: Extensive support for physically-based rendering workflows.

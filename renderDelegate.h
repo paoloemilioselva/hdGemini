@@ -43,7 +43,9 @@ TF_DECLARE_PUBLIC_TOKENS(HdGeminiAovTokens, HD_GEMINI_AOV_TOKENS);
     (renderIblBackground)                \
     (lensDistortion)                     \
     (chromaticAberration)                \
-    (enableSubsurface)
+    (enableSubsurface)                   \
+    (physicalSkyEnable)                  \
+    (physicalSkyTime)
 
 TF_DECLARE_PUBLIC_TOKENS(HdGeminiRenderSettingsTokens, HD_GEMINI_RENDER_SETTINGS_TOKENS);
 

@@ -385,6 +385,16 @@ HdGeminiRenderDelegate::GetRenderSettingDescriptors() const
         HdGeminiRenderSettingsTokens->chromaticAberration,
         VtValue(0.0f)
     });
+    list.push_back({
+        "Enable Physical Sky",
+        HdGeminiRenderSettingsTokens->physicalSkyEnable,
+        VtValue(false)
+    });
+    list.push_back({
+        "Physical Sky Time of Day",
+        HdGeminiRenderSettingsTokens->physicalSkyTime,
+        VtValue(12.0f)
+    });
     return list;
 }
 
@@ -432,6 +442,10 @@ HdGeminiRenderDelegate::GetRenderSetting(TfToken const& key) const
         return VtValue(0.0f);
     } else if (key == HdGeminiRenderSettingsTokens->chromaticAberration) {
         return VtValue(0.0f);
+    } else if (key == HdGeminiRenderSettingsTokens->physicalSkyEnable) {
+        return VtValue(false);
+    } else if (key == HdGeminiRenderSettingsTokens->physicalSkyTime) {
+        return VtValue(12.0f);
     }
     return VtValue();
 }
@@ -502,6 +516,10 @@ HdGeminiRenderDelegate::SetRenderSetting(TfToken const& key, VtValue const& valu
         _renderer.SetLensDistortion(getFloat(value, 0.0f)); changed = true;
     } else if (key == HdGeminiRenderSettingsTokens->chromaticAberration) {
         _renderer.SetChromaticAberration(getFloat(value, 0.0f)); changed = true;
+    } else if (key == HdGeminiRenderSettingsTokens->physicalSkyEnable) {
+        if (value.IsHolding<bool>()) { _renderer.SetPhysicalSkyEnable(value.Get<bool>()); changed = true; }
+    } else if (key == HdGeminiRenderSettingsTokens->physicalSkyTime) {
+        _renderer.SetPhysicalSkyTime(getFloat(value, 12.0f)); changed = true;
     }
 
     if (changed) {

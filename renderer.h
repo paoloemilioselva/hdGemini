@@ -61,6 +61,8 @@ public:
     void SetRenderIblBackground(bool render) { _renderIblBackground = render; }
     void SetLensDistortion(float distortion) { _lensDistortion = distortion; }
     void SetChromaticAberration(float ca) { _chromaticAberration = ca; }
+    void SetPhysicalSkyEnable(bool enable) { _enablePhysicalSky = enable; }
+    void SetPhysicalSkyTime(float t) { _physicalSkyTime = t; }
 
 private:
     bool _isConverged = false;
@@ -83,6 +85,8 @@ private:
     bool _renderIblBackground = true;
     float _lensDistortion = 0.0f;
     float _chromaticAberration = 0.0f;
+    bool _enablePhysicalSky = false;
+    float _physicalSkyTime = 12.0f;
 
     struct MeshInstance {
         HdGeminiMesh* mesh;
@@ -155,6 +159,8 @@ private:
     bool _IntersectTLAS(const GfVec3f& rayOrigin, const GfVec3f& rayDir, HitRecord& hit, HdRenderThread* renderThread) const;
     SampledSpectrum _TraceRay(const GfVec3f& rayOrigin, const GfVec3f& rayDir, int depth, bool isInteractive, HdRenderThread* renderThread, uint32_t& rng, const SampledWavelengths& lambda, GfVec3f* outAlbedo = nullptr, GfVec3f* outNormal = nullptr) const;
     GfVec3f _SampleEnvironment(const GfVec3f& rayDir) const;
+    GfVec3f _SamplePhysicalSky(const GfVec3f& rayDir, const GfVec3f& sunDir) const;
+    GfVec3f _GetSunTransmittance(const GfVec3f& sunDir) const;
     GfVec3f _SampleTexture(const SdfAssetPath& path, const GfVec2f& uv, bool forceLinear = false) const;
     GfVec3f _SampleTextureData(const TextureData& data, const GfVec2f& uv) const;
 

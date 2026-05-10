@@ -618,6 +618,150 @@ GfVec3f HdGeminiRenderer::_SampleTextureData(const TextureData& data, const GfVe
     return (p00 * (1-fx) + p10 * fx) * (1-fy) + (p01 * (1-fx) + p11 * fx) * fy;
 }
 
+static GfVec2f _RaySphereIntersect(const GfVec3f& r0, const GfVec3f& rd, float sr) {
+    float a = GfDot(rd, rd);
+    float b = 2.0f * GfDot(rd, r0);
+    float c = GfDot(r0, r0) - (sr * sr);
+    float d = (b * b) - 4.0f * a * c;
+    if (d < 0.0f) return GfVec2f(1e5f, -1e5f);
+    return GfVec2f((-b - std::sqrt(d)) / (2.0f * a), (-b + std::sqrt(d)) / (2.0f * a));
+}
+
+GfVec3f HdGeminiRenderer::_SamplePhysicalSky(const GfVec3f& rayDir, const GfVec3f& sunDir) const {
+    GfVec3f dir = rayDir.GetNormalized();
+    GfVec3f sDir = sunDir.GetNormalized();
+
+    float R_planet = 6371e3f;
+    float R_atmos = 6471e3f;
+
+    GfVec3f rayOrigin(0.0f, R_planet + 100.0f, 0.0f);
+
+    GfVec2f isect = _RaySphereIntersect(rayOrigin, dir, R_atmos);
+    if (isect[1] < 0.0f) return GfVec3f(0.0f);
+
+    float tMin = std::max(0.0f, isect[0]);
+    float tMax = isect[1];
+
+    GfVec2f isectPlanet = _RaySphereIntersect(rayOrigin, dir, R_planet);
+    if (isectPlanet[0] >= 0.0f && isectPlanet[0] < tMax) {
+        tMax = isectPlanet[0];
+    }
+
+    const int numSteps = 16;
+    const int numLightSteps = 8;
+    float stepSize = (tMax - tMin) / (float)numSteps;
+
+    GfVec3f betaR(5.5e-6f, 13.0e-6f, 22.4e-6f);
+    float betaM = 21e-6f;
+    float hR = 7994.0f;
+    float hM = 1200.0f;
+
+    float currentT = tMin;
+    float opticalDepthR = 0.0f;
+    float opticalDepthM = 0.0f;
+
+    GfVec3f totalR(0.0f);
+    GfVec3f totalM(0.0f);
+
+    float mu = GfDot(dir, sDir);
+    float phaseR = 3.0f / (16.0f * (float)M_PI) * (1.0f + mu * mu);
+    float g = 0.76f;
+    float phaseM = 3.0f / (8.0f * (float)M_PI) * ((1.0f - g * g) * (1.0f + mu * mu)) / ((2.0f + g * g) * std::pow(1.0f + g * g - 2.0f * g * mu, 1.5f));
+
+    for (int i = 0; i < numSteps; ++i) {
+        float midT = currentT + stepSize * 0.5f;
+        GfVec3f samplePos = rayOrigin + dir * midT;
+        float height = samplePos.GetLength() - R_planet;
+
+        if (height < 0.0f) break;
+
+        float hr = std::exp(-height / hR) * stepSize;
+        float hm = std::exp(-height / hM) * stepSize;
+        opticalDepthR += hr;
+        opticalDepthM += hm;
+
+        GfVec2f isectSun = _RaySphereIntersect(samplePos, sDir, R_atmos);
+        float sunTMax = isectSun[1];
+        float sunStepSize = sunTMax / (float)numLightSteps;
+        float sunCurrentT = 0.0f;
+        float sunOpticalDepthR = 0.0f;
+        float sunOpticalDepthM = 0.0f;
+
+        bool inShadow = false;
+        GfVec2f sunIsectPlanet = _RaySphereIntersect(samplePos, sDir, R_planet);
+        if (sunIsectPlanet[0] > 0.0f) {
+            inShadow = true;
+        } else {
+            for (int j = 0; j < numLightSteps; ++j) {
+                float sunMidT = sunCurrentT + sunStepSize * 0.5f;
+                GfVec3f sunSamplePos = samplePos + sDir * sunMidT;
+                float sunHeight = sunSamplePos.GetLength() - R_planet;
+                if (sunHeight < 0.0f) break;
+                sunOpticalDepthR += std::exp(-sunHeight / hR) * sunStepSize;
+                sunOpticalDepthM += std::exp(-sunHeight / hM) * sunStepSize;
+                sunCurrentT += sunStepSize;
+            }
+        }
+
+        if (!inShadow) {
+            GfVec3f tau = betaR * (opticalDepthR + sunOpticalDepthR) + GfVec3f(betaM * 1.1f) * (opticalDepthM + sunOpticalDepthM);
+            GfVec3f attenuation(std::exp(-tau[0]), std::exp(-tau[1]), std::exp(-tau[2]));
+            totalR += attenuation * hr;
+            totalM += attenuation * hm;
+        }
+        currentT += stepSize;
+    }
+
+    GfVec3f sunIntensity(20.0f);
+    GfVec3f color = (totalR * betaR * phaseR + totalM * betaM * phaseM) * sunIntensity;
+
+    if (isectPlanet[0] >= 0.0f && isectPlanet[0] < tMax + stepSize) {
+         color = color * 0.5f;
+    }
+
+    float sunAngularRadius = 0.00465f;
+    if (std::acos(std::clamp(mu, -1.0f, 1.0f)) < sunAngularRadius && isectPlanet[0] < 0.0f) {
+        GfVec3f tau = betaR * opticalDepthR + GfVec3f(betaM * 1.1f) * opticalDepthM;
+        GfVec3f attenuation(std::exp(-tau[0]), std::exp(-tau[1]), std::exp(-tau[2]));
+        color += sunIntensity * attenuation * 10.0f; 
+    }
+
+    return color;
+}
+
+GfVec3f HdGeminiRenderer::_GetSunTransmittance(const GfVec3f& sunDir) const {
+    if (sunDir[1] < 0.0f) return GfVec3f(0.0f);
+    float R_planet = 6371e3f;
+    float R_atmos = 6471e3f;
+    GfVec3f rayOrigin(0.0f, R_planet + 100.0f, 0.0f);
+    GfVec2f isectSun = _RaySphereIntersect(rayOrigin, sunDir, R_atmos);
+    
+    float sunTMax = isectSun[1];
+    const int numLightSteps = 16;
+    float sunStepSize = sunTMax / (float)numLightSteps;
+    float sunCurrentT = 0.0f;
+    float sunOpticalDepthR = 0.0f;
+    float sunOpticalDepthM = 0.0f;
+
+    float hR = 7994.0f;
+    float hM = 1200.0f;
+    GfVec3f betaR(5.5e-6f, 13.0e-6f, 22.4e-6f);
+    float betaM = 21e-6f;
+
+    for (int j = 0; j < numLightSteps; ++j) {
+        float sunMidT = sunCurrentT + sunStepSize * 0.5f;
+        GfVec3f sunSamplePos = rayOrigin + sunDir * sunMidT;
+        float sunHeight = sunSamplePos.GetLength() - R_planet;
+        if (sunHeight < 0.0f) break;
+        sunOpticalDepthR += std::exp(-sunHeight / hR) * sunStepSize;
+        sunOpticalDepthM += std::exp(-sunHeight / hM) * sunStepSize;
+        sunCurrentT += sunStepSize;
+    }
+
+    GfVec3f tau = betaR * sunOpticalDepthR + GfVec3f(betaM * 1.1f) * sunOpticalDepthM;
+    return GfVec3f(std::exp(-tau[0]), std::exp(-tau[1]), std::exp(-tau[2]));
+}
+
 static float PowerHeuristic(float f, float g) {
     float f2 = f * f;
     float g2 = g * g;
@@ -636,12 +780,20 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
 
     const int maxDepth = isInteractive ? 2 : 32;
 
+    float sunAngle = (_physicalSkyTime - 12.0f) / 12.0f * (float)M_PI;
+    GfVec3f physicalSunDir = GfVec3f(std::sin(sunAngle) * std::cos(0.5f), std::cos(sunAngle), std::sin(sunAngle) * std::sin(0.5f)).GetNormalized();
+
     for (int bounce = 0; bounce < maxDepth; ++bounce) {
         if (renderThread->IsStopRequested()) break;
 
         HitRecord hit;
         if (!this->_IntersectTLAS(currentRayOrigin, currentRayDir, hit, renderThread)) {
-            GfVec3f envRGB = _SampleEnvironment(currentRayDir);
+            GfVec3f envRGB;
+            if (_enablePhysicalSky) {
+                envRGB = _SamplePhysicalSky(currentRayDir, physicalSunDir);
+            } else {
+                envRGB = _SampleEnvironment(currentRayDir);
+            }
             SampledSpectrum env = RGBToSpectrum(envRGB, lambda);
             if (bounce == 0 && outAlbedo) *outAlbedo = envRGB;
             
@@ -816,6 +968,27 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
                         GfVec3f diffuseWeight = finalDiffuse * (1.0f - hit.metallic) * (1.0f - hit.transmission);
                         SampledSpectrum bsdf = RGBToSpectrum(diffuseWeight / (float)M_PI, lambda);
                         totalRadiance += throughput * bsdf * specLColor * (nDotL / (lightPdf + 1e-6f));
+                    }
+                }
+            }
+        }
+
+        // --- Physical Sun Direct Lighting ---
+        if (_enablePhysicalSky && physicalSunDir[1] > -0.05f && !isInside) {
+            GfVec3f sunColor = _GetSunTransmittance(physicalSunDir) * 20.0f; // Sun intensity multiplier
+            if (sunColor[0] > 0 || sunColor[1] > 0 || sunColor[2] > 0) {
+                float nDotL = std::max(0.0f, GfDot(shadingNormal, physicalSunDir));
+                if (nDotL > 0) {
+                    HitRecord shadowHit;
+                    shadowHit.t = 1e30f;
+                    GfVec3f shadowOrigin = hitPos + shadingNormal * 1e-4f;
+                    if (!this->_IntersectTLAS(shadowOrigin, physicalSunDir, shadowHit, renderThread)) {
+                        SampledSpectrum specLColor = RGBToSpectrum(sunColor, lambda);
+                        float effectiveSubsurface = _enableSubsurface ? hit.subsurface : 0.0f;
+                        GfVec3f finalDiffuse = hit.baseColor * (1.0f - effectiveSubsurface) + hit.subsurfaceColor * effectiveSubsurface;
+                        GfVec3f diffuseWeight = finalDiffuse * (1.0f - hit.metallic) * (1.0f - hit.transmission);
+                        SampledSpectrum bsdf = RGBToSpectrum(diffuseWeight / (float)M_PI, lambda);
+                        totalRadiance += throughput * bsdf * specLColor * nDotL; // PDF is 1 for directional sun
                     }
                 }
             }

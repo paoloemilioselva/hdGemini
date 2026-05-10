@@ -301,8 +301,18 @@ HdGeminiRenderDelegate::GetRenderSettingDescriptors() const
         VtValue(true)
     });
     list.push_back({
-        "Enable Denoiser",
+        "Enable OIDN Denoiser",
         HdGeminiRenderSettingsTokens->enableDenoiser,
+        VtValue(true)
+    });
+    list.push_back({
+        "Enable Pre-Pass: Firefly Filter",
+        HdGeminiRenderSettingsTokens->enableFireflyFilter,
+        VtValue(true)
+    });
+    list.push_back({
+        "Enable Pre-Pass: Chromaticity Blur",
+        HdGeminiRenderSettingsTokens->enableChromaticityBlur,
         VtValue(true)
     });
     list.push_back({
@@ -410,6 +420,10 @@ HdGeminiRenderDelegate::GetRenderSetting(TfToken const& key) const
         return VtValue(true);
     } else if (key == HdGeminiRenderSettingsTokens->enableDenoiser) {
         return VtValue(true);
+    } else if (key == HdGeminiRenderSettingsTokens->enableFireflyFilter) {
+        return VtValue(true);
+    } else if (key == HdGeminiRenderSettingsTokens->enableChromaticityBlur) {
+        return VtValue(true);
     } else if (key == HdGeminiRenderSettingsTokens->targetSampleCount) {
         return VtValue(32);
     } else if (key == HdGeminiRenderSettingsTokens->maxReflectionBounces) {
@@ -480,6 +494,16 @@ HdGeminiRenderDelegate::SetRenderSetting(TfToken const& key, VtValue const& valu
     } else if (key == HdGeminiRenderSettingsTokens->enableDenoiser) {
         if (value.IsHolding<bool>()) {
             _renderer.SetEnableDenoiser(value.Get<bool>());
+            postProcessChanged = true;
+        }
+    } else if (key == HdGeminiRenderSettingsTokens->enableFireflyFilter) {
+        if (value.IsHolding<bool>()) {
+            _renderer.SetEnableFireflyFilter(value.Get<bool>());
+            postProcessChanged = true;
+        }
+    } else if (key == HdGeminiRenderSettingsTokens->enableChromaticityBlur) {
+        if (value.IsHolding<bool>()) {
+            _renderer.SetEnableChromaticityBlur(value.Get<bool>());
             postProcessChanged = true;
         }
     } else if (key == HdGeminiRenderSettingsTokens->targetSampleCount) {

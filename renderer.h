@@ -45,7 +45,9 @@ public:
     bool GetEnableSubsurface() const { return _enableSubsurface; }
 
     void SetEnableDenoiser(bool enable) { _enableDenoiser = enable; }
-    void SetTargetSampleCount(int samples) { _targetSampleCount = samples; }
+    void SetEnableFireflyFilter(bool enable) { _enableFireflyFilter = enable; }
+    void SetEnableChromaticityBlur(bool enable) { _enableChromaticityBlur = enable; }
+    void SetTargetSampleCount(int count) { _targetSampleCount = count; }
     void SetMaxReflectionBounces(int bounces) { _maxReflectionBounces = bounces; }
     void SetMaxRefractionBounces(int bounces) { _maxRefractionBounces = bounces; }
     void SetResolutionLevel(int level) { _initialResolutionLevel = level; }
@@ -69,6 +71,8 @@ private:
     bool _isConverged = false;
     bool _enableSubsurface = true;
     bool _enableDenoiser = true;
+    bool _enableFireflyFilter = true;
+    bool _enableChromaticityBlur = true;
     int _targetSampleCount = 32;
     int _maxReflectionBounces = 8;
     int _maxRefractionBounces = 8;

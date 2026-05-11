@@ -47,7 +47,8 @@ TF_DECLARE_PUBLIC_TOKENS(HdGeminiAovTokens, HD_GEMINI_AOV_TOKENS);
     (chromaticAberration)                \
     (enableSubsurface)                   \
     (physicalSkyEnable)                  \
-    (physicalSkyTime)                    \
+    (physicalSkyAzimuth)                 \
+    (physicalSkyAltitude)                \
     (physicalSkySunExposure)             \
     (physicalSkySkyExposure)
 

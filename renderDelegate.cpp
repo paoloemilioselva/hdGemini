@@ -401,9 +401,14 @@ HdGeminiRenderDelegate::GetRenderSettingDescriptors() const
         VtValue(false)
     });
     list.push_back({
-        "Physical Sky Time of Day",
-        HdGeminiRenderSettingsTokens->physicalSkyTime,
-        VtValue(12.0f)
+        "Physical Sky Azimuth",
+        HdGeminiRenderSettingsTokens->physicalSkyAzimuth,
+        VtValue(0.0f)
+    });
+    list.push_back({
+        "Physical Sky Altitude",
+        HdGeminiRenderSettingsTokens->physicalSkyAltitude,
+        VtValue(90.0f)
     });
     list.push_back({
         "Physical Sky Sun Exposure",
@@ -468,8 +473,10 @@ HdGeminiRenderDelegate::GetRenderSetting(TfToken const& key) const
         return VtValue(0.0f);
     } else if (key == HdGeminiRenderSettingsTokens->physicalSkyEnable) {
         return VtValue(false);
-    } else if (key == HdGeminiRenderSettingsTokens->physicalSkyTime) {
-        return VtValue(12.0f);
+    } else if (key == HdGeminiRenderSettingsTokens->physicalSkyAzimuth) {
+        return VtValue(0.0f);
+    } else if (key == HdGeminiRenderSettingsTokens->physicalSkyAltitude) {
+        return VtValue(90.0f);
     } else if (key == HdGeminiRenderSettingsTokens->physicalSkySunExposure) {
         return VtValue(0.0f);
     } else if (key == HdGeminiRenderSettingsTokens->physicalSkySkyExposure) {
@@ -558,8 +565,10 @@ HdGeminiRenderDelegate::SetRenderSetting(TfToken const& key, VtValue const& valu
         _renderer.SetChromaticAberration(getFloat(value, 0.0f)); postProcessChanged = true;
     } else if (key == HdGeminiRenderSettingsTokens->physicalSkyEnable) {
         if (value.IsHolding<bool>()) { _renderer.SetPhysicalSkyEnable(value.Get<bool>()); changed = true; }
-    } else if (key == HdGeminiRenderSettingsTokens->physicalSkyTime) {
-        _renderer.SetPhysicalSkyTime(getFloat(value, 12.0f)); changed = true;
+    } else if (key == HdGeminiRenderSettingsTokens->physicalSkyAzimuth) {
+        _renderer.SetPhysicalSkyAzimuth(getFloat(value, 0.0f)); changed = true;
+    } else if (key == HdGeminiRenderSettingsTokens->physicalSkyAltitude) {
+        _renderer.SetPhysicalSkyAltitude(getFloat(value, 90.0f)); changed = true;
     } else if (key == HdGeminiRenderSettingsTokens->physicalSkySunExposure) {
         _renderer.SetPhysicalSkySunExposure(getFloat(value, 0.0f)); changed = true;
     } else if (key == HdGeminiRenderSettingsTokens->physicalSkySkyExposure) {

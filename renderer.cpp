@@ -790,8 +790,13 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
 
     const int maxDepth = isInteractive ? 2 : 32;
 
-    float sunAngle = (_physicalSkyTime - 12.0f) / 12.0f * (float)M_PI;
-    GfVec3f physicalSunDir = GfVec3f(std::sin(sunAngle) * std::cos(0.5f), std::cos(sunAngle), std::sin(sunAngle) * std::sin(0.5f)).GetNormalized();
+    float azimuthRad = _physicalSkyAzimuth * (float)(M_PI / 180.0);
+    float altitudeRad = _physicalSkyAltitude * (float)(M_PI / 180.0);
+    GfVec3f physicalSunDir = GfVec3f(
+        std::cos(altitudeRad) * std::sin(azimuthRad),
+        std::sin(altitudeRad),
+        std::cos(altitudeRad) * std::cos(azimuthRad)
+    ).GetNormalized();
 
     for (int bounce = 0; bounce < maxDepth; ++bounce) {
         if (renderThread->IsStopRequested()) break;

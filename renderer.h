@@ -195,6 +195,9 @@ private:
     class HdGeminiRenderBuffer* _albedoBuffer = nullptr;
     class HdGeminiRenderBuffer* _normalBuffer = nullptr;
 
+    std::vector<GfVec3f> _accumHeroRGB;
+    std::vector<GfVec3f> _accumDiffRGB;
+
     std::vector<TLASNode> _tlasNodes;
     std::vector<int> _tlasInstanceIndices;
 

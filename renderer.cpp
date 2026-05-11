@@ -1219,30 +1219,41 @@ HdGeminiRenderer::_Denoise()
     unsigned int width = _dataWindow.GetWidth();
     unsigned int height = _dataWindow.GetHeight();
     if (width == 0 || height == 0 || !_colorBuffer) return;
+    if (_accumHeroRGB.empty() || _accumDiffRGB.empty()) return;
 
-    std::cout << "[Gemini] Running OIDN Denoiser on frame " << _frameCount << "..." << std::endl;
+    std::cout << "[Gemini] Running Full Spectral Demultiplexing Denoiser on frame " << _frameCount << "..." << std::endl;
 
-    std::vector<float> color, albedo, normal;
-    _colorBuffer->GetFloatBuffer(color);
+    std::vector<float> albedo, normal;
     if (_albedoBuffer) _albedoBuffer->GetFloatBuffer(albedo);
     if (_normalBuffer) _normalBuffer->GetFloatBuffer(normal);
 
-    // --- Smart Pre-Filtering: Firefly Rejection & Chromaticity Denoise ---
-    std::vector<float> prefiltered(width * height * 3);
-    std::vector<float> clampedColor = color;
-    
+    std::vector<float> heroOutput(width * height * 3);
+    std::vector<float> diffOutput(width * height * 3);
+
+    float invSamples = 1.0f / (float)std::max(1, _frameCount);
+    for(size_t i=0; i<width*height; ++i) {
+        heroOutput[i*3+0] = _accumHeroRGB[i][0] * invSamples;
+        heroOutput[i*3+1] = _accumHeroRGB[i][1] * invSamples;
+        heroOutput[i*3+2] = _accumHeroRGB[i][2] * invSamples;
+        
+        diffOutput[i*3+0] = _accumDiffRGB[i][0] * invSamples;
+        diffOutput[i*3+1] = _accumDiffRGB[i][1] * invSamples;
+        diffOutput[i*3+2] = _accumDiffRGB[i][2] * invSamples;
+    }
+
     auto getLuminance = [](float r, float g, float b) {
         return 0.2126f * r + 0.7152f * g + 0.0722f * b;
     };
 
-    // 1. Firefly Rejection
+    // 1. Firefly Rejection on Hero (Structural noise)
     if (_enableFireflyFilter) {
+        std::vector<float> clampedHero = heroOutput;
         for (int y = 0; y < (int)height; ++y) {
             for (int x = 0; x < (int)width; ++x) {
                 size_t idx = (y * width + x) * 3;
-                float r = clampedColor[idx];
-                float g = clampedColor[idx+1];
-                float b = clampedColor[idx+2];
+                float r = clampedHero[idx];
+                float g = clampedHero[idx+1];
+                float b = clampedHero[idx+2];
                 float lum = getLuminance(r, g, b);
 
                 float maxNeighborLum = 0.0f;
@@ -1252,60 +1263,54 @@ HdGeminiRenderer::_Denoise()
                         int nx = std::clamp(x + dx, 0, (int)width - 1);
                         int ny = std::clamp(y + dy, 0, (int)height - 1);
                         size_t nIdx = (ny * width + nx) * 3;
-                        maxNeighborLum = std::max(maxNeighborLum, getLuminance(clampedColor[nIdx], clampedColor[nIdx+1], clampedColor[nIdx+2]));
+                        maxNeighborLum = std::max(maxNeighborLum, getLuminance(clampedHero[nIdx], clampedHero[nIdx+1], clampedHero[nIdx+2]));
                     }
                 }
 
-                // Clamp if > 4x brightest neighbor
                 float threshold = maxNeighborLum * 4.0f + 0.5f;
                 if (lum > threshold && lum > 0.0f) {
                     float scale = threshold / lum;
-                    clampedColor[idx] = r * scale;
-                    clampedColor[idx+1] = g * scale;
-                    clampedColor[idx+2] = b * scale;
+                    heroOutput[idx] = r * scale;
+                    heroOutput[idx+1] = g * scale;
+                    heroOutput[idx+2] = b * scale;
                 }
             }
         }
     }
 
-    // 2. Chromaticity Denoise
+    // 2. Spectral Difference Blur (Directly blurs chromatic variance)
     if (_enableChromaticityBlur) {
+        std::vector<float> blurredDiff = diffOutput;
         for (int y = 0; y < (int)height; ++y) {
             for (int x = 0; x < (int)width; ++x) {
                 size_t idx = (y * width + x) * 3;
-                float r = clampedColor[idx];
-                float g = clampedColor[idx+1];
-                float b = clampedColor[idx+2];
-
-                // YCoCg encode original
-                float Y = 0.25f * r + 0.5f * g + 0.25f * b;
-
-                // Blur Co and Cg over 3x3
-                float sumCo = 0.0f, sumCg = 0.0f, weightSum = 0.0f;
-                for (int dy = -1; dy <= 1; ++dy) {
-                    for (int dx = -1; dx <= 1; ++dx) {
+                float sumR = 0.0f, sumG = 0.0f, sumB = 0.0f, weightSum = 0.0f;
+                for (int dy = -2; dy <= 2; ++dy) {
+                    for (int dx = -2; dx <= 2; ++dx) {
                         int nx = std::clamp(x + dx, 0, (int)width - 1);
                         int ny = std::clamp(y + dy, 0, (int)height - 1);
                         size_t nIdx = (ny * width + nx) * 3;
-                        float nr = clampedColor[nIdx];
-                        float ng = clampedColor[nIdx+1];
-                        float nb = clampedColor[nIdx+2];
-                        sumCo += (0.50f * nr - 0.5f * nb);
-                        sumCg += (-0.25f * nr + 0.5f * ng - 0.25f * nb);
-                        weightSum += 1.0f;
+                        float w = std::exp(-(dx*dx + dy*dy) / 2.0f);
+                        sumR += diffOutput[nIdx+0] * w;
+                        sumG += diffOutput[nIdx+1] * w;
+                        sumB += diffOutput[nIdx+2] * w;
+                        weightSum += w;
                     }
                 }
-                float Co = sumCo / weightSum;
-                float Cg = sumCg / weightSum;
-
-                // YCoCg decode
-                prefiltered[idx]   = std::max(0.0f, Y + Co - Cg);
-                prefiltered[idx+1] = std::max(0.0f, Y + Cg);
-                prefiltered[idx+2] = std::max(0.0f, Y - Co - Cg);
+                blurredDiff[idx+0] = sumR / weightSum;
+                blurredDiff[idx+1] = sumG / weightSum;
+                blurredDiff[idx+2] = sumB / weightSum;
             }
         }
-    } else {
-        prefiltered = clampedColor;
+        diffOutput = blurredDiff;
+    }
+
+    // 3. Recombine for OIDN
+    std::vector<float> prefiltered(width * height * 3);
+    for(size_t i=0; i<width*height; ++i) {
+        prefiltered[i*3+0] = std::max(0.0f, heroOutput[i*3+0] + diffOutput[i*3+0]);
+        prefiltered[i*3+1] = std::max(0.0f, heroOutput[i*3+1] + diffOutput[i*3+1]);
+        prefiltered[i*3+2] = std::max(0.0f, heroOutput[i*3+2] + diffOutput[i*3+2]);
     }
 
     std::vector<float> output = prefiltered;
@@ -1333,7 +1338,6 @@ HdGeminiRenderer::_Denoise()
         }
     }
 
-    // Write back to color buffer
     for (unsigned int y = 0; y < height; ++y) {
         for (unsigned int x = 0; x < width; ++x) {
             size_t idx = (y * width + x) * 3;
@@ -1598,7 +1602,15 @@ HdGeminiRenderer::_RenderTiles(HdRenderThread *renderThread, HdGeminiRenderDeleg
                     }
 
                     SampledSpectrum hitSpectrum = _TraceRay(rayOriginWorld, rayDirWorld, 0, isInteractive, renderThread, rng, lambda, &albedo, &normal, exposureMultiplier);
-                    GfVec3f hitColor = SpectrumToRGB(hitSpectrum, lambda);
+                    
+                    SampledSpectrum heroSpec;
+                    for(int i=0; i<SPECTRUM_SAMPLES; ++i) heroSpec[i] = hitSpectrum[0];
+                    SampledSpectrum diffSpec;
+                    for(int i=0; i<SPECTRUM_SAMPLES; ++i) diffSpec[i] = hitSpectrum[i] - hitSpectrum[0];
+
+                    GfVec3f heroRGB = SpectrumToRGB(heroSpec, lambda);
+                    GfVec3f diffRGB = SpectrumToRGB(diffSpec, lambda);
+                    GfVec3f hitColor = heroRGB + diffRGB; // Exactly equal to SpectrumToRGB(hitSpectrum, lambda)
 
                     if (isInteractive) {
                         GfVec4f finalColor(hitColor[0], hitColor[1], hitColor[2], 1.0f);
@@ -1608,6 +1620,12 @@ HdGeminiRenderer::_RenderTiles(HdRenderThread *renderThread, HdGeminiRenderDeleg
                             }
                         }
                     } else {
+                        size_t idx = y * width + x;
+                        if (idx < _accumHeroRGB.size()) {
+                            _accumHeroRGB[idx] += heroRGB;
+                            _accumDiffRGB[idx] += diffRGB;
+                        }
+
                         _colorBuffer->WriteSample(GfVec3i(x, y, 0), GfVec4f(hitColor[0], hitColor[1], hitColor[2], 1.0f));
                         if (_albedoBuffer) _albedoBuffer->WriteSample(GfVec3i(x, y, 0), GfVec4f(albedo[0], albedo[1], albedo[2], 1.0f));
                         if (_normalBuffer) _normalBuffer->WriteSample(GfVec3i(x, y, 0), GfVec4f(normal[0], normal[1], normal[2], 1.0f));
@@ -1628,6 +1646,14 @@ HdGeminiRenderer::Clear()
     _resolutionLevel = 2;
     _frameCount = 0;
     _isConverged = false;
+    
+    unsigned int width = _dataWindow.GetWidth();
+    unsigned int height = _dataWindow.GetHeight();
+    if (width > 0 && height > 0) {
+        _accumHeroRGB.assign(width * height, GfVec3f(0.0f));
+        _accumDiffRGB.assign(width * height, GfVec3f(0.0f));
+    }
+
     for (auto const& binding : _aovBindings) {
         if (binding.renderBuffer && !binding.clearValue.IsEmpty()) {
             HdGeminiRenderBuffer* rb = static_cast<HdGeminiRenderBuffer*>(binding.renderBuffer);
@@ -1669,17 +1695,19 @@ void
 HdGeminiRenderer::ReapplyPostProcess()
 {
     if (!_colorBuffer || _frameCount == 0) return;
+    if (_accumHeroRGB.empty() || _accumDiffRGB.empty()) return;
 
     unsigned int width = _dataWindow.GetWidth();
     unsigned int height = _dataWindow.GetHeight();
 
-    std::vector<float> accumColor;
-    _colorBuffer->GetFloatBuffer(accumColor);
-
+    float invSamples = 1.0f / (float)std::max(1, _frameCount);
     for (unsigned int y = 0; y < height; ++y) {
         for (unsigned int x = 0; x < width; ++x) {
-            size_t idx = (y * width + x) * 3;
-            float pixel[4] = { accumColor[idx], accumColor[idx+1], accumColor[idx+2], 1.0f };
+            size_t idx = y * width + x;
+            GfVec3f hero = _accumHeroRGB[idx] * invSamples;
+            GfVec3f diff = _accumDiffRGB[idx] * invSamples;
+            GfVec3f finalRGB = hero + diff;
+            float pixel[4] = { finalRGB[0], finalRGB[1], finalRGB[2], 1.0f };
             _colorBuffer->Write(GfVec3i(x, y, 0), 4, pixel);
         }
     }

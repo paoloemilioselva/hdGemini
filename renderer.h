@@ -66,6 +66,8 @@ public:
     void SetChromaticAberration(float ca) { _chromaticAberration = ca; }
     void SetPhysicalSkyEnable(bool enable) { _enablePhysicalSky = enable; }
     void SetPhysicalSkyTime(float t) { _physicalSkyTime = t; }
+    void SetPhysicalSkySunExposure(float exp) { _physicalSkySunExposure = exp; }
+    void SetPhysicalSkySkyExposure(float exp) { _physicalSkySkyExposure = exp; }
 
 private:
     bool _isConverged = false;
@@ -92,6 +94,8 @@ private:
     float _chromaticAberration = 0.0f;
     bool _enablePhysicalSky = false;
     float _physicalSkyTime = 12.0f;
+    float _physicalSkySunExposure = 0.0f;
+    float _physicalSkySkyExposure = 0.0f;
 
     struct MeshInstance {
         HdGeminiMesh* mesh;

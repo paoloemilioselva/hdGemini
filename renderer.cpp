@@ -721,8 +721,9 @@ GfVec3f HdGeminiRenderer::_SamplePhysicalSky(const GfVec3f& rayDir, const GfVec3
         currentT += stepSize;
     }
 
-    GfVec3f sunIntensity(20.0f);
+    GfVec3f sunIntensity(20.0f * std::exp2(_physicalSkySunExposure));
     GfVec3f color = GfCompMult(GfCompMult(totalR, betaR) * phaseR + totalM * betaM * phaseM, sunIntensity);
+    color = color * std::exp2(_physicalSkySkyExposure);
 
     if (isectPlanet[0] >= 0.0f && isectPlanet[0] < tMax + stepSize) {
          color = color * 0.5f;

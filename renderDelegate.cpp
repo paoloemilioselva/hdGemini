@@ -405,6 +405,16 @@ HdGeminiRenderDelegate::GetRenderSettingDescriptors() const
         HdGeminiRenderSettingsTokens->physicalSkyTime,
         VtValue(12.0f)
     });
+    list.push_back({
+        "Physical Sky Sun Exposure",
+        HdGeminiRenderSettingsTokens->physicalSkySunExposure,
+        VtValue(0.0f)
+    });
+    list.push_back({
+        "Physical Sky Sky Exposure",
+        HdGeminiRenderSettingsTokens->physicalSkySkyExposure,
+        VtValue(0.0f)
+    });
     return list;
 }
 
@@ -460,6 +470,10 @@ HdGeminiRenderDelegate::GetRenderSetting(TfToken const& key) const
         return VtValue(false);
     } else if (key == HdGeminiRenderSettingsTokens->physicalSkyTime) {
         return VtValue(12.0f);
+    } else if (key == HdGeminiRenderSettingsTokens->physicalSkySunExposure) {
+        return VtValue(0.0f);
+    } else if (key == HdGeminiRenderSettingsTokens->physicalSkySkyExposure) {
+        return VtValue(0.0f);
     }
     return VtValue();
 }
@@ -546,6 +560,10 @@ HdGeminiRenderDelegate::SetRenderSetting(TfToken const& key, VtValue const& valu
         if (value.IsHolding<bool>()) { _renderer.SetPhysicalSkyEnable(value.Get<bool>()); changed = true; }
     } else if (key == HdGeminiRenderSettingsTokens->physicalSkyTime) {
         _renderer.SetPhysicalSkyTime(getFloat(value, 12.0f)); changed = true;
+    } else if (key == HdGeminiRenderSettingsTokens->physicalSkySunExposure) {
+        _renderer.SetPhysicalSkySunExposure(getFloat(value, 0.0f)); changed = true;
+    } else if (key == HdGeminiRenderSettingsTokens->physicalSkySkyExposure) {
+        _renderer.SetPhysicalSkySkyExposure(getFloat(value, 0.0f)); changed = true;
     }
 
     if (changed) {

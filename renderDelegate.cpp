@@ -336,6 +336,11 @@ HdGeminiRenderDelegate::GetRenderSettingDescriptors() const
         VtValue(2)
     });
     list.push_back({
+        "Anti-Aliasing Filter (0=None, 1=Box, 2=Tent, 3=Gaussian)",
+        HdGeminiRenderSettingsTokens->antiAliasingFilter,
+        VtValue(1)
+    });
+    list.push_back({
         "Enable Depth of Field",
         HdGeminiRenderSettingsTokens->enableDoF,
         VtValue(false)
@@ -447,6 +452,8 @@ HdGeminiRenderDelegate::GetRenderSetting(TfToken const& key) const
         return VtValue(8);
     } else if (key == HdGeminiRenderSettingsTokens->resolutionLevel) {
         return VtValue(2);
+    } else if (key == HdGeminiRenderSettingsTokens->antiAliasingFilter) {
+        return VtValue(1);
     } else if (key == HdGeminiRenderSettingsTokens->enableDoF) {
         return VtValue(false);
     } else if (key == HdGeminiRenderSettingsTokens->focalLength) {
@@ -538,6 +545,9 @@ HdGeminiRenderDelegate::SetRenderSetting(TfToken const& key, VtValue const& valu
         changed = true;
     } else if (key == HdGeminiRenderSettingsTokens->resolutionLevel) {
         _renderer.SetResolutionLevel(getInt(value, 2));
+        changed = true;
+    } else if (key == HdGeminiRenderSettingsTokens->antiAliasingFilter) {
+        _renderer.SetAntiAliasingFilter(getInt(value, 1));
         changed = true;
     } else if (key == HdGeminiRenderSettingsTokens->enableDoF) {
         if (value.IsHolding<bool>()) { _renderer.SetEnableDoF(value.Get<bool>()); changed = true; }

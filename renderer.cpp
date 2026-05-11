@@ -1505,8 +1505,38 @@ HdGeminiRenderer::_RenderTiles(HdRenderThread *renderThread, HdGeminiRenderDeleg
                 for (size_t x = startX; x < endX; x += res) {
                     if (renderThread->IsStopRequested()) return;
                     uint32_t rng = (uint32_t)(y * width + x) ^ (uint32_t)(_frameCount * 12345);
-                    float ndcX = (2.0f * (x + res * RandomFloat(rng)) / width) - 1.0f;
-                    float ndcY = (2.0f * (y + res * RandomFloat(rng)) / height) - 1.0f;
+                    float px = (float)x;
+                    float py = (float)y;
+                    
+                    if (isInteractive) {
+                         px += res * 0.5f;
+                         py += res * 0.5f;
+                    } else {
+                        if (_antiAliasingFilter == 0) { // None
+                            px += 0.5f;
+                            py += 0.5f;
+                        } else if (_antiAliasingFilter == 1) { // Box
+                            px += RandomFloat(rng);
+                            py += RandomFloat(rng);
+                        } else if (_antiAliasingFilter == 2) { // Tent
+                            auto tent = [](float u) {
+                                return u < 0.5f ? std::sqrt(2.0f * u) - 1.0f : 1.0f - std::sqrt(2.0f - 2.0f * u);
+                            };
+                            px += 0.5f + tent(RandomFloat(rng));
+                            py += 0.5f + tent(RandomFloat(rng));
+                        } else if (_antiAliasingFilter == 3) { // Gaussian
+                            float u1 = std::max(1e-6f, RandomFloat(rng));
+                            float u2 = RandomFloat(rng);
+                            float r = std::sqrt(-2.0f * std::log(u1));
+                            float theta = 2.0f * (float)M_PI * u2;
+                            float sigma = 0.5f;
+                            px += 0.5f + r * std::cos(theta) * sigma;
+                            py += 0.5f + r * std::sin(theta) * sigma;
+                        }
+                    }
+
+                    float ndcX = (2.0f * px / width) - 1.0f;
+                    float ndcY = (2.0f * py / height) - 1.0f;
                     
                     if (_lensDistortion != 0.0f) {
                         float r2 = ndcX * ndcX + ndcY * ndcY;

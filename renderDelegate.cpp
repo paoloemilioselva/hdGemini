@@ -575,10 +575,14 @@ HdGeminiRenderDelegate::SetRenderSetting(TfToken const& key, VtValue const& valu
         _renderer.SetPhysicalSkySkyExposure(getFloat(value, 0.0f)); changed = true;
     }
 
-    if (changed) {
-        _renderer.Clear();
-    } else if (postProcessChanged) {
-        _renderer.ReapplyPostProcess();
+    if (changed || postProcessChanged) {
+        _renderThread.StopRender();
+        if (changed) {
+            _renderer.Clear();
+        } else {
+            _renderer.ReapplyPostProcess();
+        }
+        _sceneVersion++;
     }
     
     HdRenderDelegate::SetRenderSetting(key, value);

@@ -20,11 +20,12 @@
     - **Multiple Importance Sampling (MIS)**: Integrates Direct Light Sampling (Next Event Estimation) with Indirect BSDF Sampling using the Power Heuristic. Explicitly combining the light's PDF and the material's BSDF PDF eliminates fireflies and rapidly resolves noisy lighting interactions.
     - Path termination is efficiently handled via Russian Roulette.
   - Incoming RGB textures are on-the-fly "uplifted" to continuous spectra using a smooth, optimized Gaussian basis. Scalar maps (normal, roughness, metallic) are meticulously preserved in raw RGB space to avoid precision loss.
-- **AI Denoising Pipeline**:
+- **AI Denoising Pipeline (Hero Wavelength Demultiplexing)**:
+  - hdGemini implements a full spectral demultiplexing pipeline to handle dispersion noise before AI denoising. The path-traced spectrum is separated into structural luminance ("Hero" wavelength) and chromatic variance ("Difference" spectrum).
   - The denoising pipeline is split into three modular, independently toggleable stages within the `usdview` UI, allowing interactive adjustment without clearing path-tracing samples:
-    1. **Smart Firefly Filter**: A custom pre-pass that dynamically scans 3x3 pixel neighborhoods to clamp high-variance, unresolved energy spikes.
-    2. **Chromaticity Blur**: Translates the image into YCoCg color space to spatially blur the Co and Cg channels. This aggressively eliminates multi-colored path-tracing noise while perfectly preserving structural luminance sharpness.
-    3. **Intel Open Image Denoise (OIDN)**: The core AI neural network (v2.2.2) executes on the exceptionally stable pre-filtered input, preventing artifacting and producing pristine images.
+    1. **Smart Firefly Filter**: Applied exclusively to the structural Hero buffer. Dynamically scans 3x3 pixel neighborhoods to clamp high-variance, unresolved energy spikes without affecting color.
+    2. **Spectral Difference Blur**: A spatial blur applied exclusively to the Spectral Difference buffer. This aggressively eliminates severe multi-colored dispersion noise while perfectly preserving edge sharpness in the structural buffer.
+    3. **Intel Open Image Denoise (OIDN)**: The Hero and Difference buffers are recombined into a pristine, pre-filtered RGB image, which is then fed into the core AI neural network (v2.2.2) to produce the final output.
   - Automated binary download and linking via `FetchContent` in CMake.
   - Custom AOVs (`albedo`, `normal`) seamlessly extract unlit color and shading normals on the first bounce to guide the denoiser.
   - Full Float32 HDR color AOV output preserving unclamped highlights for post-processing.
@@ -55,6 +56,7 @@
   - Native instancing support via `HdInstancer`.
   - Thread-safe, lazy-loaded texture caching via `HioImage`.
   - Progressive, interactive rendering with multi-threaded bucketing.
+  - **Anti-Aliasing Filter**: 4 configurable anti-aliasing modes (None, Box, Tent, Gaussian) to handle sub-pixel jitter and smooth edge rendering.
 
 ## Building and Running
 

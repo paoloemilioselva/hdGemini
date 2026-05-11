@@ -11,6 +11,8 @@ if(HDGEMINI_DEBUG_PRINTS)
     add_compile_definitions(HDGEMINI_DEBUG_PRINTS)
 endif()
 
+option(HDGEMINI_USE_SYCL "Enable SYCL backend for ray generation" OFF)
+
 project( 
     ${TARGET}
     LANGUAGES CXX C
@@ -132,6 +134,12 @@ target_link_libraries(
     TBB::tbb
     ${OIDN_LIBRARIES}
 )
+
+if(HDGEMINI_USE_SYCL)
+    add_compile_definitions(HDGEMINI_HAS_SYCL)
+    target_compile_options(${DELEGATE_NAME} PRIVATE -fsycl)
+    target_link_options(${DELEGATE_NAME} PRIVATE -fsycl)
+endif()
 
 set(_installation_folder "")
 if( _target_name MATCHES "houdini" )

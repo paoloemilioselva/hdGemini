@@ -18,6 +18,11 @@
 #include <map>
 #include <memory>
 #include <mutex>
+
+#ifdef HDGEMINI_HAS_SYCL
+#include <sycl/sycl.hpp>
+#endif
+
 PXR_NAMESPACE_USING_DIRECTIVE
 
 class HdGeminiRenderDelegate;
@@ -163,6 +168,17 @@ private:
         int height = 0;
     };
 
+    struct RayState {
+        float origin[3];
+        float dir[3];
+        float exposureMultiplier;
+        SampledWavelengths lambda;
+        uint32_t rng;
+        int x;
+        int y;
+        bool active;
+    };
+
     static GfVec4f _GetClearColor(VtValue const& clearValue);
     void _RenderTiles(HdRenderThread *renderThread, HdGeminiRenderDelegate* delegate);
     void _PrepareScene(HdRenderThread *renderThread, HdGeminiRenderDelegate* delegate);
@@ -211,6 +227,12 @@ private:
 
     mutable std::map<std::string, TextureData> _textureCache;
     mutable std::mutex _textureMutex;
+
+#ifdef HDGEMINI_HAS_SYCL
+    sycl::queue* _syclQueue = nullptr;
+    RayState* _rayBuffer = nullptr;
+    size_t _rayBufferSize = 0;
+#endif
 };
 
 #endif // HD_GEMINI_RENDERER_H

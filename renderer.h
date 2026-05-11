@@ -168,7 +168,7 @@ private:
     void _BuildTLAS(HdRenderThread *renderThread);
     void _SubdivideTLAS(int nodeIdx, int start, int end, HdRenderThread *renderThread);
     bool _IntersectTLAS(const GfVec3f& rayOrigin, const GfVec3f& rayDir, HitRecord& hit, HdRenderThread* renderThread) const;
-    SampledSpectrum _TraceRay(const GfVec3f& rayOrigin, const GfVec3f& rayDir, int depth, bool isInteractive, HdRenderThread* renderThread, uint32_t& rng, const SampledWavelengths& lambda, GfVec3f* outAlbedo = nullptr, GfVec3f* outNormal = nullptr) const;
+    SampledSpectrum _TraceRay(const GfVec3f& rayOrigin, const GfVec3f& rayDir, int depth, bool isInteractive, HdRenderThread* renderThread, uint32_t& rng, const SampledWavelengths& lambda, GfVec3f* outAlbedo = nullptr, GfVec3f* outNormal = nullptr, float exposureMultiplier = 1.0f) const;
     GfVec3f _SampleEnvironment(const GfVec3f& rayDir) const;
     GfVec3f _SamplePhysicalSky(const GfVec3f& rayDir, const GfVec3f& sunDir) const;
     GfVec3f _GetSunTransmittance(const GfVec3f& sunDir) const;

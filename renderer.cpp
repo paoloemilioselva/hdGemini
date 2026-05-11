@@ -778,9 +778,9 @@ static float PowerHeuristic(float f, float g) {
     return f2 / (f2 + g2);
 }
 
-SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVec3f& rayDir, int depth, bool isInteractive, HdRenderThread* renderThread, uint32_t& rng, const SampledWavelengths& lambda, GfVec3f* outAlbedo, GfVec3f* outNormal) const
+SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVec3f& rayDir, int depth, bool isInteractive, HdRenderThread* renderThread, uint32_t& rng, const SampledWavelengths& lambda, GfVec3f* outAlbedo, GfVec3f* outNormal, float exposureMultiplier) const
 {
-    SampledSpectrum throughput(1.0f);
+    SampledSpectrum throughput(exposureMultiplier);
     SampledSpectrum totalRadiance(0.0f);
     GfVec3f currentRayOrigin = rayOrigin;
     GfVec3f currentRayDir = rayDir;
@@ -1561,13 +1561,14 @@ HdGeminiRenderer::_RenderTiles(HdRenderThread *renderThread, HdGeminiRenderDeleg
                     GfVec3f albedo(0.0f), normal(0.0f);
                     float u_lambda = RandomFloat(rng);
                     SampledWavelengths lambda = SampledWavelengths::SampleUniform(u_lambda);
-                    SampledSpectrum hitSpectrum = _TraceRay(rayOriginWorld, rayDirWorld, 0, isInteractive, renderThread, rng, lambda, &albedo, &normal);
-                    GfVec3f hitColor = SpectrumToRGB(hitSpectrum, lambda);
                     
+                    float exposureMultiplier = 1.0f;
                     if (_enablePhysicalCamera) {
-                        float exposureMultiplier = (_iso / 100.0f) * _shutterSpeed / (_fStop * _fStop) * 100.0f;
-                        hitColor *= exposureMultiplier;
+                        exposureMultiplier = (_iso / 100.0f) * _shutterSpeed / (_fStop * _fStop) * 100.0f;
                     }
+
+                    SampledSpectrum hitSpectrum = _TraceRay(rayOriginWorld, rayDirWorld, 0, isInteractive, renderThread, rng, lambda, &albedo, &normal, exposureMultiplier);
+                    GfVec3f hitColor = SpectrumToRGB(hitSpectrum, lambda);
 
                     if (isInteractive) {
                         GfVec4f finalColor(hitColor[0], hitColor[1], hitColor[2], 1.0f);

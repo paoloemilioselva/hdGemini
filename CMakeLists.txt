@@ -17,6 +17,12 @@ project(
     ${TARGET}
     LANGUAGES CXX C
 )
+
+if (CMAKE_CXX_COMPILER_ID MATCHES "IntelLLVM")
+    set(HDGEMINI_USE_SYCL ON CACHE BOOL "Enable SYCL backend for ray generation" FORCE)
+    message(STATUS "Intel oneAPI compiler detected. SYCL backend ENABLED automatically.")
+endif()
+
 set( DELEGATE_NAME ${TARGET} )
 
 # check target config

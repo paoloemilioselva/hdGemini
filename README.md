@@ -60,10 +60,18 @@
 
 ## Building and Running
 
-Ensure you have a recent version of Pixar's USD built and accessible on your system (the CMake configuration assumes USD 26.03 by default, but this can be overridden).
+hdGemini uses CMake and supports a **Hybrid CPU/GPU Wavefront Architecture** to massively accelerate rendering.
+
+### GPU Acceleration (Highly Recommended)
+hdGemini utilizes **SYCL** via the **Intel oneAPI Base Toolkit** to offload primary ray generation and massive BSDF evaluations to the GPU, while keeping out-of-core geometry safely on the CPU.
+1. Download and install the [Intel oneAPI Base Toolkit](https://www.intel.com/content/www/us/en/developer/tools/oneapi/base-toolkit.html) (Free).
+2. The `compile.bat` script will automatically detect the installation at the default path (`C:\Program Files (x86)\Intel\oneAPI\setvars.bat`) and compile the GPU kernels using `icx`.
+
+### CPU-Only Fallback
+If you do not have Intel oneAPI installed, the `compile.bat` script will gracefully fall back to the standard MSVC compiler, utilizing a highly optimized, fully functional CPU-only Megakernel path tracer.
 
 ```cmd
-# Compile the plugin
+# Compile the plugin (auto-detects SYCL if available)
 .\compile.bat
 
 # Launch usdview with the hdGemini render delegate

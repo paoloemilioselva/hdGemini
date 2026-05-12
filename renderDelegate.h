@@ -35,6 +35,7 @@ TF_DECLARE_PUBLIC_TOKENS(HdGeminiAovTokens, HD_GEMINI_AOV_TOKENS);
     (resolutionLevel)                    \
     (antiAliasingFilter)                 \
     (enableDoF)                          \
+    (enableSycl)                         \
     (focalLength)                        \
     (fStop)                              \
     (focusDistance)                      \

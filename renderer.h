@@ -57,6 +57,7 @@ public:
     void SetMaxRefractionBounces(int bounces) { _maxRefractionBounces = bounces; }
     void SetResolutionLevel(int level) { _initialResolutionLevel = level; }
     void SetAntiAliasingFilter(int filter) { _antiAliasingFilter = filter; }
+    void SetEnableSycl(bool enable) { _enableSycl = enable; }
 
     void SetEnableDoF(bool enable) { _enableDoF = enable; }    void SetFocalLength(float fl) { _focalLength = fl; }
     void SetFStop(float fStop) { _fStop = fStop; }
@@ -86,6 +87,7 @@ private:
     int _maxRefractionBounces = 8;
     int _initialResolutionLevel = 2;
     int _antiAliasingFilter = 1;
+    bool _enableSycl = true;
     
     bool _enableDoF = false;
     float _focalLength = 50.0f;

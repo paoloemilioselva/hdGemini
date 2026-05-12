@@ -341,9 +341,14 @@ HdGeminiRenderDelegate::GetRenderSettingDescriptors() const
         VtValue(1)
     });
     list.push_back({
-        "Enable Depth of Field",
+        "Enable DoF",
         HdGeminiRenderSettingsTokens->enableDoF,
         VtValue(false)
+    });
+    list.push_back({
+        "Enable SYCL GPU Acceleration",
+        HdGeminiRenderSettingsTokens->enableSycl,
+        VtValue(true)
     });
     list.push_back({
         "Focal Length (mm)",
@@ -549,6 +554,8 @@ HdGeminiRenderDelegate::SetRenderSetting(TfToken const& key, VtValue const& valu
     } else if (key == HdGeminiRenderSettingsTokens->antiAliasingFilter) {
         _renderer.SetAntiAliasingFilter(getInt(value, 1));
         changed = true;
+    } else if (key == HdGeminiRenderSettingsTokens->enableSycl) {
+        if (value.IsHolding<bool>()) { _renderer.SetEnableSycl(value.Get<bool>()); changed = true; }
     } else if (key == HdGeminiRenderSettingsTokens->enableDoF) {
         if (value.IsHolding<bool>()) { _renderer.SetEnableDoF(value.Get<bool>()); changed = true; }
     } else if (key == HdGeminiRenderSettingsTokens->focalLength) {

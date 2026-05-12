@@ -1578,7 +1578,7 @@ HdGeminiRenderer::_RenderTiles(HdRenderThread *renderThread, HdGeminiRenderDeleg
     size_t numBuckets = numBucketsX * numBucketsY;
 
 #ifdef HDGEMINI_HAS_SYCL
-    if (_syclQueue && _rayBuffer && !isInteractive) {
+    if (_enableSycl && _syclQueue && _rayBuffer && !isInteractive) {
         _RenderTilesSYCL(renderThread, delegate);
         return;
     }

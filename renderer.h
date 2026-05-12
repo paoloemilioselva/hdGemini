@@ -168,6 +168,63 @@ private:
         int height = 0;
     };
 
+#ifdef HDGEMINI_HAS_SYCL
+    struct SYCLLightData {
+        int type; // 1=distant, 2=dome, 3=rect, 4=local
+        float transform[16];
+        float color[3];
+        float intensity;
+        float width;
+        float height;
+        float shapingConeAngle;
+        float shapingConeSoftness;
+    };
+
+    struct HitState {
+        bool hit;
+        float t;
+        float hitPos[3];
+        float shadingNormal[3];
+        float baseColor[3];
+        float metallic;
+        float roughness;
+        float specularColor[3];
+        float specular;
+        float opacity;
+        float ior;
+        float transmission;
+        float transmissionColor[3];
+        float emission[3];
+        
+        float coat;
+        float coatColor[3];
+        float coatRoughness;
+        float coatIor;
+        float transmissionDepth;
+        float transmissionScatter[3];
+        float sheen;
+        float sheenColor[3];
+        float sheenRoughness;
+        float subsurface;
+        float subsurfaceColor[3];
+        float subsurfaceRadius[3];
+        float subsurfaceScale;
+        float subsurfaceAnisotropy;
+        bool thinWalled;
+        float diffuseRoughness;
+    };
+
+    struct ShadowRay {
+        float origin[3];
+        float dir[3];
+        float tMax;
+        float payload[4];
+        int pixelIdx;
+        bool active;
+    };
+#endif
+
+
     struct RayState {
         float origin[3];
         float dir[3];
@@ -177,10 +234,23 @@ private:
         int x;
         int y;
         bool active;
+#ifdef HDGEMINI_HAS_SYCL
+        float throughput[4];
+        float totalRadiance[4];
+        int bounce;
+        int reflectionBounces;
+        int refractionBounces;
+        bool isInside;
+        float albedo[3];
+        float normal[3];
+#endif
     };
 
     static GfVec4f _GetClearColor(VtValue const& clearValue);
     void _RenderTiles(HdRenderThread *renderThread, HdGeminiRenderDelegate* delegate);
+#ifdef HDGEMINI_HAS_SYCL
+    void _RenderTilesSYCL(HdRenderThread *renderThread, HdGeminiRenderDelegate* delegate);
+#endif
     void _PrepareScene(HdRenderThread *renderThread, HdGeminiRenderDelegate* delegate);
     void _BuildTLAS(HdRenderThread *renderThread);
     void _SubdivideTLAS(int nodeIdx, int start, int end, HdRenderThread *renderThread);
@@ -232,6 +302,24 @@ private:
     sycl::queue* _syclQueue = nullptr;
     RayState* _rayBuffer = nullptr;
     size_t _rayBufferSize = 0;
+    
+    HitState* _hitBuffer = nullptr;
+    size_t _hitBufferSize = 0;
+    
+    ShadowRay* _shadowRayBuffer = nullptr;
+    size_t _shadowRayBufferSize = 0;
+    
+    SYCLLightData* _lightBuffer = nullptr;
+    size_t _lightBufferSize = 0;
+    int _numActiveLights = 0;
+    bool _hasDomeLight = false;
+    
+    float* _usmEnvMapPixels = nullptr;
+    float* _usmEnvMapRowCdf = nullptr;
+    float* _usmEnvMapColCdf = nullptr;
+    size_t _usmEnvMapPixelsSize = 0;
+    size_t _usmEnvMapRowCdfSize = 0;
+    size_t _usmEnvMapColCdfSize = 0;
 #endif
 };
 

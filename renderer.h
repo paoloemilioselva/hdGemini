@@ -269,7 +269,7 @@ private:
     void _Denoise();
     void _ApplyPostProcess();
     void _DrawStats();
-    void _DrawChar(int x, int y, char c, const GfVec4f& color);
+    void _DrawChar(int x, int y, char c, const GfVec4f& color, int scale = 2);
 
     HdRenderPassAovBindingVector _aovBindings;
     GfRect2i _dataWindow;

@@ -198,6 +198,10 @@ HdGeminiRenderer::Render(HdRenderThread *renderThread, HdGeminiRenderDelegate* d
 
     if (renderThread->IsStopRequested()) return;
 
+    if (_enableOnScreenStats) {
+        _DrawStats();
+    }
+
     for (auto const& binding : _aovBindings) {
         if (binding.renderBuffer) {
             auto* rb = static_cast<HdGeminiRenderBuffer*>(binding.renderBuffer);
@@ -225,10 +229,6 @@ HdGeminiRenderer::Render(HdRenderThread *renderThread, HdGeminiRenderDelegate* d
                 }
             }
         }
-    }
-
-    if (_enableOnScreenStats) {
-        _DrawStats();
     }
 }
 
@@ -2200,7 +2200,7 @@ static const unsigned char font8x8[96][8] = {
     {0x38,0x08,0x08,0x0e,0x08,0x08,0x38,0x00},{0x20,0x10,0x08,0x00,0x00,0x00,0x00,0x00},{0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00}
 };
 
-void HdGeminiRenderer::_DrawChar(int x, int y, char c, const GfVec4f& color)
+void HdGeminiRenderer::_DrawChar(int x, int y, char c, const GfVec4f& color, int scale)
 {
     if (!_colorBuffer) return;
     unsigned int width = _dataWindow.GetWidth();
@@ -2212,11 +2212,15 @@ void HdGeminiRenderer::_DrawChar(int x, int y, char c, const GfVec4f& color)
     for (int cy = 0; cy < 8; ++cy) {
         for (int cx = 0; cx < 8; ++cx) {
             if (glyph[cy] & (1 << (7 - cx))) {
-                int px = x + cx;
-                int py = height - 1 - (y + cy); // Y-down to Y-up
-                if (px >= 0 && px < (int)width && py >= 0 && py < (int)height) {
-                    float p[4] = {color[0], color[1], color[2], color[3]};
-                    _colorBuffer->Write(GfVec3i(px, py, 0), 4, p);
+                for (int sy = 0; sy < scale; ++sy) {
+                    for (int sx = 0; sx < scale; ++sx) {
+                        int px = x + cx * scale + sx;
+                        int py = height - 1 - (y + cy * scale + sy); // Y-down to Y-up
+                        if (px >= 0 && px < (int)width && py >= 0 && py < (int)height) {
+                            float p[4] = {color[0], color[1], color[2], color[3]};
+                            _colorBuffer->Write(GfVec3i(px, py, 0), 4, p);
+                        }
+                    }
                 }
             }
         }
@@ -2241,8 +2245,8 @@ void HdGeminiRenderer::_DrawStats()
     int cursorY = 10;
     for (int i = 0; statsStr[i] != '\0'; ++i) {
         // Simple drop shadow
-        _DrawChar(cursorX + 1, cursorY + 1, statsStr[i], GfVec4f(0, 0, 0, 1));
-        _DrawChar(cursorX, cursorY, statsStr[i], color);
-        cursorX += 8; // 8x8 font
+        _DrawChar(cursorX + 2, cursorY + 2, statsStr[i], GfVec4f(0, 0, 0, 1), 2);
+        _DrawChar(cursorX, cursorY, statsStr[i], color, 2);
+        cursorX += 8 * 2; // 8x8 font * scale
     }
 }

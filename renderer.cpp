@@ -226,6 +226,10 @@ HdGeminiRenderer::Render(HdRenderThread *renderThread, HdGeminiRenderDelegate* d
             }
         }
     }
+
+    if (_enableOnScreenStats) {
+        _DrawStats();
+    }
 }
 
 void

@@ -58,6 +58,7 @@ public:
     void SetResolutionLevel(int level) { _initialResolutionLevel = level; }
     void SetAntiAliasingFilter(int filter) { _antiAliasingFilter = filter; }
     void SetEnableSycl(bool enable) { _enableSycl = enable; }
+    void SetEnableOnScreenStats(bool enable) { _enableOnScreenStats = enable; }
 
     void SetEnableDoF(bool enable) { _enableDoF = enable; }    void SetFocalLength(float fl) { _focalLength = fl; }
     void SetFStop(float fStop) { _fStop = fStop; }
@@ -88,6 +89,7 @@ private:
     int _initialResolutionLevel = 2;
     int _antiAliasingFilter = 1;
     bool _enableSycl = true;
+    bool _enableOnScreenStats = false;
     
     bool _enableDoF = false;
     float _focalLength = 50.0f;
@@ -266,6 +268,8 @@ private:
 
     void _Denoise();
     void _ApplyPostProcess();
+    void _DrawStats();
+    void _DrawChar(int x, int y, char c, const GfVec4f& color);
 
     HdRenderPassAovBindingVector _aovBindings;
     GfRect2i _dataWindow;

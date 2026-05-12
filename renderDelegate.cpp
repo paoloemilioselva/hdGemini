@@ -351,6 +351,11 @@ HdGeminiRenderDelegate::GetRenderSettingDescriptors() const
         VtValue(true)
     });
     list.push_back({
+        "Enable On-Screen Stats",
+        HdGeminiRenderSettingsTokens->enableOnScreenStats,
+        VtValue(false)
+    });
+    list.push_back({
         "Focal Length (mm)",
         HdGeminiRenderSettingsTokens->focalLength,
         VtValue(50.0f)
@@ -558,6 +563,8 @@ HdGeminiRenderDelegate::SetRenderSetting(TfToken const& key, VtValue const& valu
         changed = true;
     } else if (key == HdGeminiRenderSettingsTokens->enableSycl) {
         if (value.IsHolding<bool>()) { _renderer.SetEnableSycl(value.Get<bool>()); changed = true; }
+    } else if (key == HdGeminiRenderSettingsTokens->enableOnScreenStats) {
+        if (value.IsHolding<bool>()) { _renderer.SetEnableOnScreenStats(value.Get<bool>()); postProcessChanged = true; }
     } else if (key == HdGeminiRenderSettingsTokens->enableDoF) {
         if (value.IsHolding<bool>()) { _renderer.SetEnableDoF(value.Get<bool>()); changed = true; }
     } else if (key == HdGeminiRenderSettingsTokens->focalLength) {

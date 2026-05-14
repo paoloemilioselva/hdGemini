@@ -607,10 +607,10 @@ HdGeminiRenderDelegate::SetRenderSetting(TfToken const& key, VtValue const& valu
         _renderThread.StopRender();
         if (changed) {
             _renderer.Clear();
+            _sceneVersion++;
         } else {
             _renderer.ReapplyPostProcess();
         }
-        _sceneVersion++;
     }
     
     HdRenderDelegate::SetRenderSetting(key, value);

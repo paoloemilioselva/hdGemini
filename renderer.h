@@ -290,6 +290,12 @@ private:
     std::vector<GfVec3f> _accumHeroRGB;
     std::vector<GfVec3f> _accumDiffRGB;
 
+    mutable std::atomic<long long> _rayCount{0};
+    long long _lastRayCount = 0;
+    float _raysPerSecond = 0.0f;
+    float _lastProgressionTimeMs = 0.0f;
+    std::chrono::time_point<std::chrono::high_resolution_clock> _lastStatsUpdateTime;
+
     std::vector<TLASNode> _tlasNodes;
     std::vector<int> _tlasInstanceIndices;
 

@@ -194,7 +194,20 @@ HdGeminiRenderer::Render(HdRenderThread *renderThread, HdGeminiRenderDelegate* d
 
     _PrepareScene(renderThread, delegate);
     if (renderThread->IsStopRequested()) return;
+
+    auto start_time = std::chrono::high_resolution_clock::now();
     _RenderTiles(renderThread, delegate);
+    auto end_time = std::chrono::high_resolution_clock::now();
+    _lastProgressionTimeMs = std::chrono::duration<float, std::milli>(end_time - start_time).count();
+
+    auto now = std::chrono::high_resolution_clock::now();
+    float timeSinceLastUpdate = std::chrono::duration<float>(now - _lastStatsUpdateTime).count();
+    if (timeSinceLastUpdate > 0.5f) { // Update rays/sec twice a second
+        long long currentRays = _rayCount.load(std::memory_order_relaxed);
+        _raysPerSecond = (currentRays - _lastRayCount) / timeSinceLastUpdate;
+        _lastRayCount = currentRays;
+        _lastStatsUpdateTime = now;
+    }
 
     if (renderThread->IsStopRequested()) return;
 
@@ -476,6 +489,7 @@ void HdGeminiRenderer::_SubdivideTLAS(int nodeIdx, int start, int end, HdRenderT
 
 bool HdGeminiRenderer::_IntersectTLAS(const GfVec3f& rayOrigin, const GfVec3f& rayDir, HitRecord& hit, HdRenderThread* renderThread) const
 {
+    _rayCount.fetch_add(1, std::memory_order_relaxed);
     if (_tlasNodes.empty() || renderThread->IsStopRequested()) return false;
 
     int stack[64];
@@ -1112,7 +1126,8 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
 
         // --- Physical Sun Direct Lighting ---
         if (_enablePhysicalSky && physicalSunDir[1] > -0.05f && !isInside) {
-            GfVec3f sunColor = _GetSunTransmittance(physicalSunDir) * 20.0f; // Sun intensity multiplier
+            GfVec3f sunIntensity(20.0f * std::exp2(_physicalSkySunExposure));
+            GfVec3f sunColor = GfCompMult(_GetSunTransmittance(physicalSunDir), sunIntensity); // Sun intensity multiplier
             if (sunColor[0] > 0 || sunColor[1] > 0 || sunColor[2] > 0) {
                 float nDotL = std::max(0.0f, GfDot(shadingNormal, physicalSunDir));
                 if (nDotL > 0) {
@@ -2229,24 +2244,32 @@ void HdGeminiRenderer::_DrawChar(int x, int y, char c, const GfVec4f& color, int
 
 void HdGeminiRenderer::_DrawStats()
 {
-    char statsStr[256];
     const char* syclStatus = "OFF";
 #ifdef HDGEMINI_HAS_SYCL
     if (_enableSycl && _syclQueue) syclStatus = "ON";
 #endif
 
-    snprintf(statsStr, sizeof(statsStr), "hdGemini | Frame: %d/%d | Res: 1/%d | SYCL: %s", 
+    char line1[256];
+    snprintf(line1, sizeof(line1), "hdGemini | Frame: %d/%d | Res: 1/%d | SYCL: %s", 
              _frameCount, _targetSampleCount, _resolutionLevel, syclStatus);
 
+    char line2[256];
+    float mrps = _raysPerSecond / 1000000.0f;
+    snprintf(line2, sizeof(line2), "Rays: %.2f M/s | Progression: %.1f ms", mrps, _lastProgressionTimeMs);
+
     GfVec4f color(1.0f, 1.0f, 0.0f, 1.0f); // Yellow
+    int scale = 1;
+    int lineHeight = 10 * scale;
     
-    // Draw string at (10, 10)
-    int cursorX = 10;
-    int cursorY = 10;
-    for (int i = 0; statsStr[i] != '\0'; ++i) {
-        // Simple drop shadow
-        _DrawChar(cursorX + 2, cursorY + 2, statsStr[i], GfVec4f(0, 0, 0, 1), 2);
-        _DrawChar(cursorX, cursorY, statsStr[i], color, 2);
-        cursorX += 8 * 2; // 8x8 font * scale
-    }
+    auto drawText = [&](const char* text, int x, int y) {
+        int cursorX = x;
+        for (int i = 0; text[i] != '\0'; ++i) {
+            _DrawChar(cursorX + 1, y + 1, text[i], GfVec4f(0, 0, 0, 1), scale);
+            _DrawChar(cursorX, y, text[i], color, scale);
+            cursorX += 8 * scale;
+        }
+    };
+
+    drawText(line1, 10, 10);
+    drawText(line2, 10, 10 + lineHeight);
 }

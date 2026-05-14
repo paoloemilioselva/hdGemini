@@ -1,5 +1,10 @@
 @ECHO OFF
 
+REM Check for Intel oneAPI and initialize if present to ensure SYCL DLLs are in PATH
+if exist "C:\Program Files (x86)\Intel\oneAPI\setvars.bat" (
+    call "C:\Program Files (x86)\Intel\oneAPI\setvars.bat" > nul
+)
+
 SET USDROOT=C:\dev\usd-26.03
 SET RMANTREE=C:\Program Files\Pixar\RenderManProServer-26.3
 SET USDEXTRA=C:\Users\paolo\Desktop\usd-26.03-extra

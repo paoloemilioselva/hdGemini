@@ -38,6 +38,7 @@ public:
     void GetFloatBuffer(std::vector<float>& outFloats) const;
 
     void WriteSample(GfVec3i const& pixel, GfVec4f const& color);
+    void WriteSampleLockFree(size_t idx, GfVec4f const& color);
     void Write(GfVec3i const& pixel, size_t numComponents, float const* value);
     void Write(GfVec3i const& pixel, size_t numComponents, int const* value);
     void Clear(size_t numComponents, float const* value);

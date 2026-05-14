@@ -22,6 +22,9 @@
 #include <chrono>
 
 #ifdef HDGEMINI_HAS_OIDN
+#ifndef SYCL_LANGUAGE_VERSION
+#define SYCL_LANGUAGE_VERSION 202001L
+#endif
 #include <OpenImageDenoise/oidn.hpp>
 #endif
 
@@ -126,7 +129,8 @@ HdGeminiRenderer::HdGeminiRenderer()
 #ifdef HDGEMINI_HAS_SYCL
     try {
         _syclQueue = new sycl::queue(sycl::default_selector_v);
-        std::cout << "[Gemini] SYCL queue initialized on: " << _syclQueue->get_device().get_info<sycl::info::device::name>() << std::endl;
+        _syclDeviceName = _syclQueue->get_device().get_info<sycl::info::device::name>();
+        std::cout << "[Gemini] SYCL queue initialized on: " << _syclDeviceName << std::endl;
     } catch (sycl::exception const& e) {
         std::cerr << "[Gemini] SYCL initialization failed: " << e.what() << std::endl;
     }
@@ -2171,11 +2175,15 @@ void HdGeminiRenderer::_RenderTilesSYCL(HdRenderThread *renderThread, HdGeminiRe
             int x = i % width;
             int y = i / width;
             GfVec3f hitColor = heroRGB + diffRGB;
-            _colorBuffer->WriteSample(GfVec3i(x, y, 0), GfVec4f(hitColor[0], hitColor[1], hitColor[2], 1.0f));
-            if (_albedoBuffer) _albedoBuffer->WriteSample(GfVec3i(x, y, 0), GfVec4f(rs.albedo[0], rs.albedo[1], rs.albedo[2], 1.0f));
-            if (_normalBuffer) _normalBuffer->WriteSample(GfVec3i(x, y, 0), GfVec4f(rs.normal[0], rs.normal[1], rs.normal[2], 1.0f));
+            _colorBuffer->WriteSampleLockFree(i, GfVec4f(hitColor[0], hitColor[1], hitColor[2], 1.0f));
+            if (_albedoBuffer) _albedoBuffer->WriteSampleLockFree(i, GfVec4f(rs.albedo[0], rs.albedo[1], rs.albedo[2], 1.0f));
+            if (_normalBuffer) _normalBuffer->WriteSampleLockFree(i, GfVec4f(rs.normal[0], rs.normal[1], rs.normal[2], 1.0f));
         }
     });
+
+    if (!renderThread->IsStopRequested()) _colorBuffer->ResolveBucket(0, 0, width, height);
+    if (!renderThread->IsStopRequested() && _albedoBuffer) _albedoBuffer->ResolveBucket(0, 0, width, height);
+    if (!renderThread->IsStopRequested() && _normalBuffer) _normalBuffer->ResolveBucket(0, 0, width, height);
 }
 #endif
 
@@ -2244,14 +2252,14 @@ void HdGeminiRenderer::_DrawChar(int x, int y, char c, const GfVec4f& color, int
 
 void HdGeminiRenderer::_DrawStats()
 {
-    const char* syclStatus = "OFF";
+    std::string syclStatus = "OFF";
 #ifdef HDGEMINI_HAS_SYCL
-    if (_enableSycl && _syclQueue) syclStatus = "ON";
+    if (_enableSycl && _syclQueue) syclStatus = "ON (" + _syclDeviceName + ")";
 #endif
 
     char line1[256];
     snprintf(line1, sizeof(line1), "hdGemini | Frame: %d/%d | Res: 1/%d | SYCL: %s", 
-             _frameCount, _targetSampleCount, _resolutionLevel, syclStatus);
+             _frameCount, _targetSampleCount, _resolutionLevel, syclStatus.c_str());
 
     char line2[256];
     float mrps = _raysPerSecond / 1000000.0f;

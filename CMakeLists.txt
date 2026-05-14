@@ -18,6 +18,9 @@ project(
     LANGUAGES CXX C
 )
 
+# Force MSVC runtime to DLL (/MD) to avoid TBB linkage errors with icx
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
+
 if (CMAKE_CXX_COMPILER_ID MATCHES "IntelLLVM")
     set(HDGEMINI_USE_SYCL ON CACHE BOOL "Enable SYCL backend for ray generation" FORCE)
     message(STATUS "Intel oneAPI compiler detected. SYCL backend ENABLED automatically.")
@@ -143,7 +146,8 @@ target_link_libraries(
 
 if(HDGEMINI_USE_SYCL)
     add_compile_definitions(HDGEMINI_HAS_SYCL)
-    target_compile_options(${DELEGATE_NAME} PRIVATE -fsycl)
+    add_compile_definitions(_MT _DLL)
+    target_compile_options(${DELEGATE_NAME} PRIVATE -fsycl $<$<CXX_COMPILER_ID:IntelLLVM>:/clang:-Wno-enum-constexpr-conversion /clang:-Wno-narrowing>)
     target_link_options(${DELEGATE_NAME} PRIVATE -fsycl)
 endif()
 

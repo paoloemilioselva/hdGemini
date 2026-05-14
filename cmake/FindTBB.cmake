@@ -4,7 +4,8 @@ set(TBB_SEARCH_DIR ${TBB_ROOT_DIR} $ENV{TBB_INSTALL_DIR} $ENV{TBBROOT})
 
 find_path(TBB_INCLUDE_DIRS tbb/tbb.h
     HINTS ${TBB_SEARCH_DIR}
-    PATH_SUFFIXES include)
+    PATH_SUFFIXES include
+    NO_DEFAULT_PATH)
 
 if(TBB_INCLUDE_DIRS)
     if(EXISTS "${TBB_INCLUDE_DIRS}/tbb/tbb_stddef.h")
@@ -24,11 +25,13 @@ endif()
 
 find_library(TBB_LIBRARY_RELEASE tbb
     HINTS ${TBB_SEARCH_DIR}
-    PATH_SUFFIXES lib lib64)
+    PATH_SUFFIXES lib lib64
+    NO_DEFAULT_PATH)
 
 find_library(TBB_LIBRARY_DEBUG tbb_debug
     HINTS ${TBB_SEARCH_DIR}
-    PATH_SUFFIXES lib lib64)
+    PATH_SUFFIXES lib lib64
+    NO_DEFAULT_PATH)
 
 if(TBB_LIBRARY_RELEASE OR TBB_LIBRARY_DEBUG)
     set(TBB_FOUND TRUE)

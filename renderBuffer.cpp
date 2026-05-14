@@ -117,6 +117,12 @@ HdGeminiRenderBuffer::WriteSample(GfVec3i const& pixel, GfVec4f const& color)
     }
 
     size_t idx = pixel[1] * _width + pixel[0];
+    WriteSampleLockFree(idx, color);
+}
+
+void
+HdGeminiRenderBuffer::WriteSampleLockFree(size_t idx, GfVec4f const& color)
+{
     if (idx * 4 + 3 >= _accumBuffer.size()) return;
 
     _accumBuffer[idx * 4 + 0] += color[0];

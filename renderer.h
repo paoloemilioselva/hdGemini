@@ -312,6 +312,7 @@ private:
 
 #ifdef HDGEMINI_HAS_SYCL
     sycl::queue* _syclQueue = nullptr;
+    std::string _syclDeviceName = "Unknown";
     RayState* _rayBuffer = nullptr;
     size_t _rayBufferSize = 0;
     

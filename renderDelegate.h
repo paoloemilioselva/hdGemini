@@ -49,6 +49,7 @@ TF_DECLARE_PUBLIC_TOKENS(HdGeminiAovTokens, HD_GEMINI_AOV_TOKENS);
     (lensDistortion)                     \
     (chromaticAberration)                \
     (enableSubsurface)                   \
+    (enableSubdivision)                  \
     (physicalSkyEnable)                  \
     (physicalSkyAzimuth)                 \
     (physicalSkyAltitude)                \
@@ -137,6 +138,8 @@ private:
     static HdResourceRegistrySharedPtr _resourceRegistry;
 
     void _Initialize();
+
+    HdRenderIndex* _renderIndex = nullptr;
 
     std::shared_ptr<HdGeminiRenderParam> _renderParam;
     HdRenderThread _renderThread;

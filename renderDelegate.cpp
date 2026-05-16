@@ -7,6 +7,8 @@
 #include "light.h"
 #include "material.h"
 
+#include "pxr/imaging/hd/renderIndex.h"
+#include "pxr/imaging/hd/changeTracker.h"
 #include "pxr/imaging/hd/camera.h"
 #include "pxr/imaging/hd/extComputation.h"
 #include "pxr/imaging/hd/tokens.h"
@@ -301,6 +303,11 @@ HdGeminiRenderDelegate::GetRenderSettingDescriptors() const
         VtValue(true)
     });
     list.push_back({
+        "Enable Subdivision",
+        HdGeminiRenderSettingsTokens->enableSubdivision,
+        VtValue(true)
+    });
+    list.push_back({
         "Enable OIDN Denoiser",
         HdGeminiRenderSettingsTokens->enableDenoiser,
         VtValue(true)
@@ -448,6 +455,8 @@ HdGeminiRenderDelegate::GetRenderSetting(TfToken const& key) const
     
     if (key == HdGeminiRenderSettingsTokens->enableSubsurface) {
         return VtValue(true);
+    } else if (key == HdGeminiRenderSettingsTokens->enableSubdivision) {
+        return VtValue(true);
     } else if (key == HdGeminiRenderSettingsTokens->enableDenoiser) {
         return VtValue(true);
     } else if (key == HdGeminiRenderSettingsTokens->enableFireflyFilter) {
@@ -532,6 +541,13 @@ HdGeminiRenderDelegate::SetRenderSetting(TfToken const& key, VtValue const& valu
         if (value.IsHolding<bool>()) {
             _renderer.SetEnableSubsurface(value.Get<bool>());
             changed = true;
+        }
+    } else if (key == HdGeminiRenderSettingsTokens->enableSubdivision) {
+        if (value.IsHolding<bool>()) {
+            changed = true;
+            for (auto& pair : _meshes) {
+                // Request a sync on all meshes
+            }
         }
     } else if (key == HdGeminiRenderSettingsTokens->enableDenoiser) {
         if (value.IsHolding<bool>()) {

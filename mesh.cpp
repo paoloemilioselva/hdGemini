@@ -356,8 +356,14 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
         SdfPath defaultMaterialId = sceneDelegate->GetMaterialId(id);
         HdMeshTopology topology = GetMeshTopology(sceneDelegate);
         
+        bool globalSubdivision = true;
+        VtValue subdivVal = geminiRenderParam->GetRenderDelegate()->GetRenderSetting(HdGeminiRenderSettingsTokens->enableSubdivision);
+        if (subdivVal.IsHolding<bool>()) {
+            globalSubdivision = subdivVal.Get<bool>();
+        }
+
         int refineLevel = sceneDelegate->GetDisplayStyle(id).refineLevel;
-        bool doSubdivide = (topology.GetScheme() == TfToken("catmullClark") && refineLevel > 0);
+        bool doSubdivide = (globalSubdivision && topology.GetScheme() == TfToken("catmullClark") && refineLevel > 0);
 
         VtVec3iArray allTriangulatedIndices;
         VtIntArray trianglePrimitiveParams;

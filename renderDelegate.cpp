@@ -135,7 +135,7 @@ HdGeminiRenderDelegate::GetShaderSourceTypes() const
 TfTokenVector
 HdGeminiRenderDelegate::GetMaterialRenderContexts() const
 {
-    return {TfToken("mtlx")};
+    return {TfToken("mtlx"), TfToken()};
 }
 
 HdResourceRegistrySharedPtr

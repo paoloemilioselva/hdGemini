@@ -369,6 +369,10 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
         
         bool doSubdivide = (globalSubdivision && topology.GetScheme() == TfToken("catmullClark"));
 
+        if (doSubdivide) {
+            _normals.clear();
+        }
+
         VtVec3iArray allTriangulatedIndices;
         VtIntArray trianglePrimitiveParams;
 
@@ -543,6 +547,24 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
                 meshUtil.ComputeTriangulatedFaceVaryingPrimvar(_normals.data(), (int)_normals.size(), HdTypeFloatVec3, &triangulated);
                 if (!triangulated.IsEmpty() && triangulated.IsHolding<VtVec3fArray>()) _normals = triangulated.Get<VtVec3fArray>();
             }
+        }
+
+        if (_normals.empty() && !_points.empty() && !allTriangulatedIndices.empty()) {
+            VtVec3fArray smoothNormals(_points.size(), GfVec3f(0.0f));
+            for (const auto& tri : allTriangulatedIndices) {
+                GfVec3f p0 = _points[tri[0]];
+                GfVec3f p1 = _points[tri[1]];
+                GfVec3f p2 = _points[tri[2]];
+                GfVec3f n = GfCross(p1 - p0, p2 - p0);
+                smoothNormals[tri[0]] += n;
+                smoothNormals[tri[1]] += n;
+                smoothNormals[tri[2]] += n;
+            }
+            for (auto& n : smoothNormals) {
+                n.Normalize();
+            }
+            _normals = smoothNormals;
+            _normalInterp = HdInterpolationVertex;
         }
         
         // Map original faces to material IDs (GeomSubsets)

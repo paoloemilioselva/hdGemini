@@ -363,7 +363,11 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
         }
 
         int refineLevel = sceneDelegate->GetDisplayStyle(id).refineLevel;
-        bool doSubdivide = (globalSubdivision && topology.GetScheme() == TfToken("catmullClark") && refineLevel > 0);
+        if (refineLevel <= 0) {
+            refineLevel = 2; // Default to level 2 if not explicitly requested
+        }
+        
+        bool doSubdivide = (globalSubdivision && topology.GetScheme() == TfToken("catmullClark"));
 
         VtVec3iArray allTriangulatedIndices;
         VtIntArray trianglePrimitiveParams;

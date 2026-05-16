@@ -11,7 +11,27 @@
 #include <algorithm>
 #include <map>
 
+#include <opensubdiv/far/topologyDescriptor.h>
+#include <opensubdiv/far/topologyRefinerFactory.h>
+#include <opensubdiv/far/primvarRefiner.h>
+
 PXR_NAMESPACE_USING_DIRECTIVE
+
+struct OsdGfVec3f {
+    GfVec3f v;
+    OsdGfVec3f() : v(0) {}
+    OsdGfVec3f(const GfVec3f& vec) : v(vec) {}
+    void Clear() { v = GfVec3f(0); }
+    void AddWithWeight(const OsdGfVec3f& src, float weight) { v += src.v * weight; }
+};
+
+struct OsdGfVec2f {
+    GfVec2f v;
+    OsdGfVec2f() : v(0) {}
+    OsdGfVec2f(const GfVec2f& vec) : v(vec) {}
+    void Clear() { v = GfVec2f(0); }
+    void AddWithWeight(const OsdGfVec2f& src, float weight) { v += src.v * weight; }
+};
 
 HdGeminiMesh::HdGeminiMesh(SdfPath const& id)
     : HdMesh(id)
@@ -274,19 +294,8 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
                 uvs = flattened;
             }
 
-            if (stInterp == HdInterpolationFaceVarying) {
-                HdMeshTopology topology = GetMeshTopology(sceneDelegate);
-                HdMeshUtil meshUtil(&topology, id);
-                VtValue triangulated;
-                meshUtil.ComputeTriangulatedFaceVaryingPrimvar(uvs.data(), (int)uvs.size(), HdTypeFloatVec2, &triangulated);
-                if (!triangulated.IsEmpty() && triangulated.IsHolding<VtVec2fArray>()) {
-                    _uvs = triangulated.Get<VtVec2fArray>();
-                } else {
-                    _uvs = uvs;
-                }
-            } else {
-                _uvs = uvs;
-            }
+            _uvs = uvs;
+            _uvInterp = stInterp;
             _subsetsDirty = true;
         }
     }
@@ -346,16 +355,191 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
         
         SdfPath defaultMaterialId = sceneDelegate->GetMaterialId(id);
         HdMeshTopology topology = GetMeshTopology(sceneDelegate);
-        HdMeshUtil meshUtil(&topology, id);
         
+        int refineLevel = sceneDelegate->GetDisplayStyle(id).refineLevel;
+        bool doSubdivide = (topology.GetScheme() == TfToken("catmullClark") && refineLevel > 0);
+
         VtVec3iArray allTriangulatedIndices;
         VtIntArray trianglePrimitiveParams;
-        meshUtil.ComputeTriangleIndices(&allTriangulatedIndices, &trianglePrimitiveParams);
+
+        if (doSubdivide && !_points.empty()) {
+            typedef OpenSubdiv::Far::TopologyDescriptor Descriptor;
+            Descriptor desc;
+            desc.numVertices = _points.size();
+            desc.numFaces = topology.GetFaceVertexCounts().size();
+            desc.numVertsPerFace = topology.GetFaceVertexCounts().cdata();
+            desc.vertIndicesPerFace = topology.GetFaceVertexIndices().cdata();
+
+            int uvChannelIdx = -1, colorChannelIdx = -1, normalChannelIdx = -1;
+            int numChannels = 0;
+            Descriptor::FVarChannel channels[3];
+
+            std::vector<int> fvIndices, fvColorsIndices, fvNormalsIndices;
+            if (_uvInterp == HdInterpolationFaceVarying && !_uvs.empty()) {
+                fvIndices.resize(_uvs.size());
+                for(size_t i=0; i<fvIndices.size(); ++i) fvIndices[i] = (int)i;
+                channels[numChannels].numValues = _uvs.size();
+                channels[numChannels].valueIndices = fvIndices.data();
+                uvChannelIdx = numChannels++;
+            }
+            if (_colorInterp == HdInterpolationFaceVarying && !_colors.empty()) {
+                fvColorsIndices.resize(_colors.size());
+                for(size_t i=0; i<fvColorsIndices.size(); ++i) fvColorsIndices[i] = (int)i;
+                channels[numChannels].numValues = _colors.size();
+                channels[numChannels].valueIndices = fvColorsIndices.data();
+                colorChannelIdx = numChannels++;
+            }
+            if (_normalInterp == HdInterpolationFaceVarying && !_normals.empty()) {
+                fvNormalsIndices.resize(_normals.size());
+                for(size_t i=0; i<fvNormalsIndices.size(); ++i) fvNormalsIndices[i] = (int)i;
+                channels[numChannels].numValues = _normals.size();
+                channels[numChannels].valueIndices = fvNormalsIndices.data();
+                normalChannelIdx = numChannels++;
+            }
+
+            desc.numFVarChannels = numChannels;
+            desc.fvarChannels = channels;
+
+            OpenSubdiv::Sdc::SchemeType type = OpenSubdiv::Sdc::SCHEME_CATMARK;
+            OpenSubdiv::Sdc::Options options;
+            options.SetVtxBoundaryInterpolation(OpenSubdiv::Sdc::Options::VTX_BOUNDARY_EDGE_ONLY);
+
+            OpenSubdiv::Far::TopologyRefiner* refiner = 
+                OpenSubdiv::Far::TopologyRefinerFactory<Descriptor>::Create(
+                    desc, OpenSubdiv::Far::TopologyRefinerFactory<Descriptor>::Options(type, options));
+
+            if (refiner) {
+                refiner->RefineUniform(OpenSubdiv::Far::TopologyRefiner::UniformOptions(refineLevel));
+                OpenSubdiv::Far::PrimvarRefiner primvarRefiner(*refiner);
+
+                // Interpolate Points
+                std::vector<OsdGfVec3f> srcPoints(_points.size());
+                for(size_t i=0; i<_points.size(); ++i) srcPoints[i] = OsdGfVec3f(_points[i]);
+                for (int level = 1; level <= refineLevel; ++level) {
+                    std::vector<OsdGfVec3f> dstPoints(refiner->GetLevel(level).GetNumVertices());
+                    primvarRefiner.Interpolate(level, srcPoints, dstPoints);
+                    srcPoints = dstPoints;
+                }
+                _points.resize(srcPoints.size());
+                for(size_t i=0; i<srcPoints.size(); ++i) _points[i] = srcPoints[i].v;
+
+                // Interpolate FVar
+                std::vector<OsdGfVec2f> srcUvs;
+                if (uvChannelIdx >= 0) {
+                    srcUvs.resize(_uvs.size());
+                    for(size_t i=0; i<_uvs.size(); ++i) srcUvs[i] = OsdGfVec2f(_uvs[i]);
+                    for (int level = 1; level <= refineLevel; ++level) {
+                        std::vector<OsdGfVec2f> dstUvs(refiner->GetLevel(level).GetNumFVarValues(uvChannelIdx));
+                        primvarRefiner.InterpolateFaceVarying(level, srcUvs, dstUvs, uvChannelIdx);
+                        srcUvs = dstUvs;
+                    }
+                }
+                std::vector<OsdGfVec3f> srcColors;
+                if (colorChannelIdx >= 0) {
+                    srcColors.resize(_colors.size());
+                    for(size_t i=0; i<_colors.size(); ++i) srcColors[i] = OsdGfVec3f(_colors[i]);
+                    for (int level = 1; level <= refineLevel; ++level) {
+                        std::vector<OsdGfVec3f> dstColors(refiner->GetLevel(level).GetNumFVarValues(colorChannelIdx));
+                        primvarRefiner.InterpolateFaceVarying(level, srcColors, dstColors, colorChannelIdx);
+                        srcColors = dstColors;
+                    }
+                }
+                std::vector<OsdGfVec3f> srcNormals;
+                if (normalChannelIdx >= 0) {
+                    srcNormals.resize(_normals.size());
+                    for(size_t i=0; i<_normals.size(); ++i) srcNormals[i] = OsdGfVec3f(_normals[i]);
+                    for (int level = 1; level <= refineLevel; ++level) {
+                        std::vector<OsdGfVec3f> dstNormals(refiner->GetLevel(level).GetNumFVarValues(normalChannelIdx));
+                        primvarRefiner.InterpolateFaceVarying(level, srcNormals, dstNormals, normalChannelIdx);
+                        srcNormals = dstNormals;
+                    }
+                }
+
+                // Triangulate Refined Quads
+                OpenSubdiv::Far::TopologyLevel const& refLevel = refiner->GetLevel(refineLevel);
+                int numFaces = refLevel.GetNumFaces();
+                
+                VtVec2fArray triangulatedUvs;
+                VtVec3fArray triangulatedColors;
+                VtVec3fArray triangulatedNormals;
+
+                for (int f = 0; f < numFaces; ++f) {
+                    OpenSubdiv::Far::ConstIndexArray verts = refLevel.GetFaceVertices(f);
+                    if (verts.size() == 4) {
+                        allTriangulatedIndices.push_back(GfVec3i(verts[0], verts[1], verts[2]));
+                        allTriangulatedIndices.push_back(GfVec3i(verts[0], verts[2], verts[3]));
+
+                        int baseFace = f;
+                        for(int l = refineLevel; l > 0; --l) {
+                            baseFace = refiner->GetLevel(l).GetFaceParentFace(baseFace);
+                        }
+                        
+                        int param = (baseFace << 2) | 0;
+                        trianglePrimitiveParams.push_back(param);
+                        trianglePrimitiveParams.push_back(param);
+
+                        if (uvChannelIdx >= 0) {
+                            OpenSubdiv::Far::ConstIndexArray fv = refLevel.GetFaceFVarValues(f, uvChannelIdx);
+                            triangulatedUvs.push_back(srcUvs[fv[0]].v);
+                            triangulatedUvs.push_back(srcUvs[fv[1]].v);
+                            triangulatedUvs.push_back(srcUvs[fv[2]].v);
+                            triangulatedUvs.push_back(srcUvs[fv[0]].v);
+                            triangulatedUvs.push_back(srcUvs[fv[2]].v);
+                            triangulatedUvs.push_back(srcUvs[fv[3]].v);
+                        }
+                        if (colorChannelIdx >= 0) {
+                            OpenSubdiv::Far::ConstIndexArray fv = refLevel.GetFaceFVarValues(f, colorChannelIdx);
+                            triangulatedColors.push_back(srcColors[fv[0]].v);
+                            triangulatedColors.push_back(srcColors[fv[1]].v);
+                            triangulatedColors.push_back(srcColors[fv[2]].v);
+                            triangulatedColors.push_back(srcColors[fv[0]].v);
+                            triangulatedColors.push_back(srcColors[fv[2]].v);
+                            triangulatedColors.push_back(srcColors[fv[3]].v);
+                        }
+                        if (normalChannelIdx >= 0) {
+                            OpenSubdiv::Far::ConstIndexArray fv = refLevel.GetFaceFVarValues(f, normalChannelIdx);
+                            triangulatedNormals.push_back(srcNormals[fv[0]].v);
+                            triangulatedNormals.push_back(srcNormals[fv[1]].v);
+                            triangulatedNormals.push_back(srcNormals[fv[2]].v);
+                            triangulatedNormals.push_back(srcNormals[fv[0]].v);
+                            triangulatedNormals.push_back(srcNormals[fv[2]].v);
+                            triangulatedNormals.push_back(srcNormals[fv[3]].v);
+                        }
+                    }
+                }
+                
+                if (uvChannelIdx >= 0) _uvs = triangulatedUvs;
+                if (colorChannelIdx >= 0) _colors = triangulatedColors;
+                if (normalChannelIdx >= 0) _normals = triangulatedNormals;
+                
+                delete refiner;
+            }
+        } else {
+            HdMeshUtil meshUtil(&topology, id);
+            meshUtil.ComputeTriangleIndices(&allTriangulatedIndices, &trianglePrimitiveParams);
+
+            if (_uvInterp == HdInterpolationFaceVarying && !_uvs.empty()) {
+                VtValue triangulated;
+                meshUtil.ComputeTriangulatedFaceVaryingPrimvar(_uvs.data(), (int)_uvs.size(), HdTypeFloatVec2, &triangulated);
+                if (!triangulated.IsEmpty() && triangulated.IsHolding<VtVec2fArray>()) _uvs = triangulated.Get<VtVec2fArray>();
+            }
+            if (_colorInterp == HdInterpolationFaceVarying && !_colors.empty()) {
+                VtValue triangulated;
+                meshUtil.ComputeTriangulatedFaceVaryingPrimvar(_colors.data(), (int)_colors.size(), HdTypeFloatVec3, &triangulated);
+                if (!triangulated.IsEmpty() && triangulated.IsHolding<VtVec3fArray>()) _colors = triangulated.Get<VtVec3fArray>();
+            }
+            if (_normalInterp == HdInterpolationFaceVarying && !_normals.empty()) {
+                VtValue triangulated;
+                meshUtil.ComputeTriangulatedFaceVaryingPrimvar(_normals.data(), (int)_normals.size(), HdTypeFloatVec3, &triangulated);
+                if (!triangulated.IsEmpty() && triangulated.IsHolding<VtVec3fArray>()) _normals = triangulated.Get<VtVec3fArray>();
+            }
+        }
         
         // Map original faces to material IDs (GeomSubsets)
         HdGeomSubsets geomSubsets = topology.GetGeomSubsets();
 
         std::vector<SdfPath> faceMaterialPaths(topology.GetNumFaces(), defaultMaterialId);
+
         
         HDGEMINI_LOG << "[Gemini] Mesh " << id.GetText() << " splitting into subsets (Faces: " << topology.GetNumFaces() << "):" << std::endl;
         for (const auto& subset : geomSubsets) {

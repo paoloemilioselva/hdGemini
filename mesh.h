@@ -66,6 +66,10 @@ private:
     VtVec2fArray _uvs;
     VtVec3fArray _normals;
 
+    HdInterpolation _colorInterp = HdInterpolationConstant;
+    HdInterpolation _uvInterp = HdInterpolationConstant;
+    HdInterpolation _normalInterp = HdInterpolationConstant;
+
     HdGeminiMesh(const HdGeminiMesh&) = delete;
     HdGeminiMesh &operator =(const HdGeminiMesh&) = delete;
 };

@@ -140,6 +140,8 @@ target_link_libraries(
     PUBLIC
     ${USD_LIBS}
     usd_sdr.lib
+    usd_pxOsd.lib
+    osdCPU.lib
     TBB::tbb
     ${OIDN_LIBRARIES}
 )

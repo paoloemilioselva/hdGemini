@@ -606,7 +606,25 @@ GfVec3f HdGeminiRenderer::_SampleTexture(const SdfAssetPath& path, const GfVec2f
 {
     if (path.GetAssetPath().empty()) return GfVec3f(1.0f);
 
-    std::string cacheKey = path.GetAssetPath() + (forceLinear ? "_lin" : "_srgb");
+    std::string assetPath = path.GetAssetPath();
+    std::string resolvedPath = path.GetResolvedPath();
+
+    size_t udimPos = assetPath.find("<UDIM>");
+    if (udimPos != std::string::npos) {
+        int uIndex = std::clamp((int)std::floor(uv[0]), 0, 9);
+        int vIndex = std::max(0, (int)std::floor(uv[1]));
+        int udim = 1001 + uIndex + (vIndex * 10);
+        std::string udimStr = std::to_string(udim);
+        
+        assetPath.replace(udimPos, 6, udimStr);
+        
+        size_t resUdimPos = resolvedPath.find("<UDIM>");
+        if (resUdimPos != std::string::npos) {
+            resolvedPath.replace(resUdimPos, 6, udimStr);
+        }
+    }
+
+    std::string cacheKey = assetPath + (forceLinear ? "_lin" : "_srgb");
 
     {
         std::lock_guard<std::mutex> lock(_textureMutex);
@@ -629,10 +647,13 @@ GfVec3f HdGeminiRenderer::_SampleTexture(const SdfAssetPath& path, const GfVec2f
         return _SampleTextureData(data, uv);
     }
 
-    HDGEMINI_LOG << "[Gemini]   Loading texture: " << path.GetAssetPath() << std::endl;
-    HioImageSharedPtr image = HioImage::OpenForReading(path.GetResolvedPath());
+    HDGEMINI_LOG << "[Gemini]   Loading texture: " << assetPath << std::endl;
+    HioImageSharedPtr image = HioImage::OpenForReading(resolvedPath.empty() ? assetPath : resolvedPath);
     if (!image) {
-        HDGEMINI_LOG << "[Gemini]   Failed to open texture: " << path.GetResolvedPath() << std::endl;
+        image = HioImage::OpenForReading(assetPath);
+    }
+    if (!image) {
+        HDGEMINI_LOG << "[Gemini]   Failed to open texture: " << (resolvedPath.empty() ? assetPath : resolvedPath) << std::endl;
         _textureCache[cacheKey] = TextureData();
         return GfVec3f(1.0f);
     }

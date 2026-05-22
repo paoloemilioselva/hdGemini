@@ -536,8 +536,9 @@ bool HdGeminiRenderer::_IntersectTLAS(const GfVec3f& rayOrigin, const GfVec3f& r
                 if (inst.subset->bvh.Intersect(objRayOrigin, objRayDir, instT, instNormal, instUv, instSmoothNormal, instDpdu, instDpdv, instSmoothColor, matIdx)) {
                     if (instT < hit.t) {
                         hit.t = instT;
-                        hit.normal = inst.transform.TransformDir(instNormal).GetNormalized();
-                        hit.smoothNormal = inst.transform.TransformDir(instSmoothNormal).GetNormalized();
+                        GfMatrix4f invTransp = inst.invTransform.GetTranspose();
+                        hit.normal = invTransp.TransformDir(instNormal).GetNormalized();
+                        hit.smoothNormal = invTransp.TransformDir(instSmoothNormal).GetNormalized();
                         hit.dpdu = inst.transform.TransformDir(instDpdu).GetNormalized();
                         hit.dpdv = inst.transform.TransformDir(instDpdv).GetNormalized();
                         hit.uv = instUv;

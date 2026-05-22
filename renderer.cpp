@@ -595,8 +595,17 @@ GfVec3f HdGeminiRenderer::_SampleEnvironment(const GfVec3f& rayDir) const
     if (_envMapPixels.empty()) {
         return GfVec3f(0.0f);
     }
-    float theta = std::acos(std::clamp(rayDir[1], -1.0f, 1.0f));
-    float phi = std::atan2(rayDir[2], rayDir[0]);
+    GfVec3f localDir = rayDir;
+    const HdGeminiLight* domeLight = nullptr;
+    for (const auto& light : _activeLights) {
+        if (light->GetLightType() == HdPrimTypeTokens->domeLight) {
+            localDir = GfMatrix4f(light->GetTransform()).GetInverse().TransformDir(rayDir).GetNormalized();
+            domeLight = light;
+            break;
+        }
+    }
+    float theta = std::acos(std::clamp(localDir[1], -1.0f, 1.0f));
+    float phi = std::atan2(localDir[2], localDir[0]);
     if (phi < 0) phi += 2.0f * M_PI;
     float u = phi / (2.0f * M_PI);
     float v = theta / M_PI;
@@ -604,10 +613,8 @@ GfVec3f HdGeminiRenderer::_SampleEnvironment(const GfVec3f& rayDir) const
     int y = std::clamp((int)(v * _envMapHeight), 0, _envMapHeight - 1);
     size_t idx = (y * _envMapWidth + x) * 3;
     GfVec3f color(_envMapPixels[idx], _envMapPixels[idx+1], _envMapPixels[idx+2]);
-    for (const auto& light : _activeLights) {
-        if (light->GetLightType() == HdPrimTypeTokens->domeLight) {
-            return GfCompMult(color, light->GetColor()) * light->GetIntensity();
-        }
+    if (domeLight) {
+        return GfCompMult(color, domeLight->GetColor()) * domeLight->GetIntensity();
     }
     return color;
 }
@@ -937,6 +944,8 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
         std::cos(altitudeRad) * std::cos(azimuthRad)
     ).GetNormalized();
 
+    float lastBsdfPdf = 0.0f;
+
     for (int bounce = 0; bounce < maxDepth; ++bounce) {
         if (renderThread->IsStopRequested()) break;
 
@@ -954,8 +963,17 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
             if (bounce == 0 && !_renderIblBackground) {
                 // Do not add the environment map to the final pixel if background rendering is disabled for primary rays.
                 totalRadiance += SampledSpectrum(0.0f);
-            } else {
+            } else if (bounce == 0) {
                 totalRadiance += throughput * env;
+            } else {
+                float lightPdf = 0.0f;
+                if (_hasDomeLight && !_envMapRowCdf.empty() && _envMapTotalLuminance > 0) {
+                    float lum = 0.2126f * envRGB[0] + 0.7152f * envRGB[1] + 0.0722f * envRGB[2];
+                    float envPdf = lum / (_envMapTotalLuminance * (M_PI / (float)_envMapHeight) * (2.0f * M_PI / (float)_envMapWidth));
+                    lightPdf = std::max(envPdf, 1e-6f) / (float)_activeLights.size();
+                }
+                float misWeight = (lastBsdfPdf <= 0.0f) ? 1.0f : PowerHeuristic(lastBsdfPdf, lightPdf);
+                totalRadiance += throughput * env * misWeight;
             }
             break;
         }
@@ -1045,7 +1063,8 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
                 int x = std::clamp((int)std::distance(colCdf, itX) - 1, 0, _envMapWidth - 1);
                 float theta = M_PI * (float)(y + 0.5f) / (float)_envMapHeight;
                 float phi = 2.0f * M_PI * (float)(x + 0.5f) / (float)_envMapWidth;
-                lDir = GfVec3f(std::sin(theta) * std::cos(phi), std::cos(theta), std::sin(theta) * std::sin(phi));
+                GfVec3f localDir(std::sin(theta) * std::cos(phi), std::cos(theta), std::sin(theta) * std::sin(phi));
+                lDir = GfMatrix4f(light->GetTransform()).TransformDir(localDir).GetNormalized();
                 size_t idx = (y * _envMapWidth + x) * 3;
                 GfVec3f texColor(_envMapPixels[idx], _envMapPixels[idx+1], _envMapPixels[idx+2]);
                 lColor = GfCompMult(texColor, light->GetColor()) * light->GetIntensity();
@@ -1282,11 +1301,22 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
             if (hit.roughness > 0.0f) {
                 GfVec3f h = AlignToNormal(SampleGGX(RandomFloat(rng), RandomFloat(rng), hit.roughness), shadingNormal);
                 reflectDir = (currentRayDir - 2.0f * GfDot(currentRayDir, h) * h).GetNormalized();
+                
+                float nDotH = std::max(0.0f, GfDot(shadingNormal, h));
+                float lDotH = std::max(0.0f, GfDot(reflectDir, h));
+                float alpha = std::max(0.001f, hit.roughness * hit.roughness);
+                float alpha2 = alpha * alpha;
+                float D = alpha2 / (float)(M_PI * std::pow(nDotH * nDotH * (alpha2 - 1.0f) + 1.0f, 2.0f));
+                float specPdf = (D * nDotH) / (4.0f * std::max(lDotH, 1e-6f));
+                lastBsdfPdf = specPdf * reflectProb;
+                
                 if (GfDot(reflectDir, shadingNormal) < 0) {
                     reflectDir = (currentRayDir - 2.0f * GfDot(currentRayDir, shadingNormal) * shadingNormal).GetNormalized();
+                    lastBsdfPdf = 0.0f;
                 }
             } else {
                 reflectDir = (currentRayDir - 2.0f * GfDot(currentRayDir, shadingNormal) * shadingNormal).GetNormalized();
+                lastBsdfPdf = 0.0f;
             }
             currentRayDir = reflectDir;
             currentRayOrigin = hitPos + shadingNormal * 1e-4f;
@@ -1325,6 +1355,7 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
                     currentRayDir = refractDir;
                     currentRayOrigin = hitPos - n * 1e-4f;
                     throughput = throughput * RGBToSpectrum(hit.transmissionColor, lambda);
+                    lastBsdfPdf = 0.0f;
                 } else {
                     // Total Internal Reflection
                     if (reflectionBounces >= (isInteractive ? 1 : _maxReflectionBounces)) break;
@@ -1332,6 +1363,7 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
                     GfVec3f reflectDir = (currentRayDir - 2.0f * cosThetaI * n).GetNormalized();
                     currentRayDir = reflectDir;
                     currentRayOrigin = hitPos + n * 1e-4f;
+                    lastBsdfPdf = 0.0f;
                 }
             } else {
                 // Diffuse
@@ -1339,6 +1371,8 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
                 float nDotL = std::max(0.0f, GfDot(shadingNormal, diffuseDir));
                 float pdf = nDotL / (float)M_PI;
                 if (pdf < 1e-6f) break;
+                
+                lastBsdfPdf = pdf * (1.0f - hit.transmission) * (1.0f - reflectProb);
                 
                 GfVec3f finalDiffuse = hit.baseColor * (1.0f - hit.subsurface) + hit.subsurfaceColor * hit.subsurface;
                 throughput = throughput * RGBToSpectrum(finalDiffuse, lambda); 

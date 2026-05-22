@@ -647,7 +647,12 @@ GfVec3f HdGeminiRenderer::_SampleTexture(const SdfAssetPath& path, const GfVec2f
         return _SampleTextureData(data, uv);
     }
 
-    HDGEMINI_LOG << "[Gemini]   Loading texture: " << assetPath << std::endl;
+    if (path.GetAssetPath().find("<UDIM>") != std::string::npos) {
+        HDGEMINI_LOG << "[Gemini]   UDIM detected! Original: " << path.GetAssetPath() << " -> Resolved: " << assetPath << std::endl;
+    } else {
+        HDGEMINI_LOG << "[Gemini]   Loading texture: " << assetPath << std::endl;
+    }
+
     HioImageSharedPtr image = HioImage::OpenForReading(resolvedPath.empty() ? assetPath : resolvedPath);
     if (!image) {
         image = HioImage::OpenForReading(assetPath);
@@ -1120,7 +1125,9 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
                         float G_v = nDotV_eval / (nDotV_eval * (1.0f - k_g) + k_g);
                         float G = G_l * G_v;
                         
-                        GfVec3f F0 = hit.specularColor * (1.0f - hit.metallic) * 0.04f + hit.baseColor * hit.metallic;
+                        float f0_ior = (hit.ior - 1.0f) / (hit.ior + 1.0f);
+                        f0_ior *= f0_ior;
+                        GfVec3f F0 = hit.specular * hit.specularColor * (1.0f - hit.metallic) * f0_ior + hit.baseColor * hit.metallic;
                         GfVec3f F = F0 + (GfVec3f(1.0f) - F0) * std::pow(1.0f - lDotH, 5.0f);
                         GfVec3f specBsdf = (F * D * G) / (4.0f * nDotL_eval * nDotV_eval);
 
@@ -1178,7 +1185,9 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
                         float G_v = nDotV_eval / (nDotV_eval * (1.0f - k_g) + k_g);
                         float G = G_l * G_v;
                         
-                        GfVec3f F0 = hit.specularColor * (1.0f - hit.metallic) * 0.04f + hit.baseColor * hit.metallic;
+                        float f0_ior = (hit.ior - 1.0f) / (hit.ior + 1.0f);
+                        f0_ior *= f0_ior;
+                        GfVec3f F0 = hit.specular * hit.specularColor * (1.0f - hit.metallic) * f0_ior + hit.baseColor * hit.metallic;
                         GfVec3f F = F0 + (GfVec3f(1.0f) - F0) * std::pow(1.0f - lDotH, 5.0f);
                         GfVec3f specBsdf = (F * D * G) / (4.0f * nDotL_eval * nDotV_eval);
 

@@ -1391,67 +1391,7 @@ HdGeminiRenderer::_Denoise()
         return 0.2126f * r + 0.7152f * g + 0.0722f * b;
     };
 
-    // 1. Firefly Rejection on Hero (Structural noise)
-    if (_enableFireflyFilter) {
-        std::vector<float> clampedHero = heroOutput;
-        for (int y = 0; y < (int)height; ++y) {
-            for (int x = 0; x < (int)width; ++x) {
-                size_t idx = (y * width + x) * 3;
-                float r = clampedHero[idx];
-                float g = clampedHero[idx+1];
-                float b = clampedHero[idx+2];
-                float lum = getLuminance(r, g, b);
-
-                float maxNeighborLum = 0.0f;
-                for (int dy = -1; dy <= 1; ++dy) {
-                    for (int dx = -1; dx <= 1; ++dx) {
-                        if (dx == 0 && dy == 0) continue;
-                        int nx = std::clamp(x + dx, 0, (int)width - 1);
-                        int ny = std::clamp(y + dy, 0, (int)height - 1);
-                        size_t nIdx = (ny * width + nx) * 3;
-                        maxNeighborLum = std::max(maxNeighborLum, getLuminance(clampedHero[nIdx], clampedHero[nIdx+1], clampedHero[nIdx+2]));
-                    }
-                }
-
-                float threshold = maxNeighborLum * 4.0f + 0.5f;
-                if (lum > threshold && lum > 0.0f) {
-                    float scale = threshold / lum;
-                    heroOutput[idx] = r * scale;
-                    heroOutput[idx+1] = g * scale;
-                    heroOutput[idx+2] = b * scale;
-                }
-            }
-        }
-    }
-
-    // 2. Spectral Difference Blur (Directly blurs chromatic variance)
-    if (_enableChromaticityBlur) {
-        std::vector<float> blurredDiff = diffOutput;
-        for (int y = 0; y < (int)height; ++y) {
-            for (int x = 0; x < (int)width; ++x) {
-                size_t idx = (y * width + x) * 3;
-                float sumR = 0.0f, sumG = 0.0f, sumB = 0.0f, weightSum = 0.0f;
-                for (int dy = -2; dy <= 2; ++dy) {
-                    for (int dx = -2; dx <= 2; ++dx) {
-                        int nx = std::clamp(x + dx, 0, (int)width - 1);
-                        int ny = std::clamp(y + dy, 0, (int)height - 1);
-                        size_t nIdx = (ny * width + nx) * 3;
-                        float w = std::exp(-(dx*dx + dy*dy) / 2.0f);
-                        sumR += diffOutput[nIdx+0] * w;
-                        sumG += diffOutput[nIdx+1] * w;
-                        sumB += diffOutput[nIdx+2] * w;
-                        weightSum += w;
-                    }
-                }
-                blurredDiff[idx+0] = sumR / weightSum;
-                blurredDiff[idx+1] = sumG / weightSum;
-                blurredDiff[idx+2] = sumB / weightSum;
-            }
-        }
-        diffOutput = blurredDiff;
-    }
-
-    // 3. Recombine for OIDN
+    // 1. Recombine for OIDN directly (eliminating manual blur/firefly passes)
     std::vector<float> prefiltered(width * height * 3);
     for(size_t i=0; i<width*height; ++i) {
         prefiltered[i*3+0] = std::max(0.0f, heroOutput[i*3+0] + diffOutput[i*3+0]);

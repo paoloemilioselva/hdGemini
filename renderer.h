@@ -55,7 +55,11 @@ public:
     void SetTargetSampleCount(int count) { _targetSampleCount = count; }
     void SetMaxReflectionBounces(int bounces) { _maxReflectionBounces = bounces; }
     void SetMaxRefractionBounces(int bounces) { _maxRefractionBounces = bounces; }
-    void SetResolutionLevel(int level) { _initialResolutionLevel = level; }
+    void SetResolutionLevel(int level) { 
+        _initialResolutionLevel = level; 
+        _resolutionLevel = level;
+        _isConverged = false;
+    }
     void SetAntiAliasingFilter(int filter) { _antiAliasingFilter = filter; }
     void SetEnableSycl(bool enable) { _enableSycl = enable; }
     void SetEnableOnScreenStats(bool enable) { _enableOnScreenStats = enable; }

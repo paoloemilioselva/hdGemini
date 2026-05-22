@@ -605,7 +605,7 @@ GfVec3f HdGeminiRenderer::_SampleEnvironment(const GfVec3f& rayDir) const
         }
     }
     float theta = std::acos(std::clamp(localDir[1], -1.0f, 1.0f));
-    float phi = std::atan2(-localDir[0], -localDir[2]);
+    float phi = std::atan2(localDir[2], localDir[0]);
     if (phi < 0) phi += 2.0f * M_PI;
     float u = phi / (2.0f * M_PI);
     float v = theta / M_PI;
@@ -1094,8 +1094,8 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
                 float theta = M_PI * (float)(y + 0.5f) / (float)_envMapHeight;
                 float phi = 2.0f * M_PI * (float)(x + 0.5f) / (float)_envMapWidth;
                 float sinThetaL = std::max(1e-6f, std::sin(theta));
-                // Use X=-sin*sin, Z=-sin*cos to match atan2(-X, -Z) convention
-                GfVec3f localDir(-sinThetaL * std::sin(phi), std::cos(theta), -sinThetaL * std::cos(phi));
+                // Use X=cos, Z=sin to match atan2(Z, X) convention
+                GfVec3f localDir(sinThetaL * std::cos(phi), std::cos(theta), sinThetaL * std::sin(phi));
                 lDir = GfMatrix4f(light->GetTransform()).TransformDir(localDir).GetNormalized();
                 size_t idx = (y * _envMapWidth + x) * 3;
                 GfVec3f texColor(_envMapPixels[idx], _envMapPixels[idx+1], _envMapPixels[idx+2]);

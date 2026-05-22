@@ -20,6 +20,8 @@
 #include <random>
 #include <thread>
 #include <chrono>
+#include <iomanip>
+#include <ctime>
 
 #ifdef HDGEMINI_HAS_OIDN
 #ifndef SYCL_LANGUAGE_VERSION
@@ -130,15 +132,23 @@ HdGeminiRenderer::HdGeminiRenderer()
     try {
         _syclQueue = new sycl::queue(sycl::default_selector_v);
         _syclDeviceName = _syclQueue->get_device().get_info<sycl::info::device::name>();
-        std::cout << "[Gemini] SYCL queue initialized on: " << _syclDeviceName << std::endl;
+        auto t1 = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+        std::cout << "[Gemini] [" << std::put_time(std::localtime(&t1), "%T") << "] SYCL queue initialized on: " << _syclDeviceName << std::endl;
     } catch (sycl::exception const& e) {
-        std::cerr << "[Gemini] SYCL initialization failed: " << e.what() << std::endl;
+        auto t2 = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+        std::cerr << "[Gemini] [" << std::put_time(std::localtime(&t2), "%T") << "] SYCL initialization failed: " << e.what() << std::endl;
     }
 #endif
 #ifdef HDGEMINI_HAS_OIDN
-    std::cout << "[Gemini] Renderer initialized WITH Open Image Denoise (OIDN) support." << std::endl;
+    {
+        auto t3 = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+        std::cout << "[Gemini] [" << std::put_time(std::localtime(&t3), "%T") << "] Renderer initialized WITH Open Image Denoise (OIDN) support." << std::endl;
+    }
 #else
-    std::cout << "[Gemini] Renderer initialized WITHOUT Open Image Denoise (OIDN) support." << std::endl;
+    {
+        auto t4 = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+        std::cout << "[Gemini] [" << std::put_time(std::localtime(&t4), "%T") << "] Renderer initialized WITHOUT Open Image Denoise (OIDN) support." << std::endl;
+    }
 #endif
 }
 

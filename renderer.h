@@ -273,8 +273,8 @@ private:
     GfVec3f _SampleEnvironment(const GfVec3f& rayDir) const;
     GfVec3f _SamplePhysicalSky(const GfVec3f& rayDir, const GfVec3f& sunDir) const;
     GfVec3f _GetSunTransmittance(const GfVec3f& sunDir) const;
-    GfVec3f _SampleTexture(const SdfAssetPath& path, const GfVec2f& uv, bool forceLinear = false) const;
-    GfVec3f _SampleTextureData(const TextureData& data, const GfVec2f& uv) const;
+    GfVec4f _SampleTexture(const SdfAssetPath& path, const GfVec2f& uv, bool forceLinear = false) const;
+    GfVec4f _SampleTextureData(const TextureData& data, const GfVec2f& uv) const;
 
     void _Denoise();
     void _ApplyPostProcess();

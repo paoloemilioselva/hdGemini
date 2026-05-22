@@ -15,7 +15,7 @@ HdGeminiMaterial::HdGeminiMaterial(SdfPath const& id)
     : HdMaterial(id)
     , _diffuseColor(1.0f)
     , _metallic(0.0f)
-    , _roughness(0.2f)
+    , _roughness(0.5f)
     , _specularColor(1.0f)
     , _specular(1.0f)
     , _opacity(1.0f)
@@ -129,7 +129,7 @@ static void _ProcessNodeUpstream(
                 material->SetTransmissionScatter(param.second.UncheckedGet<GfVec3f>());
             } else if ((param.first == TfToken("subsurface") || param.first == TfToken("subsurface_weight")) && param.second.IsHolding<float>()) {
                 material->SetSubsurface(param.second.UncheckedGet<float>());
-            } else if (param.first == TfToken("subsurface_color") && param.second.IsHolding<GfVec3f>()) {
+            } else if ((param.first == TfToken("subsurface_color") || param.first == TfToken("subsurfaceColor")) && param.second.IsHolding<GfVec3f>()) {
                 material->SetSubsurfaceColor(param.second.UncheckedGet<GfVec3f>());
             } else if (param.first == TfToken("subsurface_radius") && param.second.IsHolding<GfVec3f>()) {
                 material->SetSubsurfaceRadius(param.second.UncheckedGet<GfVec3f>());

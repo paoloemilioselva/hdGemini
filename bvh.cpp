@@ -13,18 +13,19 @@ IntersectTriangle(const GfVec3f& rayOrigin, const GfVec3f& rayDir,
     GfVec3f edge2 = v2 - v0;
     GfVec3f pvec = GfCross(rayDir, edge2);
     float det = GfDot(edge1, pvec);
-    if (std::abs(det) < 1e-8) return false;
+    // Use a much smaller epsilon to prevent rejecting valid intersections on scaled-down rays
+    if (std::abs(det) < 1e-12f) return false;
     float invDet = 1.0f / det;
     GfVec3f tvec = rayOrigin - v0;
     float u = GfDot(tvec, pvec) * invDet;
-    if (u < 0.0f || u > 1.0f) return false;
+    if (u < -1e-5f || u > 1.00001f) return false;
     GfVec3f qvec = GfCross(tvec, edge1);
     float v = GfDot(rayDir, qvec) * invDet;
-    if (v < 0.0f || u + v > 1.0f) return false;
+    if (v < -1e-5f || u + v > 1.00001f) return false;
     t = GfDot(edge2, qvec) * invDet;
     outU = u;
     outV = v;
-    return (t > 1e-4);
+    return (t > 1e-6f);
 }
 
 static bool
@@ -38,7 +39,7 @@ IntersectAABB(const GfVec3f& rayOrigin, const GfVec3f& rayDir, const GfRange3f& 
     float tmax = 1e30f;
 
     for (int i = 0; i < 3; ++i) {
-        if (std::abs(rayDir[i]) < 1e-8) {
+        if (std::abs(rayDir[i]) < 1e-12f) {
             if (rayOrigin[i] < min[i] || rayOrigin[i] > max[i]) return false;
         } else {
             float invDir = 1.0f / rayDir[i];
@@ -47,11 +48,11 @@ IntersectAABB(const GfVec3f& rayOrigin, const GfVec3f& rayDir, const GfRange3f& 
             if (t1 > t2) std::swap(t1, t2);
             tmin = std::max(tmin, t1);
             tmax = std::min(tmax, t2);
-            if (tmin > tmax) return false;
+            if (tmin > tmax + 1e-5f) return false;
         }
     }
     tMinHit = tmin;
-    return tmax > 0 && tmax > 1e-4;
+    return tmax > 0 && tmax > 1e-6f;
 }
 
 void BVH::Build(const VtVec3fArray& points, const VtVec3iArray& indices, const VtVec2fArray& uvs, const VtVec3fArray& normals, const VtVec3fArray& colors, const std::vector<int>& materialIndices) {
@@ -105,12 +106,12 @@ void BVH::Build(const VtVec3fArray& points, const VtVec3iArray& indices, const V
                 tri.c1 = colors[i * 3 + 1];
                 tri.c2 = colors[i * 3 + 2];
             } else {
-                tri.c0 = (triIdx[0] < (int)colors.size()) ? colors[triIdx[0]] : GfVec3f(1.0f);
-                tri.c1 = (triIdx[1] < (int)colors.size()) ? colors[triIdx[1]] : GfVec3f(1.0f);
-                tri.c2 = (triIdx[2] < (int)colors.size()) ? colors[triIdx[2]] : GfVec3f(1.0f);
+                tri.c0 = (triIdx[0] < (int)colors.size()) ? colors[triIdx[0]] : GfVec3f(0.5f);
+                tri.c1 = (triIdx[1] < (int)colors.size()) ? colors[triIdx[1]] : GfVec3f(0.5f);
+                tri.c2 = (triIdx[2] < (int)colors.size()) ? colors[triIdx[2]] : GfVec3f(0.5f);
             }
         } else {
-            tri.c0 = tri.c1 = tri.c2 = GfVec3f(1.0f);
+            tri.c0 = tri.c1 = tri.c2 = GfVec3f(0.5f);
         }
 
         // Compute tangent and bitangent (dpdu, dpdv)

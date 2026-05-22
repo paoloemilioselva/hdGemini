@@ -583,6 +583,45 @@ bool HdGeminiRenderer::_IntersectTLAS(const GfVec3f& rayOrigin, const GfVec3f& r
                             hit.subsurfaceAnisotropy = inst.material->GetSubsurfaceAnisotropy();
                             hit.thinWalled = inst.material->GetThinWalled();
                             hit.diffuseRoughness = inst.material->GetDiffuseRoughness();
+                        } else {
+                            // Reset material properties to defaults so we don't inherit from a farther hit
+                            hit.metallic = 0.0f;
+                            hit.roughness = 1.0f;
+                            hit.specularColor = GfVec3f(0.0f);
+                            hit.specular = 0.0f;
+                            hit.opacity = 1.0f;
+                            hit.ior = 1.5f;
+                            
+                            hit.transmission = 0.0f;
+                            hit.transmissionColor = GfVec3f(1.0f);
+                            hit.emission = GfVec3f(0.0f);
+                            hit.diffuseTexture = SdfAssetPath();
+                            hit.normalTexture = SdfAssetPath();
+                            hit.metallicTexture = SdfAssetPath();
+                            hit.roughnessTexture = SdfAssetPath();
+                            hit.opacityTexture = SdfAssetPath();
+                            hit.transmissionTexture = SdfAssetPath();
+                            hit.metallicTextureChannel = 0;
+                            hit.roughnessTextureChannel = 0;
+                            hit.opacityTextureChannel = 0;
+                            hit.transmissionTextureChannel = 0;
+
+                            hit.coat = 0.0f;
+                            hit.coatColor = GfVec3f(1.0f);
+                            hit.coatRoughness = 0.0f;
+                            hit.coatIor = 1.5f;
+                            hit.transmissionDepth = 0.0f;
+                            hit.transmissionScatter = GfVec3f(0.0f);
+                            hit.sheen = 0.0f;
+                            hit.sheenColor = GfVec3f(1.0f);
+                            hit.sheenRoughness = 0.2f;
+                            hit.subsurface = 0.0f;
+                            hit.subsurfaceColor = GfVec3f(1.0f);
+                            hit.subsurfaceRadius = GfVec3f(1.0f);
+                            hit.subsurfaceScale = 1.0f;
+                            hit.subsurfaceAnisotropy = 0.0f;
+                            hit.thinWalled = false;
+                            hit.diffuseRoughness = 0.0f;
                         }
                         hit.hit = true;
                         wasHit = true;
@@ -626,9 +665,9 @@ GfVec3f HdGeminiRenderer::_SampleEnvironment(const GfVec3f& rayDir) const
     return color;
 }
 
-GfVec3f HdGeminiRenderer::_SampleTexture(const SdfAssetPath& path, const GfVec2f& uv, bool forceLinear) const
+GfVec4f HdGeminiRenderer::_SampleTexture(const SdfAssetPath& path, const GfVec2f& uv, bool forceLinear) const
 {
-    if (path.GetAssetPath().empty()) return GfVec3f(1.0f);
+    if (path.GetAssetPath().empty()) return GfVec4f(1.0f);
 
     std::string assetPath = path.GetAssetPath();
     std::string resolvedPath = path.GetResolvedPath();
@@ -655,7 +694,7 @@ GfVec3f HdGeminiRenderer::_SampleTexture(const SdfAssetPath& path, const GfVec2f
         auto it = _textureCache.find(cacheKey);
         if (it != _textureCache.end()) {
             const TextureData& data = it->second;
-            if (data.pixels.empty()) return GfVec3f(1.0f);
+            if (data.pixels.empty()) return GfVec4f(1.0f);
             return _SampleTextureData(data, uv);
         }
     }
@@ -667,7 +706,7 @@ GfVec3f HdGeminiRenderer::_SampleTexture(const SdfAssetPath& path, const GfVec2f
     auto it = _textureCache.find(cacheKey);
     if (it != _textureCache.end()) {
         const TextureData& data = it->second;
-        if (data.pixels.empty()) return GfVec3f(1.0f);
+        if (data.pixels.empty()) return GfVec4f(1.0f);
         return _SampleTextureData(data, uv);
     }
 
@@ -684,14 +723,14 @@ GfVec3f HdGeminiRenderer::_SampleTexture(const SdfAssetPath& path, const GfVec2f
     if (!image) {
         HDGEMINI_LOG << "[Gemini]   Failed to open texture: " << (resolvedPath.empty() ? assetPath : resolvedPath) << std::endl;
         _textureCache[cacheKey] = TextureData();
-        return GfVec3f(-1.0f);
+        return GfVec4f(-1.0f);
     }
 
     TextureData data;
     data.width = image->GetWidth();
     data.height = image->GetHeight();
     HDGEMINI_LOG << "[Gemini]   Texture loaded: " << data.width << "x" << data.height << std::endl;
-    data.pixels.assign(data.width * data.height * 3, 0.0f);
+    data.pixels.assign(data.width * data.height * 4, 0.0f);
 
     HioFormat format = image->GetFormat();
     int channels = HioGetComponentCount(format);
@@ -714,9 +753,10 @@ GfVec3f HdGeminiRenderer::_SampleTexture(const SdfAssetPath& path, const GfVec2f
             HDGEMINI_LOG << "[Gemini]   Failed to read texture pixels (float): " << path.GetAssetPath() << std::endl;
         } else {
             for (int i = 0; i < data.width * data.height; ++i) {
-                data.pixels[i*3+0] = rawData[i*channels+0];
-                data.pixels[i*3+1] = channels > 1 ? rawData[i*channels+1] : rawData[i*channels+0];
-                data.pixels[i*3+2] = channels > 2 ? rawData[i*channels+2] : rawData[i*channels+0];
+                data.pixels[i*4+0] = rawData[i*channels+0];
+                data.pixels[i*4+1] = channels > 1 ? rawData[i*channels+1] : rawData[i*channels+0];
+                data.pixels[i*4+2] = channels > 2 ? rawData[i*channels+2] : rawData[i*channels+0];
+                data.pixels[i*4+3] = channels > 3 ? rawData[i*channels+3] : 1.0f;
             }
         }
     } else {
@@ -740,9 +780,10 @@ GfVec3f HdGeminiRenderer::_SampleTexture(const SdfAssetPath& path, const GfVec2f
                     g = std::pow(g, 2.2f);
                     b = std::pow(b, 2.2f);
                 }
-                data.pixels[i*3+0] = r;
-                data.pixels[i*3+1] = g;
-                data.pixels[i*3+2] = b;
+                data.pixels[i*4+0] = r;
+                data.pixels[i*4+1] = g;
+                data.pixels[i*4+2] = b;
+                data.pixels[i*4+3] = channels > 3 ? rawData[i*channels+3] / 255.0f : 1.0f;
             }
         }
     }
@@ -751,8 +792,8 @@ GfVec3f HdGeminiRenderer::_SampleTexture(const SdfAssetPath& path, const GfVec2f
     return _SampleTextureData(_textureCache[cacheKey], uv);
 }
 
-GfVec3f HdGeminiRenderer::_SampleTextureData(const TextureData& data, const GfVec2f& uv) const {
-    if (data.pixels.empty()) return GfVec3f(-1.0f);
+GfVec4f HdGeminiRenderer::_SampleTextureData(const TextureData& data, const GfVec2f& uv) const {
+    if (data.pixels.empty()) return GfVec4f(-1.0f);
 
     float u = uv[0] - std::floor(uv[0]);
     float v = 1.0f - (uv[1] - std::floor(uv[1])); // Flip V for OpenGL/USD convention
@@ -767,14 +808,14 @@ GfVec3f HdGeminiRenderer::_SampleTextureData(const TextureData& data, const GfVe
     float fy = py - y0;
 
     auto getPixel = [&](int x, int y) {
-        size_t idx = (y * data.width + x) * 3;
-        return GfVec3f(data.pixels[idx], data.pixels[idx+1], data.pixels[idx+2]);
+        size_t idx = (y * data.width + x) * 4;
+        return GfVec4f(data.pixels[idx], data.pixels[idx+1], data.pixels[idx+2], data.pixels[idx+3]);
     };
 
-    GfVec3f p00 = getPixel(x0, y0);
-    GfVec3f p10 = getPixel(x1, y0);
-    GfVec3f p01 = getPixel(x0, y1);
-    GfVec3f p11 = getPixel(x1, y1);
+    GfVec4f p00 = getPixel(x0, y0);
+    GfVec4f p10 = getPixel(x1, y0);
+    GfVec4f p01 = getPixel(x0, y1);
+    GfVec4f p11 = getPixel(x1, y1);
 
     return (p00 * (1-fx) + p10 * fx) * (1-fy) + (p01 * (1-fx) + p11 * fx) * fy;
 }
@@ -995,44 +1036,44 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
         }
 
         if (!hit.diffuseTexture.GetAssetPath().empty()) {
-            GfVec3f texVal = _SampleTexture(hit.diffuseTexture, hit.uv);
+            GfVec4f texVal = _SampleTexture(hit.diffuseTexture, hit.uv);
             if (texVal[0] >= 0.0f) {
-                hit.baseColor = GfCompMult(hit.baseColor, texVal);
+                hit.baseColor = GfCompMult(hit.baseColor, GfVec3f(texVal[0], texVal[1], texVal[2]));
             }
         }
 
         if (!hit.metallicTexture.GetAssetPath().empty()) {
-            GfVec3f texVal = _SampleTexture(hit.metallicTexture, hit.uv, true);
+            GfVec4f texVal = _SampleTexture(hit.metallicTexture, hit.uv, true);
             if (texVal[0] >= 0.0f) {
                 hit.metallic = texVal[hit.metallicTextureChannel];
             }
         }
 
         if (!hit.roughnessTexture.GetAssetPath().empty()) {
-            GfVec3f texVal = _SampleTexture(hit.roughnessTexture, hit.uv, true);
+            GfVec4f texVal = _SampleTexture(hit.roughnessTexture, hit.uv, true);
             if (texVal[0] >= 0.0f) {
                 hit.roughness = texVal[hit.roughnessTextureChannel];
             }
         }
 
         if (!hit.opacityTexture.GetAssetPath().empty()) {
-            GfVec3f texVal = _SampleTexture(hit.opacityTexture, hit.uv, true);
+            GfVec4f texVal = _SampleTexture(hit.opacityTexture, hit.uv, true);
             if (texVal[0] >= 0.0f) {
                 hit.opacity = texVal[hit.opacityTextureChannel];
             }
         }
 
         if (!hit.transmissionTexture.GetAssetPath().empty()) {
-            GfVec3f texVal = _SampleTexture(hit.transmissionTexture, hit.uv, true);
+            GfVec4f texVal = _SampleTexture(hit.transmissionTexture, hit.uv, true);
             if (texVal[0] >= 0.0f) {
                 hit.transmission = texVal[hit.transmissionTextureChannel];
             }
         }
 
         if (!hit.normalTexture.GetAssetPath().empty()) {
-            GfVec3f nTex = _SampleTexture(hit.normalTexture, hit.uv, true);
-            if (nTex[0] >= 0.0f) {
-                nTex = nTex * 2.0f - GfVec3f(1.0f);
+            GfVec4f texVal = _SampleTexture(hit.normalTexture, hit.uv, true);
+            if (texVal[0] >= 0.0f) {
+                GfVec3f nTex = GfVec3f(texVal[0], texVal[1], texVal[2]) * 2.0f - GfVec3f(1.0f);
                 
                 GfVec3f n = hit.smoothNormal;
                 GfVec3f t = hit.dpdu;
@@ -1210,10 +1251,11 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
                         GfVec3f F = F0 + (GfVec3f(1.0f) - F0) * std::pow(1.0f - lDotH, 5.0f);
                         GfVec3f specBsdf = (F * D * G) / (4.0f * nDotL_eval * nDotV_eval);
 
-                        // Diffuse Evaluation
-                        float effectiveSubsurface = _enableSubsurface ? hit.subsurface : 0.0f;
+                        // Fix 8 & 19: apply (1-F) and always blend subsurface color for visual approximation
+                        float effectiveSubsurface = hit.subsurface;
                         GfVec3f finalDiffuse = hit.baseColor * (1.0f - effectiveSubsurface) + hit.subsurfaceColor * effectiveSubsurface;
-                        GfVec3f diffuseBase = finalDiffuse * (1.0f - hit.metallic) * (1.0f - hit.transmission) / (float)M_PI;
+                        float effectiveTransmission = hit.transmission * (1.0f - hit.subsurface);
+                        GfVec3f diffuseBase = finalDiffuse * (1.0f - hit.metallic) * (1.0f - effectiveTransmission) / (float)M_PI;
                         GfVec3f diffBsdf = GfCompMult(diffuseBase, GfVec3f(1.0f) - F);
 
                         // Fix 7: Apply coat layer attenuation to direct lighting
@@ -1289,9 +1331,11 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
                         GfVec3f F = F0 + (GfVec3f(1.0f) - F0) * std::pow(1.0f - lDotH, 5.0f);
                         GfVec3f specBsdf = (F * D * G) / (4.0f * nDotL_eval * nDotV_eval);
 
-                        float effectiveSubsurface = _enableSubsurface ? hit.subsurface : 0.0f;
+                        // Always blend subsurface color for visual approximation
+                        float effectiveSubsurface = hit.subsurface;
                         GfVec3f finalDiffuse = hit.baseColor * (1.0f - effectiveSubsurface) + hit.subsurfaceColor * effectiveSubsurface;
-                        GfVec3f diffuseBase = finalDiffuse * (1.0f - hit.metallic) * (1.0f - hit.transmission) / (float)M_PI;
+                        float effectiveTransmission = hit.transmission * (1.0f - hit.subsurface);
+                        GfVec3f diffuseBase = finalDiffuse * (1.0f - hit.metallic) * (1.0f - effectiveTransmission) / (float)M_PI;
                         GfVec3f diffBsdf = GfCompMult(diffuseBase, GfVec3f(1.0f) - F);
 
                         SampledSpectrum bsdf = RGBToSpectrum(diffBsdf + specBsdf, lambda);
@@ -1360,6 +1404,9 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
         float fresnel = FresnelDielectric(GfDot(currentRayDir, hit.smoothNormal), hit.ior);
         float reflectProb = fresnel * hit.specular;
         if (hit.metallic > 0.0f) reflectProb = std::max(reflectProb, hit.metallic);
+        reflectProb = std::min(reflectProb, 1.0f);
+        
+        float effectiveTransmission = hit.transmission * (1.0f - hit.subsurface);
         
         float randVal = RandomFloat(rng);
 
@@ -1389,10 +1436,8 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
                 ggxWeight = (G1_v * G1_l * vDotH) / (nDotV * nDotH);
                 ggxWeight = std::min(ggxWeight, 10.0f); // Clamp to avoid fireflies
                 
-                if (GfDot(reflectDir, shadingNormal) < 0) {
-                    reflectDir = (currentRayDir - 2.0f * GfDot(currentRayDir, shadingNormal) * shadingNormal).GetNormalized();
-                    lastBsdfPdf = 0.0f;
-                    ggxWeight = 1.0f;
+                if (GfDot(reflectDir, shadingNormal) <= 0.0f) {
+                    break;
                 }
             } else {
                 reflectDir = (currentRayDir - 2.0f * GfDot(currentRayDir, shadingNormal) * shadingNormal).GetNormalized();
@@ -1406,7 +1451,7 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
         } else {
             // Fix 27: guard against divide-by-zero
             float remainingProb = (reflectProb >= 1.0f) ? 0.0f : (randVal - reflectProb) / (1.0f - reflectProb);
-            if (hit.transmission > 1e-6f && remainingProb < hit.transmission) {
+            if (effectiveTransmission > 1e-6f && remainingProb < effectiveTransmission) {
                 // Refraction
                 float etaI = 1.0f, etaT = hit.ior;
                 if (isInside) std::swap(etaI, etaT);
@@ -1453,14 +1498,17 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
                 float pdf = nDotL / (float)M_PI;
                 if (pdf < 1e-6f) break;
                 
-                lastBsdfPdf = pdf * (1.0f - hit.transmission) * (1.0f - reflectProb);
+                lastBsdfPdf = pdf * (1.0f - effectiveTransmission) * (1.0f - reflectProb);
                 
-                // Fix 8 & 19: apply (1-F) and check _enableSubsurface
-                float effectiveSubsurface = _enableSubsurface ? hit.subsurface : 0.0f;
+                // Fix 8 & 19: apply (1-F) and always blend subsurface color for visual approximation
+                float effectiveSubsurface = hit.subsurface;
                 GfVec3f finalDiffuse = hit.baseColor * (1.0f - effectiveSubsurface) + hit.subsurfaceColor * effectiveSubsurface;
                 float fresnelOut = FresnelDielectric(GfDot(diffuseDir, shadingNormal), hit.ior);
                 float diffFresnelAtten = 1.0f - fresnelOut * hit.specular;
-                throughput = throughput * RGBToSpectrum(finalDiffuse, lambda) * std::max(0.0f, diffFresnelAtten);
+                if (hit.metallic > 0.0f) diffFresnelAtten *= (1.0f - hit.metallic);
+
+                GfVec3f diffuseBase = finalDiffuse * diffFresnelAtten / (float)M_PI;
+                throughput = throughput * RGBToSpectrum(diffuseBase, lambda) * (float)M_PI;
                 currentRayDir = diffuseDir;
                 currentRayOrigin = hitPos + shadingNormal * 1e-4f;
             }

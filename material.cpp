@@ -275,6 +275,24 @@ static void _ProcessNodeUpstream(
                     }
                 }
             }
+        } else if (targetInput == TfToken("geometry_opacity") || targetInput == TfToken("opacity")) {
+             for (auto const& param : node.parameters) {
+                if (param.first == TfToken("file") && 
+                    param.second.IsHolding<SdfAssetPath>()) {
+                    material->SetOpacityTexture(param.second.UncheckedGet<SdfAssetPath>());
+                    material->SetOpacityTextureChannel(targetChannel);
+                    HDGEMINI_LOG << "[Gemini]       Mapped opacity texture: " << material->GetOpacityTexture().GetAssetPath() << " [Channel " << targetChannel << "]" << std::endl;
+                }
+            }
+        } else if (targetInput == TfToken("transmission") || targetInput == TfToken("transmission_weight")) {
+             for (auto const& param : node.parameters) {
+                if (param.first == TfToken("file") && 
+                    param.second.IsHolding<SdfAssetPath>()) {
+                    material->SetTransmissionTexture(param.second.UncheckedGet<SdfAssetPath>());
+                    material->SetTransmissionTextureChannel(targetChannel);
+                    HDGEMINI_LOG << "[Gemini]       Mapped transmission texture: " << material->GetTransmissionTexture().GetAssetPath() << " [Channel " << targetChannel << "]" << std::endl;
+                }
+            }
         } else if (targetInput == TfToken("normal")) {
              for (auto const& param : node.parameters) {
                 if (param.first == TfToken("file") && 
@@ -283,7 +301,6 @@ static void _ProcessNodeUpstream(
                     HDGEMINI_LOG << "[Gemini]       Mapped normal texture: " << material->GetNormalTexture().GetAssetPath() << std::endl;
                 }
             }
-        }
         }
     } else if (shaderId == TfToken("ND_extract_vector3") ||
                shaderId == TfToken("ND_extract_vector2") ||

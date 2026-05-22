@@ -150,8 +150,12 @@ private:
         SdfAssetPath normalTexture;
         SdfAssetPath metallicTexture;
         SdfAssetPath roughnessTexture;
+        SdfAssetPath opacityTexture;
+        SdfAssetPath transmissionTexture;
         int metallicTextureChannel = 0;
         int roughnessTextureChannel = 0;
+        int opacityTextureChannel = 0;
+        int transmissionTextureChannel = 0;
         bool hit = false;
         
         float coat = 0.0f;

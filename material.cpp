@@ -51,7 +51,8 @@ static void _ProcessNodeUpstream(
     const SdfPath& nodePath,
     std::set<SdfPath>& visited,
     HdGeminiMaterial* material,
-    TfToken targetInput = TfToken())
+    TfToken targetInput = TfToken(),
+    int targetChannel = 0)
 {
     if (visited.count(nodePath)) return;
     visited.insert(nodePath);
@@ -250,7 +251,8 @@ static void _ProcessNodeUpstream(
                 if (param.first == TfToken("file") && 
                     param.second.IsHolding<SdfAssetPath>()) {
                     material->SetMetallicTexture(param.second.UncheckedGet<SdfAssetPath>());
-                    HDGEMINI_LOG << "[Gemini]       Mapped metallic texture: " << material->GetMetallicTexture().GetAssetPath() << std::endl;
+                    material->SetMetallicTextureChannel(targetChannel);
+                    HDGEMINI_LOG << "[Gemini]       Mapped metallic texture: " << material->GetMetallicTexture().GetAssetPath() << " [Channel " << targetChannel << "]" << std::endl;
                 }
             }
         } else if (targetInput == TfToken("specular_roughness") || targetInput == TfToken("roughness")) {
@@ -258,7 +260,8 @@ static void _ProcessNodeUpstream(
                 if (param.first == TfToken("file") && 
                     param.second.IsHolding<SdfAssetPath>()) {
                     material->SetRoughnessTexture(param.second.UncheckedGet<SdfAssetPath>());
-                    HDGEMINI_LOG << "[Gemini]       Mapped roughness texture: " << material->GetRoughnessTexture().GetAssetPath() << std::endl;
+                    material->SetRoughnessTextureChannel(targetChannel);
+                    HDGEMINI_LOG << "[Gemini]       Mapped roughness texture: " << material->GetRoughnessTexture().GetAssetPath() << " [Channel " << targetChannel << "]" << std::endl;
                 }
             }
         } else if (targetInput == TfToken("emissiveColor") || targetInput == TfToken("emission_color") || targetInput == TfToken("emission") || targetInput == TfToken("emission_luminance")) {
@@ -281,6 +284,17 @@ static void _ProcessNodeUpstream(
                 }
             }
         }
+        }
+    } else if (shaderId == TfToken("ND_extract_vector3") ||
+               shaderId == TfToken("ND_extract_vector2") ||
+               shaderId == TfToken("ND_extract_vector4") ||
+               shaderId == TfToken("ND_extract") ||
+               shaderId == TfToken("extract")) {
+        for (auto const& param : node.parameters) {
+            if (param.first == TfToken("index") && param.second.IsHolding<int>()) {
+                targetChannel = param.second.UncheckedGet<int>();
+            }
+        }
     }
 
     // Walk upstream recursively
@@ -290,7 +304,7 @@ static void _ProcessNodeUpstream(
         TfToken nextTarget = targetInput.IsEmpty() ? inputName : targetInput;
 
         for (auto const& conn : connPair.second) {
-            _ProcessNodeUpstream(network, conn.upstreamNode, visited, material, nextTarget);
+            _ProcessNodeUpstream(network, conn.upstreamNode, visited, material, nextTarget, targetChannel);
         }
     }
 }

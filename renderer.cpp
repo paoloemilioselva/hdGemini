@@ -559,6 +559,8 @@ bool HdGeminiRenderer::_IntersectTLAS(const GfVec3f& rayOrigin, const GfVec3f& r
                             hit.normalTexture = inst.material->GetNormalTexture();
                             hit.metallicTexture = inst.material->GetMetallicTexture();
                             hit.roughnessTexture = inst.material->GetRoughnessTexture();
+                            hit.metallicTextureChannel = inst.material->GetMetallicTextureChannel();
+                            hit.roughnessTextureChannel = inst.material->GetRoughnessTextureChannel();
 
                             hit.coat = inst.material->GetCoat();
                             hit.coatColor = inst.material->GetCoatColor();
@@ -994,21 +996,17 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
             }
         }
 
-        bool isPackedMap = (!hit.metallicTexture.GetAssetPath().empty() && 
-                            !hit.roughnessTexture.GetAssetPath().empty() && 
-                            hit.metallicTexture.GetAssetPath() == hit.roughnessTexture.GetAssetPath());
-
         if (!hit.metallicTexture.GetAssetPath().empty()) {
             GfVec3f texVal = _SampleTexture(hit.metallicTexture, hit.uv, true);
             if (texVal[0] >= 0.0f) {
-                hit.metallic = isPackedMap ? texVal[2] : texVal[0];
+                hit.metallic = texVal[hit.metallicTextureChannel];
             }
         }
 
         if (!hit.roughnessTexture.GetAssetPath().empty()) {
             GfVec3f texVal = _SampleTexture(hit.roughnessTexture, hit.uv, true);
             if (texVal[0] >= 0.0f) {
-                hit.roughness = isPackedMap ? texVal[1] : texVal[0];
+                hit.roughness = texVal[hit.roughnessTextureChannel];
             }
         }
 

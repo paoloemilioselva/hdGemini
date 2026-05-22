@@ -112,6 +112,12 @@ public:
     const SdfAssetPath& GetRoughnessTexture() const { return _roughnessTexture; }
     void SetRoughnessTexture(const SdfAssetPath& v) { _roughnessTexture = v; }
 
+    int GetMetallicTextureChannel() const { return _metallicTextureChannel; }
+    void SetMetallicTextureChannel(int v) { _metallicTextureChannel = v; }
+
+    int GetRoughnessTextureChannel() const { return _roughnessTextureChannel; }
+    void SetRoughnessTextureChannel(int v) { _roughnessTextureChannel = v; }
+
     private:
     GfVec3f _diffuseColor;    float _metallic;
     float _roughness;
@@ -144,6 +150,8 @@ public:
     SdfAssetPath _normalTexture;
     SdfAssetPath _metallicTexture;
     SdfAssetPath _roughnessTexture;
+    int _metallicTextureChannel = 0;
+    int _roughnessTextureChannel = 0;
 };
 
 #endif // HD_GEMINI_MATERIAL_H

@@ -32,8 +32,10 @@
 - **Physical Materials**: Extensive support for physically-based rendering workflows.
   - Prioritized resolution for **MaterialX** (`mtlx`) and **OpenPBR** surface shaders via the SdrRegistry.
   - Full `standard_surface` support including Base Color, Roughness, Metallic, Clearcoat, Sheen, Subsurface Scattering (diffuse approximation, globally toggleable via render settings), and physical Emission.
+  - **Extended Texture Support**: Fully supports `ND_extract` nodes for channel-packed textures (e.g., ORM - Occlusion, Roughness, Metallic) and correct routing for Opacity and Transmission maps.
   - Accurate physical refraction, handling Transmission, IOR (Index of Refraction), Transmission Depth/Scatter (Beer's Law volume absorption), and Thin-Walled properties.
   - **Physical Dispersion**: Simulates wavelength-dependent Index of Refraction (IOR) using Cauchy's equation, rendering accurate rainbow dispersion through transmissive materials.
+  - **Robust Defaults**: Unassigned geometry intelligently defaults to a 0.5-grey Lambertian surface, avoiding unnatural shading artifacts.
 - **Physical Camera & Optical Effects**:
   - **Depth of Field**: Accurate synthetic lens sampling with configurable Focal Length, F-Stop, Focus Distance, and polygonal Bokeh Blades.
   - **Physical Exposure**: Image luminance scaling based on photographic EV100 equations (ISO, Shutter Speed, Aperture).
@@ -45,12 +47,14 @@
 - **Advanced Geometry Handling**:
   - Robust **GeomSubset** splitting: Multi-material meshes are physically partitioned into isolated sub-meshes under the hood, ensuring perfect sub-mesh material assignments even with complex n-gon encodings.
   - **Face-Varying Primvars**: Accurate slicing and interpolation of UVs, normals, and vertex colors for all mesh subsets.
-  - Smooth shading via computed and triangulated vertex normals.
+  - Smooth shading via computed and triangulated vertex normals, featuring mathematically exact normal transformations that gracefully handle non-uniform mesh scaling.
+  - Seamless handling of `leftHanded` vs `rightHanded` mesh orientation via correct winding order adjustments on the fly.
   - Support for animated meshes via ExtComputations (e.g., skinning).
 - **Lighting**:
   - Full suite of Hydra light types: Distant, Rect, Sphere, Point, and Dome lights.
   - Advanced **Spot Light Shaping**: Supports cone angle, cone softness, and smoothstep falloff.
   - HDR **Dome Light Importance Sampling**: Generates a 2D CDF from environment maps to aggressively sample bright regions, greatly reducing noise.
+  - Environment mapping perfectly matches Pixar's `PxrDomeLight` orientation standards out of the box (+Z center with corrected UV lat-long projections).
   - **Physical Sky & Sun IBL**: Analytical atmospheric scattering model (Rayleigh and Mie) alongside a procedural directional Sun, driven dynamically by Azimuth and Altitude render settings for realistic sunrises, midday, and sunsets.
 - **Architecture & Performance**:
   - Accelerated Ray Tracing using an optimized iterative Top-Level Acceleration Structure (TLAS) and localized Bounding Volume Hierarchies (BVH) per sub-mesh.

@@ -969,7 +969,17 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
                 float lightPdf = 0.0f;
                 if (_hasDomeLight && !_envMapRowCdf.empty() && _envMapTotalLuminance > 0) {
                     float lum = 0.2126f * envRGB[0] + 0.7152f * envRGB[1] + 0.0722f * envRGB[2];
-                    float envPdf = lum / (_envMapTotalLuminance * (M_PI / (float)_envMapHeight) * (2.0f * M_PI / (float)_envMapWidth));
+                    // Fix 4: include sinθ Jacobian for equirectangular mapping
+                    GfVec3f localDir = currentRayDir;
+                    for (const auto& light : _activeLights) {
+                        if (light->GetLightType() == HdPrimTypeTokens->domeLight) {
+                            localDir = GfMatrix4f(light->GetTransform()).GetInverse().TransformDir(currentRayDir).GetNormalized();
+                            break;
+                        }
+                    }
+                    float thetaEnv = std::acos(std::clamp(localDir[1], -1.0f, 1.0f));
+                    float sinThetaEnv = std::max(1e-6f, std::sin(thetaEnv));
+                    float envPdf = lum / (_envMapTotalLuminance * (M_PI / (float)_envMapHeight) * (2.0f * M_PI / (float)_envMapWidth) * sinThetaEnv);
                     lightPdf = std::max(envPdf, 1e-6f) / (float)_activeLights.size();
                 }
                 float misWeight = (lastBsdfPdf <= 0.0f) ? 1.0f : PowerHeuristic(lastBsdfPdf, lightPdf);
@@ -1040,6 +1050,12 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
 
         totalRadiance += throughput * RGBToSpectrum(hit.emission, lambda);
 
+        // --- Apply dispersion (Fix 5: moved before direct lighting) ---
+        float iorBase = hit.ior;
+        float CauchyC = 10000.0f;
+        float CauchyB = iorBase - CauchyC / (589.3f * 589.3f);
+        hit.ior = CauchyB + CauchyC / (lambda.lambda[0] * lambda.lambda[0]);
+
         // --- Direct Lighting (Light Sampling) ---
         if (!_activeLights.empty()) {
             size_t lightIdx = std::min((size_t)(RandomFloat(rng) * _activeLights.size()), _activeLights.size() - 1);
@@ -1063,14 +1079,16 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
                 int x = std::clamp((int)std::distance(colCdf, itX) - 1, 0, _envMapWidth - 1);
                 float theta = M_PI * (float)(y + 0.5f) / (float)_envMapHeight;
                 float phi = 2.0f * M_PI * (float)(x + 0.5f) / (float)_envMapWidth;
-                GfVec3f localDir(std::sin(theta) * std::cos(phi), std::cos(theta), std::sin(theta) * std::sin(phi));
+                float sinThetaL = std::max(1e-6f, std::sin(theta));
+                GfVec3f localDir(sinThetaL * std::cos(phi), std::cos(theta), sinThetaL * std::sin(phi));
                 lDir = GfMatrix4f(light->GetTransform()).TransformDir(localDir).GetNormalized();
                 size_t idx = (y * _envMapWidth + x) * 3;
                 GfVec3f texColor(_envMapPixels[idx], _envMapPixels[idx+1], _envMapPixels[idx+2]);
                 lColor = GfCompMult(texColor, light->GetColor()) * light->GetIntensity();
                 if (_envMapTotalLuminance > 0) {
                     float lum = 0.2126f * texColor[0] + 0.7152f * texColor[1] + 0.0722f * texColor[2];
-                    float pdf = lum / (_envMapTotalLuminance * (M_PI / (float)_envMapHeight) * (2.0f * M_PI / (float)_envMapWidth));
+                    // Fix 4: include sinθ Jacobian
+                    float pdf = lum / (_envMapTotalLuminance * (M_PI / (float)_envMapHeight) * (2.0f * M_PI / (float)_envMapWidth) * sinThetaL);
                     lightPdf *= std::max(pdf, 1e-6f);
                 }
             } else if (light->GetLightType() == HdPrimTypeTokens->rectLight) {
@@ -1149,9 +1167,9 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
                         float alpha = std::max(0.001f, hit.roughness * hit.roughness);
                         float alpha2 = alpha * alpha;
                         float D = alpha2 / (float)(M_PI * std::pow(nDotH * nDotH * (alpha2 - 1.0f) + 1.0f, 2.0f));
-                        float k_g = alpha / 2.0f;
-                        float G_l = nDotL_eval / (nDotL_eval * (1.0f - k_g) + k_g);
-                        float G_v = nDotV_eval / (nDotV_eval * (1.0f - k_g) + k_g);
+                        // Fix 6: Exact Smith-GGX geometry term
+                        float G_l = 2.0f * nDotL_eval / (nDotL_eval + std::sqrt(alpha2 + (1.0f - alpha2) * nDotL_eval * nDotL_eval));
+                        float G_v = 2.0f * nDotV_eval / (nDotV_eval + std::sqrt(alpha2 + (1.0f - alpha2) * nDotV_eval * nDotV_eval));
                         float G = G_l * G_v;
                         
                         float f0_ior = (hit.ior - 1.0f) / (hit.ior + 1.0f);
@@ -1166,7 +1184,25 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
                         GfVec3f diffuseBase = finalDiffuse * (1.0f - hit.metallic) * (1.0f - hit.transmission) / (float)M_PI;
                         GfVec3f diffBsdf = GfCompMult(diffuseBase, GfVec3f(1.0f) - F);
 
-                        SampledSpectrum bsdf = RGBToSpectrum(diffBsdf + specBsdf, lambda);
+                        // Fix 7: Apply coat layer attenuation to direct lighting
+                        float coatAtten = 1.0f;
+                        GfVec3f coatSpecDirect(0.0f);
+                        if (hit.coat > 0.0f && !isInside) {
+                            float coatF = hit.coat * FresnelDielectric(GfDot(-currentRayDir, shadingNormal), hit.coatIor);
+                            coatAtten = 1.0f - coatF;
+                            // Coat specular lobe
+                            float coatAlpha = std::max(0.001f, hit.coatRoughness * hit.coatRoughness);
+                            float coatAlpha2 = coatAlpha * coatAlpha;
+                            float D_coat = coatAlpha2 / (float)(M_PI * std::pow(nDotH * nDotH * (coatAlpha2 - 1.0f) + 1.0f, 2.0f));
+                            float G_coat_l = 2.0f * nDotL_eval / (nDotL_eval + std::sqrt(coatAlpha2 + (1.0f - coatAlpha2) * nDotL_eval * nDotL_eval));
+                            float G_coat_v = 2.0f * nDotV_eval / (nDotV_eval + std::sqrt(coatAlpha2 + (1.0f - coatAlpha2) * nDotV_eval * nDotV_eval));
+                            float G_coat = G_coat_l * G_coat_v;
+                            coatSpecDirect = GfVec3f(coatF * D_coat * G_coat / (4.0f * nDotL_eval * nDotV_eval));
+                            coatSpecDirect = GfCompMult(coatSpecDirect, hit.coatColor);
+                        }
+
+                        GfVec3f combinedBsdf = (diffBsdf + specBsdf) * coatAtten + coatSpecDirect;
+                        SampledSpectrum bsdf = RGBToSpectrum(combinedBsdf, lambda);
 
                         // PDF for MIS
                         float fresnel_eval = FresnelDielectric(nDotV_eval, hit.ior);
@@ -1210,9 +1246,9 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
                         float alpha = std::max(0.001f, hit.roughness * hit.roughness);
                         float alpha2 = alpha * alpha;
                         float D = alpha2 / (float)(M_PI * std::pow(nDotH * nDotH * (alpha2 - 1.0f) + 1.0f, 2.0f));
-                        float k_g = alpha / 2.0f;
-                        float G_l = nDotL_eval / (nDotL_eval * (1.0f - k_g) + k_g);
-                        float G_v = nDotV_eval / (nDotV_eval * (1.0f - k_g) + k_g);
+                        // Fix 6: Exact Smith-GGX geometry term (sun)
+                        float G_l = 2.0f * nDotL_eval / (nDotL_eval + std::sqrt(alpha2 + (1.0f - alpha2) * nDotL_eval * nDotL_eval));
+                        float G_v = 2.0f * nDotV_eval / (nDotV_eval + std::sqrt(alpha2 + (1.0f - alpha2) * nDotV_eval * nDotV_eval));
                         float G = G_l * G_v;
                         
                         float f0_ior = (hit.ior - 1.0f) / (hit.ior + 1.0f);
@@ -1233,7 +1269,7 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
             }
         }
 
-        // --- Coat Layer ---
+        // --- Coat Layer (Fix 2: energy conservation) ---
         if (hit.coat > 0.0f && !isInside) {
             float coatFresnel = hit.coat * FresnelDielectric(GfDot(currentRayDir, shadingNormal), hit.coatIor);
             if (RandomFloat(rng) < coatFresnel) {
@@ -1252,11 +1288,14 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
                 currentRayDir = reflectDir;
                 currentRayOrigin = hitPos + shadingNormal * 1e-4f;
                 throughput = throughput * RGBToSpectrum(hit.coatColor, lambda);
+                lastBsdfPdf = 0.0f;
                 continue;
             }
+            // Coat was NOT chosen — attenuate base layer throughput
+            throughput = throughput * (1.0f - coatFresnel) * RGBToSpectrum(hit.coatColor, lambda);
         }
 
-        // --- Sheen Layer ---
+        // --- Sheen Layer (Fix 3: energy conservation) ---
         if (hit.sheen > 0.0f && !isInside) {
             float cosTheta = std::max(0.0f, GfDot(-currentRayDir, shadingNormal));
             float sheenFresnel = hit.sheen * std::pow(1.0f - cosTheta, 5.0f);
@@ -1276,15 +1315,14 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
                 currentRayDir = reflectDir;
                 currentRayOrigin = hitPos + shadingNormal * 1e-4f;
                 throughput = throughput * RGBToSpectrum(hit.sheenColor, lambda);
+                lastBsdfPdf = 0.0f;
                 continue;
             }
+            // Sheen was NOT chosen — attenuate base layer throughput
+            throughput = throughput * (1.0f - sheenFresnel);
         }
 
-        // Apply dispersion
-        float iorBase = hit.ior;
-        float C = 10000.0f;
-        float B = iorBase - C / (589.3f * 589.3f);
-        hit.ior = B + C / (lambda.lambda[0] * lambda.lambda[0]);
+        // (Fix 5: dispersion moved before direct lighting)
 
         // --- Indirect Path Selection (BSDF Sampling) ---
         float fresnel = FresnelDielectric(GfDot(currentRayDir, hit.smoothNormal), hit.ior);
@@ -1294,25 +1332,35 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
         float randVal = RandomFloat(rng);
 
         if (randVal < reflectProb) {
-            // Reflection
+            // Reflection (Fix 1: apply GGX importance sampling weight)
             if (reflectionBounces >= (isInteractive ? 1 : _maxReflectionBounces)) break;
             reflectionBounces++;
             GfVec3f reflectDir;
+            float ggxWeight = 1.0f;
             if (hit.roughness > 0.0f) {
                 GfVec3f h = AlignToNormal(SampleGGX(RandomFloat(rng), RandomFloat(rng), hit.roughness), shadingNormal);
                 reflectDir = (currentRayDir - 2.0f * GfDot(currentRayDir, h) * h).GetNormalized();
                 
-                float nDotH = std::max(0.0f, GfDot(shadingNormal, h));
-                float lDotH = std::max(0.0f, GfDot(reflectDir, h));
+                float nDotH = std::max(0.001f, GfDot(shadingNormal, h));
+                float vDotH = std::max(0.001f, std::abs(GfDot(-currentRayDir, h)));
+                float nDotV = std::max(0.001f, std::abs(GfDot(shadingNormal, -currentRayDir)));
+                float nDotL = std::max(0.001f, GfDot(shadingNormal, reflectDir));
                 float alpha = std::max(0.001f, hit.roughness * hit.roughness);
                 float alpha2 = alpha * alpha;
                 float D = alpha2 / (float)(M_PI * std::pow(nDotH * nDotH * (alpha2 - 1.0f) + 1.0f, 2.0f));
-                float specPdf = (D * nDotH) / (4.0f * std::max(lDotH, 1e-6f));
+                float specPdf = (D * nDotH) / (4.0f * std::max(vDotH, 1e-6f));
                 lastBsdfPdf = specPdf * reflectProb;
+                
+                // Fix 1: Smith-GGX geometry weight for importance sampling
+                float G1_v = 2.0f * nDotV / (nDotV + std::sqrt(alpha2 + (1.0f - alpha2) * nDotV * nDotV));
+                float G1_l = 2.0f * nDotL / (nDotL + std::sqrt(alpha2 + (1.0f - alpha2) * nDotL * nDotL));
+                ggxWeight = (G1_v * G1_l * vDotH) / (nDotV * nDotH);
+                ggxWeight = std::min(ggxWeight, 10.0f); // Clamp to avoid fireflies
                 
                 if (GfDot(reflectDir, shadingNormal) < 0) {
                     reflectDir = (currentRayDir - 2.0f * GfDot(currentRayDir, shadingNormal) * shadingNormal).GetNormalized();
                     lastBsdfPdf = 0.0f;
+                    ggxWeight = 1.0f;
                 }
             } else {
                 reflectDir = (currentRayDir - 2.0f * GfDot(currentRayDir, shadingNormal) * shadingNormal).GetNormalized();
@@ -1322,9 +1370,10 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
             currentRayOrigin = hitPos + shadingNormal * 1e-4f;
             
             GfVec3f reflTint = hit.specularColor * (1.0f - hit.metallic) + hit.baseColor * hit.metallic;
-            throughput = throughput * RGBToSpectrum(reflTint, lambda);
+            throughput = throughput * RGBToSpectrum(reflTint, lambda) * ggxWeight;
         } else {
-            float remainingProb = (randVal - reflectProb) / (1.0f - reflectProb);
+            // Fix 27: guard against divide-by-zero
+            float remainingProb = (reflectProb >= 1.0f) ? 0.0f : (randVal - reflectProb) / (1.0f - reflectProb);
             if (hit.transmission > 1e-6f && remainingProb < hit.transmission) {
                 // Refraction
                 float etaI = 1.0f, etaT = hit.ior;
@@ -1374,8 +1423,12 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
                 
                 lastBsdfPdf = pdf * (1.0f - hit.transmission) * (1.0f - reflectProb);
                 
-                GfVec3f finalDiffuse = hit.baseColor * (1.0f - hit.subsurface) + hit.subsurfaceColor * hit.subsurface;
-                throughput = throughput * RGBToSpectrum(finalDiffuse, lambda); 
+                // Fix 8 & 19: apply (1-F) and check _enableSubsurface
+                float effectiveSubsurface = _enableSubsurface ? hit.subsurface : 0.0f;
+                GfVec3f finalDiffuse = hit.baseColor * (1.0f - effectiveSubsurface) + hit.subsurfaceColor * effectiveSubsurface;
+                float fresnelOut = FresnelDielectric(GfDot(diffuseDir, shadingNormal), hit.ior);
+                float diffFresnelAtten = 1.0f - fresnelOut * hit.specular;
+                throughput = throughput * RGBToSpectrum(finalDiffuse, lambda) * std::max(0.0f, diffFresnelAtten);
                 currentRayDir = diffuseDir;
                 currentRayOrigin = hitPos + shadingNormal * 1e-4f;
             }

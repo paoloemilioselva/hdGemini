@@ -15,7 +15,7 @@ HdGeminiMaterial::HdGeminiMaterial(SdfPath const& id)
     : HdMaterial(id)
     , _diffuseColor(1.0f)
     , _metallic(0.0f)
-    , _roughness(0.5f)
+    , _roughness(0.2f)
     , _specularColor(1.0f)
     , _specular(1.0f)
     , _opacity(1.0f)
@@ -108,8 +108,14 @@ static void _ProcessNodeUpstream(
                 material->SetSpecularColor(param.second.UncheckedGet<GfVec3f>());
             } else if ((param.first == TfToken("specular_roughness") || param.first == TfToken("roughness")) && param.second.IsHolding<float>()) {
                 material->SetRoughness(param.second.UncheckedGet<float>());
-            } else if (param.first == TfToken("opacity") && param.second.IsHolding<float>()) {
-                material->SetOpacity(param.second.UncheckedGet<float>());
+            } else if (param.first == TfToken("opacity")) {
+                VtValue val = param.second;
+                if (val.IsHolding<float>()) {
+                    material->SetOpacity(val.Get<float>());
+                } else if (val.IsHolding<GfVec3f>()) {
+                    GfVec3f opacityColor = val.Get<GfVec3f>();
+                    material->SetOpacity(std::min({opacityColor[0], opacityColor[1], opacityColor[2]}));
+                }
             } else if ((param.first == TfToken("ior") || param.first == TfToken("specular_IOR") || param.first == TfToken("specular_ior")) && param.second.IsHolding<float>()) {
                 material->SetIor(param.second.UncheckedGet<float>());
             } else if ((param.first == TfToken("transmission") || param.first == TfToken("transmission_weight")) && param.second.IsHolding<float>()) {
@@ -229,7 +235,7 @@ static void _ProcessNodeUpstream(
         // Only map to diffuse texture if we are on a path leading to diffuse color
         if (targetInput == TfToken("diffuseColor") || targetInput == TfToken("base_color") || targetInput == TfToken("base")) {
             for (auto const& param : node.parameters) {
-                if ((param.first == TfToken("file") || param.first == TfToken("texcoord")) && 
+                if (param.first == TfToken("file") && 
                     param.second.IsHolding<SdfAssetPath>()) {
                     material->SetDiffuseTexture(param.second.UncheckedGet<SdfAssetPath>());
                     HDGEMINI_LOG << "[Gemini]       Mapped diffuse texture: " << material->GetDiffuseTexture().GetAssetPath() << std::endl;
@@ -237,7 +243,7 @@ static void _ProcessNodeUpstream(
             }
         } else if (targetInput == TfToken("metalness") || targetInput == TfToken("base_metalness")) {
             for (auto const& param : node.parameters) {
-                if ((param.first == TfToken("file") || param.first == TfToken("texcoord")) && 
+                if (param.first == TfToken("file") && 
                     param.second.IsHolding<SdfAssetPath>()) {
                     material->SetMetallicTexture(param.second.UncheckedGet<SdfAssetPath>());
                     HDGEMINI_LOG << "[Gemini]       Mapped metallic texture: " << material->GetMetallicTexture().GetAssetPath() << std::endl;
@@ -245,7 +251,7 @@ static void _ProcessNodeUpstream(
             }
         } else if (targetInput == TfToken("specular_roughness") || targetInput == TfToken("roughness")) {
             for (auto const& param : node.parameters) {
-                if ((param.first == TfToken("file") || param.first == TfToken("texcoord")) && 
+                if (param.first == TfToken("file") && 
                     param.second.IsHolding<SdfAssetPath>()) {
                     material->SetRoughnessTexture(param.second.UncheckedGet<SdfAssetPath>());
                     HDGEMINI_LOG << "[Gemini]       Mapped roughness texture: " << material->GetRoughnessTexture().GetAssetPath() << std::endl;
@@ -253,7 +259,7 @@ static void _ProcessNodeUpstream(
             }
         } else if (targetInput == TfToken("emissiveColor") || targetInput == TfToken("emission_color") || targetInput == TfToken("emission") || targetInput == TfToken("emission_luminance")) {
              for (auto const& param : node.parameters) {
-                if ((param.first == TfToken("file") || param.first == TfToken("texcoord")) && 
+                if (param.first == TfToken("file") && 
                     param.second.IsHolding<SdfAssetPath>()) {
                     HDGEMINI_LOG << "[Gemini]       Mapped emissive texture: " << param.second.UncheckedGet<SdfAssetPath>().GetAssetPath() << std::endl;
                     // For now, if diffuse is empty, use emissive as a placeholder so it shows up
@@ -264,7 +270,7 @@ static void _ProcessNodeUpstream(
             }
         } else if (targetInput == TfToken("normal")) {
              for (auto const& param : node.parameters) {
-                if ((param.first == TfToken("file") || param.first == TfToken("texcoord")) && 
+                if (param.first == TfToken("file") && 
                     param.second.IsHolding<SdfAssetPath>()) {
                     material->SetNormalTexture(param.second.UncheckedGet<SdfAssetPath>());
                     HDGEMINI_LOG << "[Gemini]       Mapped normal texture: " << material->GetNormalTexture().GetAssetPath() << std::endl;

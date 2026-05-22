@@ -252,6 +252,7 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
                 } else {
                     _colors = colors;
                 }
+                _colorInterp = colorInterp;
                 _subsetsDirty = true;
             }
         }
@@ -345,6 +346,7 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
             } else {
                 _normals = normals;
             }
+            _normalInterp = normalInterp;
             _subsetsDirty = true;
         }
     }
@@ -424,13 +426,23 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
             
             int creaseIndexOffset = 0;
             int weightIdx = 0;
+            bool perCreaseWeights = (cWeights.size() == cLengths.size());
             for (size_t i = 0; i < cLengths.size(); ++i) {
                 int length = cLengths[i];
-                float weight = cWeights[weightIdx++];
-                for (int j = 0; j < length - 1; ++j) {
-                    creaseVertexIndexPairs.push_back(cIndices[creaseIndexOffset + j]);
-                    creaseVertexIndexPairs.push_back(cIndices[creaseIndexOffset + j + 1]);
-                    creaseWeights.push_back(weight);
+                if (perCreaseWeights) {
+                    float weight = cWeights[weightIdx++];
+                    for (int j = 0; j < length - 1; ++j) {
+                        creaseVertexIndexPairs.push_back(cIndices[creaseIndexOffset + j]);
+                        creaseVertexIndexPairs.push_back(cIndices[creaseIndexOffset + j + 1]);
+                        creaseWeights.push_back(weight);
+                    }
+                } else {
+                    for (int j = 0; j < length - 1; ++j) {
+                        creaseVertexIndexPairs.push_back(cIndices[creaseIndexOffset + j]);
+                        creaseVertexIndexPairs.push_back(cIndices[creaseIndexOffset + j + 1]);
+                        creaseWeights.push_back(cWeights[weightIdx + j]);
+                    }
+                    weightIdx += length - 1;
                 }
                 creaseIndexOffset += length;
             }

@@ -31,7 +31,7 @@
   - Full Float32 HDR color AOV output preserving unclamped highlights for post-processing.
 - **Physical Materials**: Extensive support for physically-based rendering workflows.
   - Prioritized resolution for **MaterialX** (`mtlx`) and **OpenPBR** surface shaders via the SdrRegistry.
-  - Full `standard_surface` support including Base Color, Roughness, Metallic, Clearcoat, Sheen, Subsurface Scattering (diffuse approximation, globally toggleable via render settings), and physical Emission.
+  - Full `standard_surface` support including Base Color, Roughness, Metallic, Clearcoat, Sheen, Volumetric Subsurface Scattering (full Monte Carlo random walk), and physical Emission.
   - **Extended Texture Support**: Fully supports `ND_extract` nodes for channel-packed textures (e.g., ORM - Occlusion, Roughness, Metallic) and correct routing for Opacity and Transmission maps.
   - Accurate physical refraction, handling Transmission, IOR (Index of Refraction), Transmission Depth/Scatter (Beer's Law volume absorption), and Thin-Walled properties.
   - **Physical Dispersion**: Simulates wavelength-dependent Index of Refraction (IOR) using Cauchy's equation, rendering accurate rainbow dispersion through transmissive materials.
@@ -48,7 +48,7 @@
   - Robust **GeomSubset** splitting: Multi-material meshes are physically partitioned into isolated sub-meshes under the hood, ensuring perfect sub-mesh material assignments even with complex n-gon encodings.
   - **Face-Varying Primvars**: Accurate slicing and interpolation of UVs, normals, and vertex colors for all mesh subsets.
   - Smooth shading via computed and triangulated vertex normals, featuring mathematically exact normal transformations that gracefully handle non-uniform mesh scaling.
-  - Seamless handling of `leftHanded` vs `rightHanded` mesh orientation via correct winding order adjustments on the fly.
+  - Seamless handling of `leftHanded` vs `rightHanded` mesh orientation via correct winding order adjustments and tangent space synchronization for accurate normal mapping regardless of topology.
   - Support for animated meshes via ExtComputations (e.g., skinning).
 - **Lighting**:
   - Full suite of Hydra light types: Distant, Rect, Sphere, Point, and Dome lights.

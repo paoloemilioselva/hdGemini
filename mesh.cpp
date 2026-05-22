@@ -414,9 +414,68 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
             desc.numFVarChannels = numChannels;
             desc.fvarChannels = channels;
 
+            std::vector<int> creaseVertexIndexPairs;
+            std::vector<float> creaseWeights;
+            const PxOsdSubdivTags& subdivTags = topology.GetSubdivTags();
+            
+            const VtIntArray& cIndices = subdivTags.GetCreaseIndices();
+            const VtIntArray& cLengths = subdivTags.GetCreaseLengths();
+            const VtFloatArray& cWeights = subdivTags.GetCreaseWeights();
+            
+            int creaseIndexOffset = 0;
+            int weightIdx = 0;
+            for (size_t i = 0; i < cLengths.size(); ++i) {
+                int length = cLengths[i];
+                float weight = cWeights[weightIdx++];
+                for (int j = 0; j < length - 1; ++j) {
+                    creaseVertexIndexPairs.push_back(cIndices[creaseIndexOffset + j]);
+                    creaseVertexIndexPairs.push_back(cIndices[creaseIndexOffset + j + 1]);
+                    creaseWeights.push_back(weight);
+                }
+                creaseIndexOffset += length;
+            }
+            
+            desc.numCreases = creaseWeights.size();
+            desc.creaseVertexIndexPairs = creaseVertexIndexPairs.empty() ? nullptr : creaseVertexIndexPairs.data();
+            desc.creaseWeights = creaseWeights.empty() ? nullptr : creaseWeights.data();
+            
+            const VtIntArray& cornerIndices = subdivTags.GetCornerIndices();
+            const VtFloatArray& cornerWeights = subdivTags.GetCornerWeights();
+            desc.numCorners = cornerIndices.size();
+            desc.cornerVertexIndices = cornerIndices.empty() ? nullptr : cornerIndices.cdata();
+            desc.cornerWeights = cornerWeights.empty() ? nullptr : cornerWeights.cdata();
+            
+            const VtIntArray& holeIndices = topology.GetHoleIndices();
+            desc.numHoles = holeIndices.size();
+            desc.holeIndices = holeIndices.empty() ? nullptr : holeIndices.cdata();
+
             OpenSubdiv::Sdc::SchemeType type = OpenSubdiv::Sdc::SCHEME_CATMARK;
+            if (topology.GetScheme() == TfToken("loop")) type = OpenSubdiv::Sdc::SCHEME_LOOP;
+            else if (topology.GetScheme() == TfToken("bilinear")) type = OpenSubdiv::Sdc::SCHEME_BILINEAR;
+            
             OpenSubdiv::Sdc::Options options;
-            options.SetVtxBoundaryInterpolation(OpenSubdiv::Sdc::Options::VTX_BOUNDARY_EDGE_ONLY);
+            
+            TfToken vtxRule = subdivTags.GetVertexInterpolationRule();
+            if (vtxRule == TfToken("edgeAndCorner")) options.SetVtxBoundaryInterpolation(OpenSubdiv::Sdc::Options::VTX_BOUNDARY_EDGE_AND_CORNER);
+            else if (vtxRule == TfToken("edgeOnly")) options.SetVtxBoundaryInterpolation(OpenSubdiv::Sdc::Options::VTX_BOUNDARY_EDGE_ONLY);
+            else if (vtxRule == TfToken("none")) options.SetVtxBoundaryInterpolation(OpenSubdiv::Sdc::Options::VTX_BOUNDARY_NONE);
+            else options.SetVtxBoundaryInterpolation(OpenSubdiv::Sdc::Options::VTX_BOUNDARY_EDGE_ONLY);
+            
+            TfToken fvarRule = subdivTags.GetFaceVaryingInterpolationRule();
+            if (fvarRule == TfToken("all")) options.SetFVarLinearInterpolation(OpenSubdiv::Sdc::Options::FVAR_LINEAR_ALL);
+            else if (fvarRule == TfToken("cornersOnly")) options.SetFVarLinearInterpolation(OpenSubdiv::Sdc::Options::FVAR_LINEAR_CORNERS_ONLY);
+            else if (fvarRule == TfToken("cornersPlus1")) options.SetFVarLinearInterpolation(OpenSubdiv::Sdc::Options::FVAR_LINEAR_CORNERS_PLUS1);
+            else if (fvarRule == TfToken("none")) options.SetFVarLinearInterpolation(OpenSubdiv::Sdc::Options::FVAR_LINEAR_NONE);
+            else if (fvarRule == TfToken("boundaries")) options.SetFVarLinearInterpolation(OpenSubdiv::Sdc::Options::FVAR_LINEAR_BOUNDARIES);
+            else options.SetFVarLinearInterpolation(OpenSubdiv::Sdc::Options::FVAR_LINEAR_ALL);
+            
+            TfToken creaseMethod = subdivTags.GetCreaseMethod();
+            if (creaseMethod == TfToken("chaikin")) options.SetCreasingMethod(OpenSubdiv::Sdc::Options::CREASE_CHAIKIN);
+            else options.SetCreasingMethod(OpenSubdiv::Sdc::Options::CREASE_UNIFORM);
+            
+            TfToken triangleSubdiv = subdivTags.GetTriangleSubdivision();
+            if (triangleSubdiv == TfToken("smooth")) options.SetTriangleSubdivision(OpenSubdiv::Sdc::Options::TRI_SUB_SMOOTH);
+            else options.SetTriangleSubdivision(OpenSubdiv::Sdc::Options::TRI_SUB_CATMARK);
 
             OpenSubdiv::Far::TopologyRefiner* refiner = 
                 OpenSubdiv::Far::TopologyRefinerFactory<Descriptor>::Create(

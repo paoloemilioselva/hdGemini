@@ -605,7 +605,7 @@ GfVec3f HdGeminiRenderer::_SampleEnvironment(const GfVec3f& rayDir) const
         }
     }
     float theta = std::acos(std::clamp(localDir[1], -1.0f, 1.0f));
-    float phi = std::atan2(localDir[0], localDir[2]);
+    float phi = std::atan2(-localDir[0], localDir[2]);
     if (phi < 0) phi += 2.0f * M_PI;
     float u = phi / (2.0f * M_PI);
     float v = theta / M_PI;
@@ -677,7 +677,7 @@ GfVec3f HdGeminiRenderer::_SampleTexture(const SdfAssetPath& path, const GfVec2f
     if (!image) {
         HDGEMINI_LOG << "[Gemini]   Failed to open texture: " << (resolvedPath.empty() ? assetPath : resolvedPath) << std::endl;
         _textureCache[cacheKey] = TextureData();
-        return GfVec3f(1.0f);
+        return GfVec3f(-1.0f);
     }
 
     TextureData data;
@@ -744,9 +744,8 @@ GfVec3f HdGeminiRenderer::_SampleTexture(const SdfAssetPath& path, const GfVec2f
     return _SampleTextureData(_textureCache[cacheKey], uv);
 }
 
-GfVec3f HdGeminiRenderer::_SampleTextureData(const TextureData& data, const GfVec2f& uv) const
-{
-    if (data.pixels.empty()) return GfVec3f(1.0f);
+GfVec3f HdGeminiRenderer::_SampleTextureData(const TextureData& data, const GfVec2f& uv) const {
+    if (data.pixels.empty()) return GfVec3f(-1.0f);
 
     float u = uv[0] - std::floor(uv[0]);
     float v = uv[1] - std::floor(uv[1]); // Do not flip V; HioImage provides bottom-up data which matches standard UVs where v=0 is the bottom.
@@ -989,34 +988,49 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
         }
 
         if (!hit.diffuseTexture.GetAssetPath().empty()) {
-            hit.baseColor = GfCompMult(hit.baseColor, _SampleTexture(hit.diffuseTexture, hit.uv));
+            GfVec3f texVal = _SampleTexture(hit.diffuseTexture, hit.uv);
+            if (texVal[0] >= 0.0f) {
+                hit.baseColor = GfCompMult(hit.baseColor, texVal);
+            }
         }
 
+        bool isPackedMap = (!hit.metallicTexture.GetAssetPath().empty() && 
+                            !hit.roughnessTexture.GetAssetPath().empty() && 
+                            hit.metallicTexture.GetAssetPath() == hit.roughnessTexture.GetAssetPath());
+
         if (!hit.metallicTexture.GetAssetPath().empty()) {
-            hit.metallic = _SampleTexture(hit.metallicTexture, hit.uv, true)[0];
+            GfVec3f texVal = _SampleTexture(hit.metallicTexture, hit.uv, true);
+            if (texVal[0] >= 0.0f) {
+                hit.metallic = isPackedMap ? texVal[2] : texVal[0];
+            }
         }
 
         if (!hit.roughnessTexture.GetAssetPath().empty()) {
-            hit.roughness = _SampleTexture(hit.roughnessTexture, hit.uv, true)[0];
+            GfVec3f texVal = _SampleTexture(hit.roughnessTexture, hit.uv, true);
+            if (texVal[0] >= 0.0f) {
+                hit.roughness = isPackedMap ? texVal[1] : texVal[0];
+            }
         }
 
         if (!hit.normalTexture.GetAssetPath().empty()) {
             GfVec3f nTex = _SampleTexture(hit.normalTexture, hit.uv, true);
-            nTex = nTex * 2.0f - GfVec3f(1.0f);
-            
-            GfVec3f n = hit.smoothNormal;
-            GfVec3f t = hit.dpdu;
-            GfVec3f b = hit.dpdv;
-            
-            t = (t - n * GfDot(t, n)).GetNormalized();
-            b = (b - n * GfDot(b, n) - t * GfDot(b, t)).GetNormalized();
-            
-            // Adjust bitangent sign if necessary (handedness)
-            if (GfDot(GfCross(n, t), b) < 0.0f) {
-                b = -b;
+            if (nTex[0] >= 0.0f) {
+                nTex = nTex * 2.0f - GfVec3f(1.0f);
+                
+                GfVec3f n = hit.smoothNormal;
+                GfVec3f t = hit.dpdu;
+                GfVec3f b = hit.dpdv;
+                
+                t = (t - n * GfDot(t, n)).GetNormalized();
+                b = (b - n * GfDot(b, n) - t * GfDot(b, t)).GetNormalized();
+                
+                // Adjust bitangent sign if necessary (handedness)
+                if (GfDot(GfCross(n, t), b) < 0.0f) {
+                    b = -b;
+                }
+                
+                hit.smoothNormal = (t * nTex[0] + b * nTex[1] + n * nTex[2]).GetNormalized();
             }
-            
-            hit.smoothNormal = (t * nTex[0] + b * nTex[1] + n * nTex[2]).GetNormalized();
         }
 
         if (bounce == 0) {
@@ -1080,8 +1094,8 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
                 float theta = M_PI * (float)(y + 0.5f) / (float)_envMapHeight;
                 float phi = 2.0f * M_PI * (float)(x + 0.5f) / (float)_envMapWidth;
                 float sinThetaL = std::max(1e-6f, std::sin(theta));
-                // Use X=sin*sin, Z=sin*cos to match atan2(X, Z) convention
-                GfVec3f localDir(sinThetaL * std::sin(phi), std::cos(theta), sinThetaL * std::cos(phi));
+                // Use X=-sin*sin, Z=sin*cos to match atan2(-X, Z) convention
+                GfVec3f localDir(-sinThetaL * std::sin(phi), std::cos(theta), sinThetaL * std::cos(phi));
                 lDir = GfMatrix4f(light->GetTransform()).TransformDir(localDir).GetNormalized();
                 size_t idx = (y * _envMapWidth + x) * 3;
                 GfVec3f texColor(_envMapPixels[idx], _envMapPixels[idx+1], _envMapPixels[idx+2]);

@@ -230,7 +230,11 @@ static void _ProcessNodeUpstream(
                shaderId == TfToken("ND_image_vector2") ||
                shaderId == TfToken("ND_image_vector3") ||
                shaderId == TfToken("ND_image_vector4") ||
-               shaderId == TfToken("ND_image_color4")) {
+               shaderId == TfToken("ND_image_color4") ||
+               shaderId == TfToken("ND_normalmap") ||
+               shaderId == TfToken("ND_normalmap_vector2") ||
+               shaderId == TfToken("ND_normalmap_color3") ||
+               shaderId == TfToken("ND_normalmap_float")) {
         
         // Only map to diffuse texture if we are on a path leading to diffuse color
         if (targetInput == TfToken("diffuseColor") || targetInput == TfToken("base_color") || targetInput == TfToken("base")) {

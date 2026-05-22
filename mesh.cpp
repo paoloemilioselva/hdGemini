@@ -620,6 +620,28 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
             }
         }
 
+        // Handle left-handed winding order
+        if (topology.GetOrientation() == HdTokens->leftHanded) {
+            for (size_t i = 0; i < allTriangulatedIndices.size(); ++i) {
+                std::swap(allTriangulatedIndices[i][1], allTriangulatedIndices[i][2]);
+            }
+            if (_uvInterp == HdInterpolationFaceVarying && _uvs.size() == allTriangulatedIndices.size() * 3) {
+                for (size_t i = 0; i < allTriangulatedIndices.size(); ++i) {
+                    std::swap(_uvs[i * 3 + 1], _uvs[i * 3 + 2]);
+                }
+            }
+            if (_colorInterp == HdInterpolationFaceVarying && _colors.size() == allTriangulatedIndices.size() * 3) {
+                for (size_t i = 0; i < allTriangulatedIndices.size(); ++i) {
+                    std::swap(_colors[i * 3 + 1], _colors[i * 3 + 2]);
+                }
+            }
+            if (_normalInterp == HdInterpolationFaceVarying && _normals.size() == allTriangulatedIndices.size() * 3) {
+                for (size_t i = 0; i < allTriangulatedIndices.size(); ++i) {
+                    std::swap(_normals[i * 3 + 1], _normals[i * 3 + 2]);
+                }
+            }
+        }
+
         if (_normals.empty() && !_points.empty() && !allTriangulatedIndices.empty()) {
             VtVec3fArray smoothNormals(_points.size(), GfVec3f(0.0f));
             for (const auto& tri : allTriangulatedIndices) {

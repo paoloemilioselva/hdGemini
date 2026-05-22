@@ -1082,11 +1082,6 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
                 t = (t - n * GfDot(t, n)).GetNormalized();
                 b = (b - n * GfDot(b, n) - t * GfDot(b, t)).GetNormalized();
                 
-                // Adjust bitangent sign if necessary (handedness)
-                if (GfDot(GfCross(n, t), b) < 0.0f) {
-                    b = -b;
-                }
-                
                 hit.smoothNormal = (t * nTex[0] + b * nTex[1] + n * nTex[2]).GetNormalized();
             }
         }
@@ -1119,6 +1114,58 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
 
         GfVec3f shadingNormal = hit.smoothNormal;
         if (isInside) shadingNormal = -shadingNormal;
+
+        // --- Volumetric SSS (Random Walk) ---
+        if (isInside && hit.subsurface > 0.0f && !hit.thinWalled) {
+            GfVec3f d_mfp = GfCompMult(hit.subsurfaceRadius, GfVec3f(hit.subsurfaceScale));
+            d_mfp[0] = std::max(d_mfp[0], 1e-4f);
+            d_mfp[1] = std::max(d_mfp[1], 1e-4f);
+            d_mfp[2] = std::max(d_mfp[2], 1e-4f);
+            
+            GfVec3f sigma_t_rgb(1.0f / d_mfp[0], 1.0f / d_mfp[1], 1.0f / d_mfp[2]);
+            GfVec3f sigma_s_rgb = GfCompMult(hit.subsurfaceColor, sigma_t_rgb);
+            
+            SampledSpectrum sigma_t = RGBToSpectrum(sigma_t_rgb, lambda);
+            SampledSpectrum sigma_s = RGBToSpectrum(sigma_s_rgb, lambda);
+            
+            float ext = std::max(sigma_t[0], 1e-4f);
+            float d = -std::log(std::max(RandomFloat(rng), 1e-6f)) / ext;
+            
+            if (d < hit.t) {
+                // Volumetric Scatter
+                currentRayOrigin = currentRayOrigin + currentRayDir * d;
+                
+                // Isotropic or Henyey-Greenstein phase function
+                float cosTheta = 1.0f - 2.0f * RandomFloat(rng);
+                float sinTheta = std::sqrt(std::max(0.0f, 1.0f - cosTheta * cosTheta));
+                float phi = 2.0f * (float)M_PI * RandomFloat(rng);
+                GfVec3f w(sinTheta * std::cos(phi), sinTheta * std::sin(phi), cosTheta);
+                
+                if (std::abs(hit.subsurfaceAnisotropy) > 0.001f) {
+                    float g = hit.subsurfaceAnisotropy;
+                    float sqrTerm = (1.0f - g * g) / (1.0f - g + 2.0f * g * RandomFloat(rng));
+                    cosTheta = (1.0f + g * g - sqrTerm * sqrTerm) / (2.0f * g);
+                    sinTheta = std::sqrt(std::max(0.0f, 1.0f - cosTheta * cosTheta));
+                    
+                    GfVec3f up = std::abs(currentRayDir[2]) < 0.999f ? GfVec3f(0,0,1) : GfVec3f(1,0,0);
+                    GfVec3f t = GfCross(up, currentRayDir).GetNormalized();
+                    GfVec3f b = GfCross(currentRayDir, t);
+                    
+                    w = (t * std::cos(phi) * sinTheta + b * std::sin(phi) * sinTheta + currentRayDir * cosTheta).GetNormalized();
+                }
+                currentRayDir = w;
+                
+                for(int i=0; i<SPECTRUM_SAMPLES; ++i) {
+                    throughput[i] *= (sigma_s[i] / std::max(sigma_t[i], 1e-6f));
+                }
+                continue; // Proceed directly to next scattering event
+            } else {
+                // Reached boundary, attenuate by transmittance
+                for(int i=0; i<SPECTRUM_SAMPLES; ++i) {
+                    throughput[i] *= std::exp(-sigma_t[i] * hit.t);
+                }
+            }
+        }
 
         totalRadiance += throughput * RGBToSpectrum(hit.emission, lambda);
 
@@ -1451,8 +1498,19 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
         } else {
             // Fix 27: guard against divide-by-zero
             float remainingProb = (reflectProb >= 1.0f) ? 0.0f : (randVal - reflectProb) / (1.0f - reflectProb);
-            if (effectiveTransmission > 1e-6f && remainingProb < effectiveTransmission) {
-                // Refraction
+            
+            // Metals absorb non-reflected energy
+            if (remainingProb > (1.0f - hit.metallic)) {
+                break;
+            }
+            remainingProb = remainingProb / std::max(1.0f - hit.metallic, 1e-6f);
+            
+            float sssProb = hit.subsurface;
+            float transProb = hit.transmission * (1.0f - hit.subsurface);
+            float diffProb = 1.0f - sssProb - transProb;
+            
+            if (sssProb + transProb > 1e-6f && remainingProb < sssProb + transProb) {
+                // Refraction (Both Transmission and SSS refract into the volume)
                 float etaI = 1.0f, etaT = hit.ior;
                 if (isInside) std::swap(etaI, etaT);
                 
@@ -1474,13 +1532,19 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
                         if (k_h >= 0.0f) {
                             refractDir = (eta * currentRayDir - (eta * cosThetaI_h + std::sqrt(k_h)) * h).GetNormalized();
                         } else {
-                            refractDir = (currentRayDir - 2.0f * cosThetaI_h * h).GetNormalized();
+                            refractDir = (currentRayDir - 2.0f * cosThetaI_h * h).GetNormalized(); // TIR on microfacet
                         }
                     }
                     
                     currentRayDir = refractDir;
                     currentRayOrigin = hitPos - n * 1e-4f;
-                    throughput = throughput * RGBToSpectrum(hit.transmissionColor, lambda);
+                    
+                    if (remainingProb >= sssProb) {
+                        // It is Transmission
+                        throughput = throughput * RGBToSpectrum(hit.transmissionColor, lambda);
+                    }
+                    // If it is SSS, throughput is unmodified here; the random walk handles attenuation.
+                    
                     lastBsdfPdf = 0.0f;
                 } else {
                     // Total Internal Reflection
@@ -1498,16 +1562,12 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
                 float pdf = nDotL / (float)M_PI;
                 if (pdf < 1e-6f) break;
                 
-                lastBsdfPdf = pdf * (1.0f - effectiveTransmission) * (1.0f - reflectProb);
+                lastBsdfPdf = pdf * (1.0f - reflectProb) * diffProb;
                 
-                // Fix 8 & 19: apply (1-F) and always blend subsurface color for visual approximation
-                float effectiveSubsurface = hit.subsurface;
-                GfVec3f finalDiffuse = hit.baseColor * (1.0f - effectiveSubsurface) + hit.subsurfaceColor * effectiveSubsurface;
                 float fresnelOut = FresnelDielectric(GfDot(diffuseDir, shadingNormal), hit.ior);
                 float diffFresnelAtten = 1.0f - fresnelOut * hit.specular;
-                if (hit.metallic > 0.0f) diffFresnelAtten *= (1.0f - hit.metallic);
-
-                GfVec3f diffuseBase = finalDiffuse * diffFresnelAtten / (float)M_PI;
+                
+                GfVec3f diffuseBase = hit.baseColor * diffFresnelAtten / (float)M_PI;
                 throughput = throughput * RGBToSpectrum(diffuseBase, lambda) * (float)M_PI;
                 currentRayDir = diffuseDir;
                 currentRayOrigin = hitPos + shadingNormal * 1e-4f;

@@ -83,7 +83,7 @@ static void _ProcessNodeUpstream(
                 material->SetSpecularColor(param.second.UncheckedGet<GfVec3f>());
             } else if (param.first == TfToken("opacity") && param.second.IsHolding<float>()) {
                 material->SetOpacity(param.second.UncheckedGet<float>());
-            } else if (param.first == TfToken("ior") && param.second.IsHolding<float>()) {
+            } else if ((param.first == TfToken("ior") || param.first == TfToken("specular_IOR") || param.first == TfToken("specular_ior")) && param.second.IsHolding<float>()) {
                 material->SetIor(param.second.UncheckedGet<float>());
             } else if (param.first == TfToken("emissiveColor") && param.second.IsHolding<GfVec3f>()) {
                 material->SetEmissionColor(param.second.UncheckedGet<GfVec3f>());
@@ -110,7 +110,7 @@ static void _ProcessNodeUpstream(
                 material->SetRoughness(param.second.UncheckedGet<float>());
             } else if (param.first == TfToken("opacity") && param.second.IsHolding<float>()) {
                 material->SetOpacity(param.second.UncheckedGet<float>());
-            } else if (param.first == TfToken("ior") && param.second.IsHolding<float>()) {
+            } else if ((param.first == TfToken("ior") || param.first == TfToken("specular_IOR") || param.first == TfToken("specular_ior")) && param.second.IsHolding<float>()) {
                 material->SetIor(param.second.UncheckedGet<float>());
             } else if ((param.first == TfToken("transmission") || param.first == TfToken("transmission_weight")) && param.second.IsHolding<float>()) {
                 material->SetTransmission(param.second.UncheckedGet<float>());

@@ -1144,7 +1144,8 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
                         // Diffuse Evaluation
                         float effectiveSubsurface = _enableSubsurface ? hit.subsurface : 0.0f;
                         GfVec3f finalDiffuse = hit.baseColor * (1.0f - effectiveSubsurface) + hit.subsurfaceColor * effectiveSubsurface;
-                        GfVec3f diffBsdf = finalDiffuse * (1.0f - hit.metallic) * (1.0f - hit.transmission) / (float)M_PI;
+                        GfVec3f diffuseBase = finalDiffuse * (1.0f - hit.metallic) * (1.0f - hit.transmission) / (float)M_PI;
+                        GfVec3f diffBsdf = GfCompMult(diffuseBase, GfVec3f(1.0f) - F);
 
                         SampledSpectrum bsdf = RGBToSpectrum(diffBsdf + specBsdf, lambda);
 
@@ -1203,7 +1204,8 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
 
                         float effectiveSubsurface = _enableSubsurface ? hit.subsurface : 0.0f;
                         GfVec3f finalDiffuse = hit.baseColor * (1.0f - effectiveSubsurface) + hit.subsurfaceColor * effectiveSubsurface;
-                        GfVec3f diffBsdf = finalDiffuse * (1.0f - hit.metallic) * (1.0f - hit.transmission) / (float)M_PI;
+                        GfVec3f diffuseBase = finalDiffuse * (1.0f - hit.metallic) * (1.0f - hit.transmission) / (float)M_PI;
+                        GfVec3f diffBsdf = GfCompMult(diffuseBase, GfVec3f(1.0f) - F);
 
                         SampledSpectrum bsdf = RGBToSpectrum(diffBsdf + specBsdf, lambda);
                         totalRadiance += throughput * bsdf * specLColor * nDotL; // PDF is 1 for directional sun (Delta light MIS = 1)

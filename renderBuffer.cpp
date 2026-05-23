@@ -25,11 +25,13 @@ HdGeminiRenderBuffer::Allocate(GfVec3i const& dimensions,
     _height = dimensions[1];
     _format = format;
     _multiSampled = multiSampled;
-    size_t size = _width * _height * HdDataSizeOfFormat(format);
-    _buffer.resize(size);
-    _renderBuffer.resize(size);
-    _accumBuffer.assign(_width * _height * 4, 0.0f);
-    _sampleCount.assign(_width * _height, 0);
+    size_t numPixels = _width * _height;
+    size_t formatSize = HdDataSizeOfFormat(format);
+    _buffer.resize(numPixels * formatSize);
+    _renderBuffer.resize(numPixels * formatSize);
+    _accumBuffer.assign(numPixels * 4, 0.0f);
+    _sumSquaredBuffer.assign(numPixels * 4, 0.0f);
+    _sampleCount.assign(numPixels, 0);
     return true;
 }
 
@@ -129,6 +131,12 @@ HdGeminiRenderBuffer::WriteSampleLockFree(size_t idx, GfVec4f const& color)
     _accumBuffer[idx * 4 + 1] += color[1];
     _accumBuffer[idx * 4 + 2] += color[2];
     _accumBuffer[idx * 4 + 3] += color[3];
+    
+    _sumSquaredBuffer[idx * 4 + 0] += color[0] * color[0];
+    _sumSquaredBuffer[idx * 4 + 1] += color[1] * color[1];
+    _sumSquaredBuffer[idx * 4 + 2] += color[2] * color[2];
+    _sumSquaredBuffer[idx * 4 + 3] += color[3] * color[3];
+    
     _sampleCount[idx]++;
 
     float invCount = 1.0f / (float)_sampleCount[idx];
@@ -177,6 +185,7 @@ HdGeminiRenderBuffer::Clear(size_t numComponents, float const* value)
     std::lock_guard<std::mutex> lock(_bufferMutex);
     // Do not visually clear the buffer to prevent black flashes, just reset the accumulators
     _accumBuffer.assign(_width * _height * 4, 0.0f);
+    _sumSquaredBuffer.assign(_width * _height * 4, 0.0f);
     _sampleCount.assign(_width * _height, 0);
 }
 
@@ -186,5 +195,44 @@ HdGeminiRenderBuffer::Clear(size_t numComponents, int const* value)
     std::lock_guard<std::mutex> lock(_bufferMutex);
     // Do not visually clear the buffer to prevent black flashes, just reset the accumulators
     _accumBuffer.assign(_width * _height * 4, 0.0f);
+    _sumSquaredBuffer.assign(_width * _height * 4, 0.0f);
     _sampleCount.assign(_width * _height, 0);
+}
+
+float
+HdGeminiRenderBuffer::GetPixelVariance(GfVec3i const& pixel) const
+{
+    if (pixel[0] < 0 || pixel[0] >= (int)_width ||
+        pixel[1] < 0 || pixel[1] >= (int)_height) {
+        return 0.0f;
+    }
+    size_t idx = pixel[1] * _width + pixel[0];
+    int n = _sampleCount[idx];
+    if (n < 2) return 1e5f; // High variance for very few samples
+    
+    // Variance = (E[X^2] - E[X]^2)
+    float invN = 1.0f / (float)n;
+    float ex2 = _sumSquaredBuffer[idx * 4 + 0] * invN + 
+                _sumSquaredBuffer[idx * 4 + 1] * invN + 
+                _sumSquaredBuffer[idx * 4 + 2] * invN;
+    ex2 /= 3.0f;
+    
+    float ex0 = _accumBuffer[idx * 4 + 0] * invN;
+    float ex1 = _accumBuffer[idx * 4 + 1] * invN;
+    float ex2_mean = _accumBuffer[idx * 4 + 2] * invN;
+    float ex_sq = (ex0 * ex0 + ex1 * ex1 + ex2_mean * ex2_mean) / 3.0f;
+    
+    float variance = ex2 - ex_sq;
+    return std::max(0.0f, variance) * invN; // Standard error of the mean
+}
+
+int
+HdGeminiRenderBuffer::GetPixelSampleCount(GfVec3i const& pixel) const
+{
+    if (pixel[0] < 0 || pixel[0] >= (int)_width ||
+        pixel[1] < 0 || pixel[1] >= (int)_height) {
+        return 0;
+    }
+    size_t idx = pixel[1] * _width + pixel[0];
+    return _sampleCount[idx];
 }

@@ -7,6 +7,7 @@
 #include "material.h"
 #include "volume.h"
 #include "field.h"
+#include "qmc.h"
 #include <pxr/base/work/loops.h>
 #include <pxr/base/gf/vec3f.h>
 #include <pxr/base/gf/vec3i.h>
@@ -582,7 +583,7 @@ void HdGeminiRenderer::_SubdivideTLAS(int nodeIdx, int start, int end, HdRenderT
     _SubdivideTLAS(leftChildIdx + 1, i, end, renderThread);
 }
 
-bool HdGeminiRenderer::_IntersectTLAS(const GfVec3f& rayOrigin, const GfVec3f& rayDir, HitRecord& hit, HdRenderThread* renderThread, uint32_t& rng) const
+bool HdGeminiRenderer::_IntersectTLAS(const GfVec3f& rayOrigin, const GfVec3f& rayDir, HitRecord& hit, HdRenderThread* renderThread, uint32_t sampleIdx, uint32_t& qmcDim, uint32_t& rng) const
 {
     _rayCount.fetch_add(1, std::memory_order_relaxed);
     if (_tlasNodes.empty() || renderThread->IsStopRequested()) return false;
@@ -631,7 +632,7 @@ bool HdGeminiRenderer::_IntersectTLAS(const GfVec3f& rayOrigin, const GfVec3f& r
                                 
                                 if (sigma_t > 0.0f) {
                                     float p_scatter = 1.0f - std::exp(-sigma_t * step);
-                                    if (RandomFloat(rng) < p_scatter) {
+                                    if (qmc::SampleDimension(sampleIdx, qmcDim++, rng) < p_scatter) {
                                         hit.t = t;
                                         hit.isVolumeHit = true;
                                         hit.densityGrid = inst.densityGrid;
@@ -1091,7 +1092,7 @@ static float PowerHeuristic(float f, float g) {
     return f2 / (f2 + g2);
 }
 
-SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVec3f& rayDir, int depth, bool isInteractive, HdRenderThread* renderThread, uint32_t& rng, const SampledWavelengths& lambda, GfVec3f* outAlbedo, GfVec3f* outNormal, float exposureMultiplier) const
+SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVec3f& rayDir, int depth, bool isInteractive, HdRenderThread* renderThread, uint32_t sampleIdx, uint32_t& qmcDim, uint32_t& rng, const SampledWavelengths& lambda, GfVec3f* outAlbedo, GfVec3f* outNormal, float exposureMultiplier) const
 {
     SampledSpectrum throughput(exposureMultiplier);
     SampledSpectrum totalRadiance(0.0f);
@@ -1120,7 +1121,7 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
         if (renderThread->IsStopRequested()) break;
 
         HitRecord hit;
-        if (!this->_IntersectTLAS(currentRayOrigin, currentRayDir, hit, renderThread, rng)) {
+        if (!this->_IntersectTLAS(currentRayOrigin, currentRayDir, hit, renderThread, sampleIdx, qmcDim, rng)) {
             GfVec3f envRGB;
             if (_enablePhysicalSky) {
                 envRGB = _SamplePhysicalSky(currentRayDir, physicalSunDir);
@@ -1218,9 +1219,9 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
 
         if (hit.isVolumeHit) {
             // Volume scattering event (isotropic)
-            float cosTheta = 1.0f - 2.0f * RandomFloat(rng);
+            float cosTheta = 1.0f - 2.0f * qmc::SampleDimension(sampleIdx, qmcDim++, rng);
             float sinTheta = std::sqrt(std::max(0.0f, 1.0f - cosTheta * cosTheta));
-            float phi = 2.0f * (float)M_PI * RandomFloat(rng);
+            float phi = 2.0f * (float)M_PI * qmc::SampleDimension(sampleIdx, qmcDim++, rng);
             currentRayDir = GfVec3f(sinTheta * std::cos(phi), sinTheta * std::sin(phi), cosTheta);
             currentRayOrigin = hitPos;
             
@@ -1230,7 +1231,7 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
         }
 
         // Handle transparency/opacity
-        if (hit.opacity < 0.999f && RandomFloat(rng) > hit.opacity) {
+        if (hit.opacity < 0.999f && qmc::SampleDimension(sampleIdx, qmcDim++, rng) > hit.opacity) {
             currentRayOrigin = hitPos + currentRayDir * 1e-4f;
             bounce--; // Don't count as a bounce
             continue;
@@ -1265,21 +1266,21 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
             SampledSpectrum sigma_s = RGBToSpectrum(sigma_s_rgb, lambda);
             
             float ext = std::max(sigma_t[0], 1e-4f);
-            float d = -std::log(std::max(RandomFloat(rng), 1e-6f)) / ext;
+            float d = -std::log(std::max(qmc::SampleDimension(sampleIdx, qmcDim++, rng), 1e-6f)) / ext;
             
             if (d < hit.t) {
                 // Volumetric Scatter
                 currentRayOrigin = currentRayOrigin + currentRayDir * d;
                 
                 // Isotropic or Henyey-Greenstein phase function
-                float cosTheta = 1.0f - 2.0f * RandomFloat(rng);
+                float cosTheta = 1.0f - 2.0f * qmc::SampleDimension(sampleIdx, qmcDim++, rng);
                 float sinTheta = std::sqrt(std::max(0.0f, 1.0f - cosTheta * cosTheta));
-                float phi = 2.0f * (float)M_PI * RandomFloat(rng);
+                float phi = 2.0f * (float)M_PI * qmc::SampleDimension(sampleIdx, qmcDim++, rng);
                 GfVec3f w(sinTheta * std::cos(phi), sinTheta * std::sin(phi), cosTheta);
                 
                 if (std::abs(hit.subsurfaceAnisotropy) > 0.001f) {
                     float g = hit.subsurfaceAnisotropy;
-                    float sqrTerm = (1.0f - g * g) / (1.0f - g + 2.0f * g * RandomFloat(rng));
+                    float sqrTerm = (1.0f - g * g) / (1.0f - g + 2.0f * g * qmc::SampleDimension(sampleIdx, qmcDim++, rng));
                     cosTheta = (1.0f + g * g - sqrTerm * sqrTerm) / (2.0f * g);
                     sinTheta = std::sqrt(std::max(0.0f, 1.0f - cosTheta * cosTheta));
                     
@@ -1313,7 +1314,7 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
 
         // --- Direct Lighting (Light Sampling) ---
         if (!_activeLights.empty()) {
-            float uLight = RandomFloat(rng);
+            float uLight = qmc::SampleDimension(sampleIdx, qmcDim++, rng);
             auto itLight = std::lower_bound(_lightPowerCdf.begin(), _lightPowerCdf.end(), uLight);
             size_t lightIdx = std::min((size_t)std::distance(_lightPowerCdf.begin(), itLight), _activeLights.size() - 1);
             HdGeminiLight* light = _activeLights[lightIdx];
@@ -1335,8 +1336,8 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
                 lDir = GfMatrix4f(light->GetTransform()).TransformDir(GfVec3f(0, 0, -1)).GetNormalized();
                 lColor = light->GetColor() * light->GetIntensity();
             } else if (light->GetLightType() == HdPrimTypeTokens->domeLight && !_envMapRowCdf.empty()) {
-                float u1 = RandomFloat(rng);
-                float u2 = RandomFloat(rng);
+                float u1 = qmc::SampleDimension(sampleIdx, qmcDim++, rng);
+                float u2 = qmc::SampleDimension(sampleIdx, qmcDim++, rng);
                 auto itY = std::lower_bound(_envMapRowCdf.begin(), _envMapRowCdf.end(), u1);
                 int y = std::clamp((int)std::distance(_envMapRowCdf.begin(), itY) - 1, 0, _envMapHeight - 1);
                 const float* colCdf = &_envMapColCdf[y * (_envMapWidth + 1)];
@@ -1358,8 +1359,8 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
                     lightPdf *= std::max(pdf, 1e-6f);
                 }
             } else if (light->GetLightType() == HdPrimTypeTokens->rectLight) {
-                float u = RandomFloat(rng) - 0.5f;
-                float v = RandomFloat(rng) - 0.5f;
+                float u = qmc::SampleDimension(sampleIdx, qmcDim++, rng) - 0.5f;
+                float v = qmc::SampleDimension(sampleIdx, qmcDim++, rng) - 0.5f;
                 GfVec3f lPosLocal(u * light->GetWidth(), v * light->GetHeight(), 0.0f);
                 GfVec3f lPosWorld = GfMatrix4f(light->GetTransform()).Transform(lPosLocal);
                 GfVec3f toLight = lPosWorld - hitPos;
@@ -1418,7 +1419,7 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
                     HitRecord shadowHit;
                     shadowHit.t = lightDist - 1e-3f;
                     GfVec3f shadowOrigin = hitPos + shadingNormal * 1e-4f;
-                    if (!this->_IntersectTLAS(shadowOrigin, lDir, shadowHit, renderThread, rng)) {
+                    if (!this->_IntersectTLAS(shadowOrigin, lDir, shadowHit, renderThread, sampleIdx, qmcDim, rng)) {
                         SampledSpectrum specLColor = RGBToSpectrum(lColor, lambda);
                         
                         GfVec3f v = -currentRayDir;
@@ -1499,7 +1500,7 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
                     HitRecord shadowHit;
                     shadowHit.t = 1e30f;
                     GfVec3f shadowOrigin = hitPos + shadingNormal * 1e-4f;
-                    if (!this->_IntersectTLAS(shadowOrigin, physicalSunDir, shadowHit, renderThread, rng)) {
+                    if (!this->_IntersectTLAS(shadowOrigin, physicalSunDir, shadowHit, renderThread, sampleIdx, qmcDim, rng)) {
                         SampledSpectrum specLColor = RGBToSpectrum(sunColor, lambda);
                         
                         GfVec3f v = -currentRayDir;
@@ -1541,12 +1542,12 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
         // --- Coat Layer (Fix 2: energy conservation) ---
         if (hit.coat > 0.0f && !isInside) {
             float coatFresnel = hit.coat * FresnelDielectric(GfDot(currentRayDir, shadingNormal), iorStack.back(), hit.coatIor);
-            if (RandomFloat(rng) < coatFresnel) {
+            if (qmc::SampleDimension(sampleIdx, qmcDim++, rng) < coatFresnel) {
                 if (reflectionBounces >= (isInteractive ? 1 : _maxReflectionBounces)) break;
                 reflectionBounces++;
                 GfVec3f reflectDir;
                 if (hit.coatRoughness > 0.0f) {
-                    GfVec3f h = AlignToNormal(SampleGGX(RandomFloat(rng), RandomFloat(rng), hit.coatRoughness), shadingNormal);
+                    GfVec3f h = AlignToNormal(SampleGGX(qmc::SampleDimension(sampleIdx, qmcDim++, rng), qmc::SampleDimension(sampleIdx, qmcDim++, rng), hit.coatRoughness), shadingNormal);
                     reflectDir = (currentRayDir - 2.0f * GfDot(currentRayDir, h) * h).GetNormalized();
                     if (GfDot(reflectDir, shadingNormal) < 0) {
                         reflectDir = (currentRayDir - 2.0f * GfDot(currentRayDir, shadingNormal) * shadingNormal).GetNormalized();
@@ -1568,12 +1569,12 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
         if (hit.sheen > 0.0f && !isInside) {
             float cosTheta = std::max(0.0f, GfDot(-currentRayDir, shadingNormal));
             float sheenFresnel = hit.sheen * std::pow(1.0f - cosTheta, 5.0f);
-            if (RandomFloat(rng) < sheenFresnel) {
+            if (qmc::SampleDimension(sampleIdx, qmcDim++, rng) < sheenFresnel) {
                 if (reflectionBounces >= (isInteractive ? 1 : _maxReflectionBounces)) break;
                 reflectionBounces++;
                 GfVec3f reflectDir;
                 if (hit.sheenRoughness > 0.0f) {
-                    GfVec3f h = AlignToNormal(SampleGGX(RandomFloat(rng), RandomFloat(rng), hit.sheenRoughness), shadingNormal);
+                    GfVec3f h = AlignToNormal(SampleGGX(qmc::SampleDimension(sampleIdx, qmcDim++, rng), qmc::SampleDimension(sampleIdx, qmcDim++, rng), hit.sheenRoughness), shadingNormal);
                     reflectDir = (currentRayDir - 2.0f * GfDot(currentRayDir, h) * h).GetNormalized();
                     if (GfDot(reflectDir, shadingNormal) < 0) {
                         reflectDir = (currentRayDir - 2.0f * GfDot(currentRayDir, shadingNormal) * shadingNormal).GetNormalized();
@@ -1601,7 +1602,7 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
         
         float effectiveTransmission = hit.transmission * (1.0f - hit.subsurface);
         
-        float randVal = RandomFloat(rng);
+        float randVal = qmc::SampleDimension(sampleIdx, qmcDim++, rng);
 
         if (randVal < reflectProb) {
             // Reflection (Fix 1: apply GGX importance sampling weight)
@@ -1610,7 +1611,7 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
             GfVec3f reflectDir;
             float ggxWeight = 1.0f;
             if (hit.roughness > 0.0f) {
-                GfVec3f h = AlignToNormal(SampleGGX(RandomFloat(rng), RandomFloat(rng), hit.roughness), shadingNormal);
+                GfVec3f h = AlignToNormal(SampleGGX(qmc::SampleDimension(sampleIdx, qmcDim++, rng), qmc::SampleDimension(sampleIdx, qmcDim++, rng), hit.roughness), shadingNormal);
                 reflectDir = (currentRayDir - 2.0f * GfDot(currentRayDir, h) * h).GetNormalized();
                 
                 float nDotH = std::max(0.001f, GfDot(shadingNormal, h));
@@ -1676,7 +1677,7 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
                     // Microfacet refraction direction
                     bool transmitted = true;
                     if (hit.roughness > 0.0f) {
-                        GfVec3f h = AlignToNormal(SampleGGX(RandomFloat(rng), RandomFloat(rng), hit.roughness), n);
+                        GfVec3f h = AlignToNormal(SampleGGX(qmc::SampleDimension(sampleIdx, qmcDim++, rng), qmc::SampleDimension(sampleIdx, qmcDim++, rng), hit.roughness), n);
                         float cosThetaI_h = GfDot(currentRayDir, h); // < 0
                         float k_h = 1.0f - eta * eta * (1.0f - cosThetaI_h * cosThetaI_h);
                         if (k_h >= 0.0f) {
@@ -1719,7 +1720,7 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
                 }
             } else {
                 // Diffuse
-                GfVec3f diffuseDir = AlignToNormal(SampleCosineHemisphere(RandomFloat(rng), RandomFloat(rng)), shadingNormal);
+                GfVec3f diffuseDir = AlignToNormal(SampleCosineHemisphere(qmc::SampleDimension(sampleIdx, qmcDim++, rng), qmc::SampleDimension(sampleIdx, qmcDim++, rng)), shadingNormal);
                 float nDotL = std::max(0.0f, GfDot(shadingNormal, diffuseDir));
                 float pdf = nDotL / (float)M_PI;
                 if (pdf < 1e-6f) break;
@@ -1739,7 +1740,7 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
         // --- Russian Roulette ---
         if (bounce > 3) {
             float p = throughput.Max();
-            if (RandomFloat(rng) > p) break;
+            if (qmc::SampleDimension(sampleIdx, qmcDim++, rng) > p) break;
             throughput = throughput * (1.0f / p);
         }
     }
@@ -2000,6 +2001,16 @@ HdGeminiRenderer::_RenderTiles(HdRenderThread *renderThread, HdGeminiRenderDeleg
                     if (useSYCLBuffer) {
                     } else {
                         rng = (uint32_t)(y * width + x) ^ (uint32_t)(_frameCount * 12345);
+                        uint32_t sampleIdx = _colorBuffer->GetPixelSampleCount(GfVec3i(x, y, 0));
+                        
+                        if (!isInteractive && _enableAdaptiveSampling && sampleIdx >= _adaptiveMinSamples) {
+                            float variance = _colorBuffer->GetPixelVariance(GfVec3i(x, y, 0));
+                            if (variance < _adaptiveVarianceThreshold) {
+                                continue;
+                            }
+                        }
+                        
+                        uint32_t qmcDim = 0;
                         float px = (float)x;
                         float py = (float)y;
                         
@@ -2007,18 +2018,20 @@ HdGeminiRenderer::_RenderTiles(HdRenderThread *renderThread, HdGeminiRenderDeleg
                              px += res * 0.5f;
                              py += res * 0.5f;
                         } else {
+                            float u1 = qmc::SampleDimension(sampleIdx, qmcDim++, rng);
+                            float u2 = qmc::SampleDimension(sampleIdx, qmcDim++, rng);
+                            
                             if (_antiAliasingFilter == 0) { // None
                                 px += 0.5f; py += 0.5f;
                             } else if (_antiAliasingFilter == 1) { // Box
-                                px += RandomFloat(rng); py += RandomFloat(rng);
+                                px += u1; py += u2;
                             } else if (_antiAliasingFilter == 2) { // Tent
                                 auto tent = [](float u) {
                                     return u < 0.5f ? std::sqrt(2.0f * u) - 1.0f : 1.0f - std::sqrt(2.0f - 2.0f * u);
                                 };
-                                px += 0.5f + tent(RandomFloat(rng)); py += 0.5f + tent(RandomFloat(rng));
+                                px += 0.5f + tent(u1); py += 0.5f + tent(u2);
                             } else if (_antiAliasingFilter == 3) { // Gaussian
-                                float u1 = std::max(1e-6f, RandomFloat(rng));
-                                float u2 = RandomFloat(rng);
+                                u1 = std::max(1e-6f, u1);
                                 float r = std::sqrt(-2.0f * std::log(u1));
                                 float theta = 2.0f * (float)M_PI * u2;
                                 float sigma = 0.5f;
@@ -2042,13 +2055,17 @@ HdGeminiRenderer::_RenderTiles(HdRenderThread *renderThread, HdGeminiRenderDeleg
                         if (_enableDoF) {
                             float apertureRadius = (_focalLength / 10.0f) / (2.0f * _fStop);
                             float lensU, lensV;
+                            
+                            float d1 = qmc::SampleDimension(sampleIdx, qmcDim++, rng);
+                            float d2 = qmc::SampleDimension(sampleIdx, qmcDim++, rng);
+                            
                             if (_bokehBlades < 3) {
-                                float r = std::sqrt(RandomFloat(rng));
-                                float theta = 2.0f * M_PI * RandomFloat(rng);
+                                float r = std::sqrt(d1);
+                                float theta = 2.0f * M_PI * d2;
                                 lensU = r * std::cos(theta); lensV = r * std::sin(theta);
                             } else {
-                                float theta = 2.0f * M_PI * RandomFloat(rng);
-                                float r = std::sqrt(RandomFloat(rng));
+                                float theta = 2.0f * M_PI * d2;
+                                float r = std::sqrt(d1);
                                 float sectorAngle = 2.0f * M_PI / _bokehBlades;
                                 float sector = std::floor(theta / sectorAngle);
                                 float angleInSector = theta - sector * sectorAngle;
@@ -2070,7 +2087,7 @@ HdGeminiRenderer::_RenderTiles(HdRenderThread *renderThread, HdGeminiRenderDeleg
                             rayDirWorld = (nearPlanePointWorld - cameraPosWorld).GetNormalized();
                         }
                         
-                        float u_lambda = RandomFloat(rng);
+                        float u_lambda = qmc::SampleDimension(sampleIdx, qmcDim++, rng);
                         lambda = SampledWavelengths::SampleUniform(u_lambda);
                         
                         exposureMultiplier = 1.0f;
@@ -2081,7 +2098,7 @@ HdGeminiRenderer::_RenderTiles(HdRenderThread *renderThread, HdGeminiRenderDeleg
                     
                     GfVec3f albedo(0.0f), normal(0.0f);
 
-                    SampledSpectrum hitSpectrum = _TraceRay(rayOriginWorld, rayDirWorld, 0, isInteractive, renderThread, rng, lambda, &albedo, &normal, exposureMultiplier);
+                    SampledSpectrum hitSpectrum = _TraceRay(rayOriginWorld, rayDirWorld, 0, isInteractive, renderThread, sampleIdx, qmcDim, rng, lambda, &albedo, &normal, exposureMultiplier);
                     
                     SampledSpectrum heroSpec;
                     for(int i=0; i<SPECTRUM_SAMPLES; ++i) heroSpec[i] = hitSpectrum[0];
@@ -2391,7 +2408,9 @@ void HdGeminiRenderer::_RenderTilesSYCL(HdRenderThread *renderThread, HdGeminiRe
             uint32_t rng = rs.rng;
             
             GfVec3f albedo(0.0f), normal(0.0f);
-            SampledSpectrum hitSpectrum = _TraceRay(rayOriginWorld, rayDirWorld, 0, false, renderThread, rng, rs.lambda, &albedo, &normal, rs.exposureMultiplier);
+            uint32_t sampleIdx = 0; // GPU/SYCL not yet tracking variance count correctly via CPU loop
+            uint32_t qmcDim = 0;
+            SampledSpectrum hitSpectrum = _TraceRay(rayOriginWorld, rayDirWorld, 0, false, renderThread, sampleIdx, qmcDim, rng, rs.lambda, &albedo, &normal, rs.exposureMultiplier);
             
             SampledSpectrum heroSpec;
             for(int j=0; j<4; ++j) heroSpec[j] = hitSpectrum[0];

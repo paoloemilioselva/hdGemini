@@ -462,6 +462,21 @@ HdGeminiRenderDelegate::GetRenderSettingDescriptors() const
         HdGeminiRenderSettingsTokens->volumeDensityScale,
         VtValue(1.0f)
     });
+    list.push_back({
+        "Enable Adaptive Sampling",
+        HdGeminiRenderSettingsTokens->enableAdaptiveSampling,
+        VtValue(true)
+    });
+    list.push_back({
+        "Adaptive Variance Threshold",
+        HdGeminiRenderSettingsTokens->adaptiveVarianceThreshold,
+        VtValue(0.01f)
+    });
+    list.push_back({
+        "Adaptive Min Samples",
+        HdGeminiRenderSettingsTokens->adaptiveMinSamples,
+        VtValue(16)
+    });
     return list;
 }
 
@@ -534,6 +549,12 @@ HdGeminiRenderDelegate::GetRenderSetting(TfToken const& key) const
         return VtValue(0.1f);
     } else if (key == HdGeminiRenderSettingsTokens->volumeDensityScale) {
         return VtValue(1.0f);
+    } else if (key == HdGeminiRenderSettingsTokens->enableAdaptiveSampling) {
+        return VtValue(true);
+    } else if (key == HdGeminiRenderSettingsTokens->adaptiveVarianceThreshold) {
+        return VtValue(0.01f);
+    } else if (key == HdGeminiRenderSettingsTokens->adaptiveMinSamples) {
+        return VtValue(16);
     }
     
     return VtValue();
@@ -645,6 +666,12 @@ HdGeminiRenderDelegate::SetRenderSetting(TfToken const& key, VtValue const& valu
         _renderer.SetVolumeStepSize(getFloat(value, 0.1f)); changed = true;
     } else if (key == HdGeminiRenderSettingsTokens->volumeDensityScale) {
         _renderer.SetVolumeDensityScale(getFloat(value, 1.0f)); changed = true;
+    } else if (key == HdGeminiRenderSettingsTokens->enableAdaptiveSampling) {
+        if (value.IsHolding<bool>()) { _renderer.SetEnableAdaptiveSampling(value.Get<bool>()); changed = true; }
+    } else if (key == HdGeminiRenderSettingsTokens->adaptiveVarianceThreshold) {
+        _renderer.SetAdaptiveVarianceThreshold(getFloat(value, 0.01f)); changed = true;
+    } else if (key == HdGeminiRenderSettingsTokens->adaptiveMinSamples) {
+        _renderer.SetAdaptiveMinSamples(getInt(value, 16)); changed = true;
     }
 
     if (changed || postProcessChanged) {

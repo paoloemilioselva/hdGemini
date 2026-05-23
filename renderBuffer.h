@@ -43,6 +43,9 @@ public:
     void Write(GfVec3i const& pixel, size_t numComponents, int const* value);
     void Clear(size_t numComponents, float const* value);
     void Clear(size_t numComponents, int const* value);
+    
+    float GetPixelVariance(GfVec3i const& pixel) const;
+    int GetPixelSampleCount(GfVec3i const& pixel) const;
 
 protected:
     virtual void _Deallocate() override;
@@ -54,6 +57,7 @@ private:
     std::vector<uint8_t> _buffer;
     std::vector<uint8_t> _renderBuffer;
     std::vector<float> _accumBuffer;
+    std::vector<float> _sumSquaredBuffer;
     std::vector<int> _sampleCount;
     std::atomic<bool> _converged;
     std::mutex _bufferMutex;

@@ -64,6 +64,8 @@
   - Native instancing support via `HdInstancer`.
   - Thread-safe, lazy-loaded texture caching via `HioImage`.
   - Progressive, interactive rendering with multi-threaded bucketing.
+  - **Adaptive Sampling**: Dynamically tracks per-pixel variance on the fly using Welford-like variance buffers. Automatically culls fully converged pixels from the active sample loop, vastly accelerating renders of scenes with large uniform areas (like walls or skies) while focusing processing power on noisy specular highlights and complex geometry.
+  - **Low-Discrepancy Sequences (LDS)**: Replaces standard pseudo-random number generators with highly stratified **Halton and Van der Corput** Quasi-Monte Carlo sequences. This produces structured, film-like grain that converges drastically faster than white noise and plays beautifully with AI denoisers.
   - **Anti-Aliasing Filter**: 4 configurable anti-aliasing modes (None, Box, Tent, Gaussian) to handle sub-pixel jitter and smooth edge rendering.
 
 ## Building and Running

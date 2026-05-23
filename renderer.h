@@ -80,8 +80,12 @@ public:
     void SetPhysicalSkyAltitude(float a) { _physicalSkyAltitude = a; }
     void SetPhysicalSkySunExposure(float exp) { _physicalSkySunExposure = exp; }
     void SetPhysicalSkySkyExposure(float exp) { _physicalSkySkyExposure = exp; }
-    void SetVolumeStepSize(float stepSize) { _volumeStepSize = stepSize; }
+    void SetVolumeStepSize(float step) { _volumeStepSize = step; }
     void SetVolumeDensityScale(float scale) { _volumeDensityScale = scale; }
+    
+    void SetEnableAdaptiveSampling(bool enable) { _enableAdaptiveSampling = enable; }
+    void SetAdaptiveVarianceThreshold(float threshold) { _adaptiveVarianceThreshold = threshold; }
+    void SetAdaptiveMinSamples(int samples) { _adaptiveMinSamples = samples; }
 
 private:
     bool _isConverged = false;
@@ -116,6 +120,10 @@ private:
     float _physicalSkySkyExposure = 0.0f;
     float _volumeStepSize = 0.1f;
     float _volumeDensityScale = 1.0f;
+    
+    bool _enableAdaptiveSampling = true;
+    float _adaptiveVarianceThreshold = 0.01f;
+    int _adaptiveMinSamples = 16;
 
     struct SceneInstance {
         enum class Type { Mesh, Volume };
@@ -285,8 +293,8 @@ private:
     void _PrepareScene(HdRenderThread *renderThread, HdGeminiRenderDelegate* delegate);
     void _BuildTLAS(class HdRenderThread *renderThread);
     void _SubdivideTLAS(int nodeIdx, int start, int end, class HdRenderThread *renderThread);
-    bool _IntersectTLAS(const GfVec3f& rayOrigin, const GfVec3f& rayDir, HitRecord& hit, class HdRenderThread* renderThread, uint32_t& rng) const;
-    SampledSpectrum _TraceRay(const GfVec3f& rayOrigin, const GfVec3f& rayDir, int depth, bool isInteractive, HdRenderThread* renderThread, uint32_t& rng, const SampledWavelengths& lambda, GfVec3f* outAlbedo = nullptr, GfVec3f* outNormal = nullptr, float exposureMultiplier = 1.0f) const;
+    bool _IntersectTLAS(const GfVec3f& rayOrigin, const GfVec3f& rayDir, HitRecord& hit, class HdRenderThread* renderThread, uint32_t sampleIdx, uint32_t& qmcDim, uint32_t& rng) const;
+    SampledSpectrum _TraceRay(const GfVec3f& rayOrigin, const GfVec3f& rayDir, int depth, bool isInteractive, HdRenderThread* renderThread, uint32_t sampleIdx, uint32_t& qmcDim, uint32_t& rng, const SampledWavelengths& lambda, GfVec3f* outAlbedo = nullptr, GfVec3f* outNormal = nullptr, float exposureMultiplier = 1.0f) const;
     GfVec3f _SampleEnvironment(const GfVec3f& rayDir) const;
     GfVec3f _SamplePhysicalSky(const GfVec3f& rayDir, const GfVec3f& sunDir) const;
     GfVec3f _GetSunTransmittance(const GfVec3f& sunDir) const;

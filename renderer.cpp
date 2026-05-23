@@ -5,6 +5,8 @@
 #include "instancer.h"
 #include "light.h"
 #include "material.h"
+#include "volume.h"
+#include "field.h"
 #include <pxr/base/work/loops.h>
 #include <pxr/base/gf/vec3f.h>
 #include <pxr/base/gf/vec3i.h>
@@ -15,6 +17,9 @@
 #include <pxr/imaging/hio/image.h>
 #include <pxr/imaging/hio/types.h>
 #include <iostream>
+#ifdef HDGEMINI_HAS_NANOVDB
+#include <nanovdb/NanoVDB.h>
+#endif
 #include <cmath>
 #include <algorithm>
 #include <random>
@@ -61,6 +66,35 @@ IntersectAABB(const GfVec3f& rayOrigin, const GfVec3f& rayDir, const GfRange3f& 
     }
     tMinHit = tmin;
     return tmax > 0 && tmax > 1e-4;
+}
+
+static bool
+IntersectAABB2(const GfVec3f& rayOrigin, const GfVec3f& rayDir, const GfRange3f& range, float& tMinHit, float& tMaxHit)
+{
+    if (range.IsEmpty()) return false;
+    const GfVec3f& min = range.GetMin();
+    const GfVec3f& max = range.GetMax();
+
+    float tmin = -1e30f;
+    float tmax = 1e30f;
+
+    for (int i = 0; i < 3; ++i) {
+        if (std::abs(rayDir[i]) < 1e-8) {
+            if (rayOrigin[i] < min[i] || rayOrigin[i] > max[i]) return false;
+        } else {
+            float invDir = 1.0f / rayDir[i];
+            float t1 = (min[i] - rayOrigin[i]) * invDir;
+            float t2 = (max[i] - rayOrigin[i]) * invDir;
+            if (t1 > t2) std::swap(t1, t2);
+            tmin = std::max(tmin, t1);
+            tmax = std::min(tmax, t2);
+            if (tmin > tmax) return false;
+        }
+    }
+
+    tMinHit = tmin;
+    tMaxHit = tmax;
+    return true;
 }
 
 static GfRange3f TransformBounds(const GfRange3f& bounds, const GfMatrix4f& matrix) {
@@ -367,7 +401,8 @@ HdGeminiRenderer::_PrepareScene(HdRenderThread *renderThread, HdGeminiRenderDele
                 VtMatrix4dArray transforms = instancer->ComputeInstanceTransforms(mesh->GetId());
                 for (const auto& t : transforms) {
                     for (const auto& subset : mesh->GetSubsets()) {
-                        MeshInstance inst;
+                        SceneInstance inst;
+                        inst.type = SceneInstance::Type::Mesh;
                         inst.mesh = mesh;
                         inst.subset = &subset;
                         inst.material = delegate->GetMaterial(subset.materialId);
@@ -383,7 +418,8 @@ HdGeminiRenderer::_PrepareScene(HdRenderThread *renderThread, HdGeminiRenderDele
         }
 
         for (const auto& subset : mesh->GetSubsets()) {
-            MeshInstance inst;
+            SceneInstance inst;
+            inst.type = SceneInstance::Type::Mesh;
             inst.mesh = mesh;
             inst.subset = &subset;
             inst.material = delegate->GetMaterial(subset.materialId);
@@ -393,6 +429,32 @@ HdGeminiRenderer::_PrepareScene(HdRenderThread *renderThread, HdGeminiRenderDele
             inst.centroid = (inst.bounds.GetMin() + inst.bounds.GetMax()) * 0.5f;
             _instances.push_back(inst);
         }
+    }
+
+    const auto& volumes = delegate->GetVolumes();
+    for (auto const& item : volumes) {
+        if (renderThread->IsStopRequested()) return;
+        HdGeminiVolume* volume = item.second;
+        
+        SceneInstance inst;
+        inst.type = SceneInstance::Type::Volume;
+        inst.volume = volume;
+        inst.transform = GfMatrix4f(volume->GetTransform());
+        inst.invTransform = inst.transform.GetInverse();
+        GfRange3d extents = volume->GetExtents();
+        GfRange3f extents3f(GfVec3f(extents.GetMin()), GfVec3f(extents.GetMax()));
+        inst.bounds = TransformBounds(extents3f, inst.transform);
+        inst.centroid = (inst.bounds.GetMin() + inst.bounds.GetMax()) * 0.5f;
+        
+        // Grab the density grid
+        HdGeminiField* densityField = volume->GetField(TfToken("density"));
+        if (densityField) {
+#ifdef HDGEMINI_HAS_NANOVDB
+            inst.densityGrid = densityField->GetNanoVDBGrid();
+#endif
+        }
+        
+        _instances.push_back(inst);
     }
 
 #ifdef HDGEMINI_HAS_SYCL
@@ -520,7 +582,7 @@ void HdGeminiRenderer::_SubdivideTLAS(int nodeIdx, int start, int end, HdRenderT
     _SubdivideTLAS(leftChildIdx + 1, i, end, renderThread);
 }
 
-bool HdGeminiRenderer::_IntersectTLAS(const GfVec3f& rayOrigin, const GfVec3f& rayDir, HitRecord& hit, HdRenderThread* renderThread) const
+bool HdGeminiRenderer::_IntersectTLAS(const GfVec3f& rayOrigin, const GfVec3f& rayDir, HitRecord& hit, HdRenderThread* renderThread, uint32_t& rng) const
 {
     _rayCount.fetch_add(1, std::memory_order_relaxed);
     if (_tlasNodes.empty() || renderThread->IsStopRequested()) return false;
@@ -546,13 +608,51 @@ bool HdGeminiRenderer::_IntersectTLAS(const GfVec3f& rayOrigin, const GfVec3f& r
                 GfVec3f objRayOrigin = inst.invTransform.Transform(rayOrigin);
                 GfVec3f objRayDir = inst.invTransform.TransformDir(rayDir);
                 float instT = hit.t;
-                GfVec3f instNormal;
-                GfVec2f instUv;
-                GfVec3f instSmoothNormal;
-                GfVec3f instDpdu, instDpdv;
-                GfVec3f instSmoothColor;
-                int matIdx = -1;
-                if (inst.subset->bvh.Intersect(objRayOrigin, objRayDir, instT, instNormal, instUv, instSmoothNormal, instDpdu, instDpdv, instSmoothColor, matIdx)) {
+                
+                if (inst.type == SceneInstance::Type::Volume) {
+#ifdef HDGEMINI_HAS_NANOVDB
+                    if (inst.densityGrid) {
+                        float tMinAabb, tMaxAabb;
+                        if (IntersectAABB2(objRayOrigin, objRayDir, inst.bounds, tMinAabb, tMaxAabb)) {
+                            float t = std::max(0.0f, tMinAabb);
+                            float step = _volumeStepSize;
+                            const nanovdb::FloatGrid* grid = static_cast<const nanovdb::FloatGrid*>(inst.densityGrid);
+                            auto acc = grid->getAccessor();
+                            
+                            while (t < tMaxAabb && t < hit.t) {
+                                t += step;
+                                if (t >= tMaxAabb || t >= hit.t) break;
+                                
+                                GfVec3f pos = objRayOrigin + objRayDir * t;
+                                nanovdb::Vec3f ipos = grid->worldToIndexF(nanovdb::Vec3f(pos[0], pos[1], pos[2]));
+                                nanovdb::Coord coord((int)std::floor(ipos[0]), (int)std::floor(ipos[1]), (int)std::floor(ipos[2]));
+                                float density = acc.getValue(coord);
+                                float sigma_t = density * _volumeDensityScale;
+                                
+                                if (sigma_t > 0.0f) {
+                                    float p_scatter = 1.0f - std::exp(-sigma_t * step);
+                                    if (RandomFloat(rng) < p_scatter) {
+                                        hit.t = t;
+                                        hit.isVolumeHit = true;
+                                        hit.densityGrid = inst.densityGrid;
+                                        hit.normal = GfVec3f(0.0f); // Volumes have no normal
+                                        hit.smoothNormal = GfVec3f(0.0f);
+                                        wasHit = true;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+#endif
+                } else if (inst.type == SceneInstance::Type::Mesh) {
+                    GfVec3f instNormal;
+                    GfVec2f instUv;
+                    GfVec3f instSmoothNormal;
+                    GfVec3f instDpdu, instDpdv;
+                    GfVec3f instSmoothColor;
+                    int matIdx = -1;
+                    if (inst.subset->bvh.Intersect(objRayOrigin, objRayDir, instT, instNormal, instUv, instSmoothNormal, instDpdu, instDpdv, instSmoothColor, matIdx)) {
                     if (instT < hit.t) {
                         hit.t = instT;
                         GfMatrix4f invTransp = inst.invTransform.GetTranspose();
@@ -646,6 +746,7 @@ bool HdGeminiRenderer::_IntersectTLAS(const GfVec3f& rayOrigin, const GfVec3f& r
                         wasHit = true;
                     }
                 }
+                } // end else if Mesh
             }
         } else {
             stack[stackPtr++] = node.leftChild + 1;
@@ -1019,7 +1120,7 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
         if (renderThread->IsStopRequested()) break;
 
         HitRecord hit;
-        if (!this->_IntersectTLAS(currentRayOrigin, currentRayDir, hit, renderThread)) {
+        if (!this->_IntersectTLAS(currentRayOrigin, currentRayDir, hit, renderThread, rng)) {
             GfVec3f envRGB;
             if (_enablePhysicalSky) {
                 envRGB = _SamplePhysicalSky(currentRayDir, physicalSunDir);
@@ -1114,6 +1215,19 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
         }
 
         GfVec3f hitPos = currentRayOrigin + currentRayDir * hit.t;
+
+        if (hit.isVolumeHit) {
+            // Volume scattering event (isotropic)
+            float cosTheta = 1.0f - 2.0f * RandomFloat(rng);
+            float sinTheta = std::sqrt(std::max(0.0f, 1.0f - cosTheta * cosTheta));
+            float phi = 2.0f * (float)M_PI * RandomFloat(rng);
+            currentRayDir = GfVec3f(sinTheta * std::cos(phi), sinTheta * std::sin(phi), cosTheta);
+            currentRayOrigin = hitPos;
+            
+            // Assume purely white albedo for volume scattering
+            lastBsdfPdf = 1.0f / (4.0f * (float)M_PI);
+            continue;
+        }
 
         // Handle transparency/opacity
         if (hit.opacity < 0.999f && RandomFloat(rng) > hit.opacity) {
@@ -1304,7 +1418,7 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
                     HitRecord shadowHit;
                     shadowHit.t = lightDist - 1e-3f;
                     GfVec3f shadowOrigin = hitPos + shadingNormal * 1e-4f;
-                    if (!this->_IntersectTLAS(shadowOrigin, lDir, shadowHit, renderThread)) {
+                    if (!this->_IntersectTLAS(shadowOrigin, lDir, shadowHit, renderThread, rng)) {
                         SampledSpectrum specLColor = RGBToSpectrum(lColor, lambda);
                         
                         GfVec3f v = -currentRayDir;
@@ -1385,7 +1499,7 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
                     HitRecord shadowHit;
                     shadowHit.t = 1e30f;
                     GfVec3f shadowOrigin = hitPos + shadingNormal * 1e-4f;
-                    if (!this->_IntersectTLAS(shadowOrigin, physicalSunDir, shadowHit, renderThread)) {
+                    if (!this->_IntersectTLAS(shadowOrigin, physicalSunDir, shadowHit, renderThread, rng)) {
                         SampledSpectrum specLColor = RGBToSpectrum(sunColor, lambda);
                         
                         GfVec3f v = -currentRayDir;

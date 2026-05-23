@@ -92,7 +92,7 @@ FetchContent_Declare(
 )
 FetchContent_Populate(nanovdb_src)
 add_definitions(-DHDGEMINI_HAS_NANOVDB)
-include_directories(${nanovdb_src_SOURCE_DIR}/..)
+include_directories(${nanovdb_src_SOURCE_DIR}/nanovdb)
 if(OpenImageDenoise_FOUND)
     set(OIDN_LIBRARIES OpenImageDenoise)
     add_definitions(-DHDGEMINI_HAS_OIDN)
@@ -124,6 +124,10 @@ add_library( ${DELEGATE_NAME} SHARED
     light.h
     material.cpp
     material.h
+    volume.cpp
+    volume.h
+    field.cpp
+    field.h
     renderer.cpp
     renderer.h
     bvh.cpp

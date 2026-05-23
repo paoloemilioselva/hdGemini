@@ -36,6 +36,7 @@
   - Accurate physical refraction, handling Transmission, IOR (Index of Refraction), Transmission Depth/Scatter (Beer's Law volume absorption), and Thin-Walled properties.
   - **Nested Dielectrics**: True Index of Refraction (IOR) tracking stack across intersecting transparent volumes (e.g., ice inside water) to ensure perfectly accurate physical light bending without geometric artifacting.
   - **Physical Dispersion**: Simulates wavelength-dependent Index of Refraction (IOR) using Cauchy's equation, rendering accurate rainbow dispersion through transmissive materials.
+  - **True Volumetric Rendering**: Support for NanoVDB parsing, allowing for heterogeneous media rendering, ray-marching, and Woodcock delta-tracking for efficient stochastic volume scattering.
   - **Robust Defaults**: Unassigned geometry intelligently defaults to a 0.5-grey Lambertian surface, avoiding unnatural shading artifacts.
 - **Physical Camera & Optical Effects**:
   - **Depth of Field**: Accurate synthetic lens sampling with configurable Focal Length, F-Stop, Focus Distance, and polygonal Bokeh Blades.

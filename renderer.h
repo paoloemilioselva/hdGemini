@@ -80,6 +80,8 @@ public:
     void SetPhysicalSkyAltitude(float a) { _physicalSkyAltitude = a; }
     void SetPhysicalSkySunExposure(float exp) { _physicalSkySunExposure = exp; }
     void SetPhysicalSkySkyExposure(float exp) { _physicalSkySkyExposure = exp; }
+    void SetVolumeStepSize(float stepSize) { _volumeStepSize = stepSize; }
+    void SetVolumeDensityScale(float scale) { _volumeDensityScale = scale; }
 
 private:
     bool _isConverged = false;
@@ -112,11 +114,22 @@ private:
     float _physicalSkyAltitude = 90.0f;
     float _physicalSkySunExposure = 0.0f;
     float _physicalSkySkyExposure = 0.0f;
+    float _volumeStepSize = 0.1f;
+    float _volumeDensityScale = 1.0f;
 
-    struct MeshInstance {
-        HdGeminiMesh* mesh;
-        const HdGeminiMesh::Subset* subset;
+    struct SceneInstance {
+        enum class Type { Mesh, Volume };
+        Type type = Type::Mesh;
+
+        // Mesh specific
+        HdGeminiMesh* mesh = nullptr;
+        const HdGeminiMesh::Subset* subset = nullptr;
         HdGeminiMaterial* material = nullptr;
+
+        // Volume specific
+        class HdGeminiVolume* volume = nullptr;
+        const void* densityGrid = nullptr; // nanovdb::FloatGrid* cast
+
         GfMatrix4f transform;
         GfMatrix4f invTransform;
         GfRange3f bounds;
@@ -174,6 +187,10 @@ private:
         float subsurfaceAnisotropy = 0.0f;
         bool thinWalled = false;
         float diffuseRoughness = 0.0f;
+        
+        // Volume properties
+        bool isVolumeHit = false;
+        const void* densityGrid = nullptr;
     };
 
     struct TextureData {
@@ -266,9 +283,9 @@ private:
     void _RenderTilesSYCL(HdRenderThread *renderThread, HdGeminiRenderDelegate* delegate);
 #endif
     void _PrepareScene(HdRenderThread *renderThread, HdGeminiRenderDelegate* delegate);
-    void _BuildTLAS(HdRenderThread *renderThread);
-    void _SubdivideTLAS(int nodeIdx, int start, int end, HdRenderThread *renderThread);
-    bool _IntersectTLAS(const GfVec3f& rayOrigin, const GfVec3f& rayDir, HitRecord& hit, HdRenderThread* renderThread) const;
+    void _BuildTLAS(class HdRenderThread *renderThread);
+    void _SubdivideTLAS(int nodeIdx, int start, int end, class HdRenderThread *renderThread);
+    bool _IntersectTLAS(const GfVec3f& rayOrigin, const GfVec3f& rayDir, HitRecord& hit, class HdRenderThread* renderThread, uint32_t& rng) const;
     SampledSpectrum _TraceRay(const GfVec3f& rayOrigin, const GfVec3f& rayDir, int depth, bool isInteractive, HdRenderThread* renderThread, uint32_t& rng, const SampledWavelengths& lambda, GfVec3f* outAlbedo = nullptr, GfVec3f* outNormal = nullptr, float exposureMultiplier = 1.0f) const;
     GfVec3f _SampleEnvironment(const GfVec3f& rayDir) const;
     GfVec3f _SamplePhysicalSky(const GfVec3f& rayDir, const GfVec3f& sunDir) const;
@@ -287,7 +304,7 @@ private:
     GfMatrix4d _projMatrix;
     GfMatrix4d _inverseViewMatrix;
     GfMatrix4d _inverseProjMatrix;
-    std::vector<MeshInstance> _instances;
+    std::vector<SceneInstance> _instances;
     std::vector<HdGeminiLight*> _activeLights;
     std::vector<float> _lightPowerCdf;
     float _lightPowerTotal = 0.0f;

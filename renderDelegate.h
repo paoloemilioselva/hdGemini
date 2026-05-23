@@ -54,7 +54,9 @@ TF_DECLARE_PUBLIC_TOKENS(HdGeminiAovTokens, HD_GEMINI_AOV_TOKENS);
     (physicalSkyAzimuth)                 \
     (physicalSkyAltitude)                \
     (physicalSkySunExposure)             \
-    (physicalSkySkyExposure)
+    (physicalSkySkyExposure)             \
+    (volumeStepSize)                     \
+    (volumeDensityScale)
 
 TF_DECLARE_PUBLIC_TOKENS(HdGeminiRenderSettingsTokens, HD_GEMINI_RENDER_SETTINGS_TOKENS);
 
@@ -114,6 +116,10 @@ public:
     void RemoveMesh(const SdfPath& id);
     const std::map<SdfPath, HdGeminiMesh*>& GetMeshes() const { return _meshes; }
 
+    void AddVolume(const SdfPath& id, class HdGeminiVolume* volume);
+    void RemoveVolume(const SdfPath& id);
+    const std::map<SdfPath, class HdGeminiVolume*>& GetVolumes() const { return _volumes; }
+
     void AddInstancer(const SdfPath& id, HdGeminiInstancer* instancer);
     void RemoveInstancer(const SdfPath& id);
     HdGeminiInstancer* GetInstancer(const SdfPath& id) const;
@@ -148,6 +154,7 @@ private:
     std::atomic<int> _sceneVersion;
 
     std::map<SdfPath, HdGeminiMesh*> _meshes;
+    std::map<SdfPath, class HdGeminiVolume*> _volumes;
     std::map<SdfPath, HdGeminiInstancer*> _instancers;
     std::map<SdfPath, HdGeminiLight*> _lights;
     std::map<SdfPath, HdGeminiMaterial*> _materials;

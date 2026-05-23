@@ -6,6 +6,8 @@
 #include "instancer.h"
 #include "light.h"
 #include "material.h"
+#include "volume.h"
+#include "field.h"
 
 #include "pxr/imaging/hd/renderIndex.h"
 #include "pxr/imaging/hd/changeTracker.h"
@@ -25,6 +27,7 @@ TF_DEFINE_PUBLIC_TOKENS(HdGeminiRenderSettingsTokens, HD_GEMINI_RENDER_SETTINGS_
 const TfTokenVector HdGeminiRenderDelegate::SUPPORTED_RPRIM_TYPES =
 {
     HdPrimTypeTokens->mesh,
+    HdPrimTypeTokens->volume,
 };
 
 const TfTokenVector HdGeminiRenderDelegate::SUPPORTED_SPRIM_TYPES =
@@ -41,6 +44,7 @@ const TfTokenVector HdGeminiRenderDelegate::SUPPORTED_SPRIM_TYPES =
 const TfTokenVector HdGeminiRenderDelegate::SUPPORTED_BPRIM_TYPES =
 {
     HdPrimTypeTokens->renderBuffer,
+    TfToken("openvdbAsset"),
 };
 
 std::mutex HdGeminiRenderDelegate::_mutexResourceRegistry;
@@ -177,6 +181,9 @@ HdGeminiRenderDelegate::CreateRprim(TfToken const& typeId,
     if (typeId == HdPrimTypeTokens->mesh) {
         return new HdGeminiMesh(rprimId);
     }
+    if (typeId == HdPrimTypeTokens->volume) {
+        return new HdGeminiVolume(rprimId);
+    }
     return nullptr;
 }
 
@@ -252,6 +259,9 @@ HdGeminiRenderDelegate::CreateBprim(TfToken const& typeId,
     HDGEMINI_LOG << "[Gemini] CreateBprim: " << typeId.GetText() << " " << bprimId.GetText() << std::endl;
     if (typeId == HdPrimTypeTokens->renderBuffer) {
         return new HdGeminiRenderBuffer(bprimId);
+    }
+    if (typeId == TfToken("openvdbAsset")) {
+        return new HdGeminiField(bprimId, typeId);
     }
     return nullptr;
 }
@@ -442,6 +452,16 @@ HdGeminiRenderDelegate::GetRenderSettingDescriptors() const
         HdGeminiRenderSettingsTokens->physicalSkySkyExposure,
         VtValue(0.0f)
     });
+    list.push_back({
+        "Volume Step Size",
+        HdGeminiRenderSettingsTokens->volumeStepSize,
+        VtValue(0.1f)
+    });
+    list.push_back({
+        "Volume Density Scale",
+        HdGeminiRenderSettingsTokens->volumeDensityScale,
+        VtValue(1.0f)
+    });
     return list;
 }
 
@@ -510,8 +530,12 @@ HdGeminiRenderDelegate::GetRenderSetting(TfToken const& key) const
     } else if (key == HdGeminiRenderSettingsTokens->physicalSkySunExposure) {
         return VtValue(0.0f);
     } else if (key == HdGeminiRenderSettingsTokens->physicalSkySkyExposure) {
-        return VtValue(0.0f);
+        return VtValue(0.0f);    } else if (key == HdGeminiRenderSettingsTokens->volumeStepSize) {
+        return VtValue(0.1f);
+    } else if (key == HdGeminiRenderSettingsTokens->volumeDensityScale) {
+        return VtValue(1.0f);
     }
+    
     return VtValue();
 }
 
@@ -617,6 +641,10 @@ HdGeminiRenderDelegate::SetRenderSetting(TfToken const& key, VtValue const& valu
         _renderer.SetPhysicalSkySunExposure(getFloat(value, 0.0f)); changed = true;
     } else if (key == HdGeminiRenderSettingsTokens->physicalSkySkyExposure) {
         _renderer.SetPhysicalSkySkyExposure(getFloat(value, 0.0f)); changed = true;
+    } else if (key == HdGeminiRenderSettingsTokens->volumeStepSize) {
+        _renderer.SetVolumeStepSize(getFloat(value, 0.1f)); changed = true;
+    } else if (key == HdGeminiRenderSettingsTokens->volumeDensityScale) {
+        _renderer.SetVolumeDensityScale(getFloat(value, 1.0f)); changed = true;
     }
 
     if (changed || postProcessChanged) {
@@ -658,6 +686,22 @@ HdGeminiRenderDelegate::RemoveLight(const SdfPath& id)
 {
     std::lock_guard<std::recursive_mutex> lock(_sceneLock);
     _lights.erase(id);
+}
+
+void
+HdGeminiRenderDelegate::AddVolume(const SdfPath& id, HdGeminiVolume* volume)
+{
+    std::lock_guard<std::recursive_mutex> guard(_sceneLock);
+    _volumes[id] = volume;
+    _sceneVersion.fetch_add(1);
+}
+
+void
+HdGeminiRenderDelegate::RemoveVolume(const SdfPath& id)
+{
+    std::lock_guard<std::recursive_mutex> guard(_sceneLock);
+    _volumes.erase(id);
+    _sceneVersion.fetch_add(1);
 }
 
 void

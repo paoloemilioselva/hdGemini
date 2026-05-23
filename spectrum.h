@@ -51,6 +51,17 @@ public:
         for (int i = 0; i < SPECTRUM_SAMPLES; ++i) values[i] += s.values[i];
         return *this;
     }
+    
+    SampledSpectrum operator-(const SampledSpectrum& s) const {
+        SampledSpectrum ret;
+        for (int i = 0; i < SPECTRUM_SAMPLES; ++i) ret.values[i] = values[i] - s.values[i];
+        return ret;
+    }
+    
+    SampledSpectrum& operator-=(const SampledSpectrum& s) {
+        for (int i = 0; i < SPECTRUM_SAMPLES; ++i) values[i] -= s.values[i];
+        return *this;
+    }
 
     SampledSpectrum operator*(const SampledSpectrum& s) const {
         SampledSpectrum ret;

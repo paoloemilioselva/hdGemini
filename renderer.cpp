@@ -1102,6 +1102,14 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
     int reflectionBounces = 0;
     int refractionBounces = 0;
     
+    struct PathVertex {
+        GfVec3f pos;
+        GfVec3f dir;
+        SampledSpectrum throughput;
+        SampledSpectrum totalRadianceBefore;
+    };
+    std::vector<PathVertex> pathHistory;
+    
     // Nested Dielectrics tracking stack
     std::vector<float> iorStack = { 1.0f };
 
@@ -1680,6 +1688,44 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
 
         // (Fix 5: dispersion moved before direct lighting)
 
+        // --- SPPM Caustic Gathering ---
+        if (_enableSPPM && !_photonMap.photons.empty() && (reflectionBounces > 0 || refractionBounces > 0 || hit.roughness > 0.1f) && hit.metallic < 1.0f && hit.transmission < 1.0f) {
+            float r = _photonMap.searchRadius;
+            SampledSpectrum causticFlux(0.0f);
+            
+            // Spatial Hash Lookup
+            for (int dx = -1; dx <= 1; ++dx) {
+                for (int dy = -1; dy <= 1; ++dy) {
+                    for (int dz = -1; dz <= 1; ++dz) {
+                        GfVec3f neighbor = hitPos + GfVec3f(dx * r, dy * r, dz * r);
+                        uint64_t nh = _photonMap.Hash(neighbor);
+                        auto it = _photonMap.spatialHash.find(nh);
+                        if (it != _photonMap.spatialHash.end()) {
+                            for (int idx : it->second) {
+                                const Photon& p = _photonMap.photons[idx];
+                                GfVec3f diff = p.pos - hitPos;
+                                if (GfDot(diff, diff) <= r * r) {
+                                    // Diffuse evaluation
+                                    float nDotWi = std::max(0.0f, GfDot(shadingNormal, p.wi));
+                                    if (nDotWi > 0) {
+                                        SampledSpectrum pPower = RGBToSpectrum(p.powerRGB, lambda);
+                                        float effectiveSubsurface = hit.subsurface;
+                                        GfVec3f finalDiffuse = hit.baseColor * (1.0f - effectiveSubsurface) + hit.subsurfaceColor * effectiveSubsurface;
+                                        causticFlux += pPower * RGBToSpectrum(finalDiffuse, lambda) * (float)(1.0 / M_PI);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            
+            int numPhotonsTraced = 10000;
+            float area = M_PI * r * r;
+            SampledSpectrum causticRadiance = causticFlux / (area * numPhotonsTraced);
+            totalRadiance += throughput * causticRadiance;
+        }
+
         // --- Indirect Path Selection (BSDF Sampling) ---
         float fresnel = FresnelDielectric(GfDot(currentRayDir, hit.smoothNormal), iorStack.back(), hit.ior);
         float reflectProb = fresnel * hit.specular;
@@ -1812,19 +1858,57 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
                 // Diffuse
                 float u1 = qmc::SampleDimension(sampleIdx, qmcDim++, rng);
                 float u2 = qmc::SampleDimension(sampleIdx, qmcDim++, rng);
-                GfVec3f diffuseDir = AlignToNormal(SampleCosineHemisphere(u1, u2), shadingNormal);
-                float nDotL = std::max(0.0f, GfDot(shadingNormal, diffuseDir));
-                float pdf = nDotL / (float)M_PI;
-                if (pdf < 1e-6f) break;
                 
-                lastBsdfPdf = pdf * (1.0f - reflectProb) * diffProb;
+                GfVec3f diffuseDir;
+                float pdfBsdf;
+                float pdfGuide = 0.0f;
                 
-                float fresnelOut = FresnelDielectric(GfDot(diffuseDir, shadingNormal), iorStack.back(), hit.ior);
-                float diffFresnelAtten = 1.0f - fresnelOut * hit.specular;
+                uint32_t h = _guidingGrid.Hash(hitPos);
+                const GuidingVoxel& voxel = _guidingGrid.voxels[h];
                 
-                GfVec3f diffuseBase = hit.baseColor * diffFresnelAtten / (float)M_PI;
-                throughput = throughput * RGBToSpectrum(diffuseBase, lambda) * (float)M_PI;
-                currentRayDir = diffuseDir;
+                if (_enablePathGuiding && voxel.totalRadiance > 0) {
+                    float u3 = qmc::SampleDimension(sampleIdx, qmcDim++, rng);
+                    float guideProb = 0.5f;
+                    
+                    if (qmc::SampleDimension(sampleIdx, qmcDim++, rng) < guideProb) {
+                        diffuseDir = voxel.Sample(u1, u2, u3);
+                        if (GfDot(diffuseDir, shadingNormal) <= 0) {
+                            diffuseDir = AlignToNormal(SampleCosineHemisphere(u1, u2), shadingNormal);
+                        }
+                    } else {
+                        diffuseDir = AlignToNormal(SampleCosineHemisphere(u1, u2), shadingNormal);
+                    }
+                    
+                    float nDotL = std::max(0.0f, GfDot(shadingNormal, diffuseDir));
+                    pdfBsdf = nDotL / (float)M_PI;
+                    pdfGuide = voxel.Pdf(diffuseDir);
+                    
+                    float combinedPdf = guideProb * pdfGuide + (1.0f - guideProb) * pdfBsdf;
+                    if (combinedPdf < 1e-6f || nDotL <= 0) break;
+                    
+                    lastBsdfPdf = combinedPdf * (1.0f - reflectProb) * diffProb;
+                    
+                    float fresnelOut = FresnelDielectric(GfDot(diffuseDir, shadingNormal), iorStack.back(), hit.ior);
+                    float diffFresnelAtten = 1.0f - fresnelOut * hit.specular;
+                    GfVec3f diffuseBase = hit.baseColor * diffFresnelAtten / (float)M_PI;
+                    
+                    throughput = throughput * RGBToSpectrum(diffuseBase, lambda) * (nDotL / combinedPdf);
+                    currentRayDir = diffuseDir;
+                } else {
+                    diffuseDir = AlignToNormal(SampleCosineHemisphere(u1, u2), shadingNormal);
+                    float nDotL = std::max(0.0f, GfDot(shadingNormal, diffuseDir));
+                    pdfBsdf = nDotL / (float)M_PI;
+                    if (pdfBsdf < 1e-6f) break;
+                    
+                    lastBsdfPdf = pdfBsdf * (1.0f - reflectProb) * diffProb;
+                    
+                    float fresnelOut = FresnelDielectric(GfDot(diffuseDir, shadingNormal), iorStack.back(), hit.ior);
+                    float diffFresnelAtten = 1.0f - fresnelOut * hit.specular;
+                    
+                    GfVec3f diffuseBase = hit.baseColor * diffFresnelAtten / (float)M_PI;
+                    throughput = throughput * RGBToSpectrum(diffuseBase, lambda) * (float)M_PI;
+                    currentRayDir = diffuseDir;
+                }
                 currentRayOrigin = hitPos + shadingNormal * 1e-4f;
             }
         }
@@ -1835,9 +1919,147 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
             if (qmc::SampleDimension(sampleIdx, qmcDim++, rng) > p) break;
             throughput = throughput * (1.0f / p);
         }
+
+        if (_enablePathGuiding) {
+            PathVertex pv;
+            pv.pos = hitPos;
+            pv.dir = currentRayDir;
+            pv.throughput = throughput;
+            pv.totalRadianceBefore = totalRadiance;
+            pathHistory.push_back(pv);
+        }
+    }
+    
+    if (_enablePathGuiding && !pathHistory.empty()) {
+        for (const auto& pv : pathHistory) {
+            SampledSpectrum addedRadiance = totalRadiance - pv.totalRadianceBefore;
+            GfVec3f returningL(0.0f);
+            for(int i=0; i<SPECTRUM_SAMPLES; ++i) {
+                if (pv.throughput[i] > 1e-6f) {
+                    returningL[i] = addedRadiance[i] / pv.throughput[i];
+                }
+            }
+            float lum = 0.2126f * returningL[0] + 0.7152f * returningL[1] + 0.0722f * returningL[2];
+            if (lum > 0) {
+                uint32_t h = _guidingGrid.Hash(pv.pos);
+                _guidingGrid.voxels[h].Deposit(pv.dir, lum);
+            }
+        }
     }
 
     return totalRadiance;
+}
+
+void HdGeminiRenderer::_TracePhoton(class HdRenderThread* renderThread, uint32_t sampleIdx, uint32_t& rng, const SampledWavelengths& lambda)
+{
+    if (_activeLights.empty() || !_enableSPPM) return;
+    
+    uint32_t qmcDim = 0;
+    float uLight = qmc::SampleDimension(sampleIdx, qmcDim++, rng);
+    auto itLight = std::lower_bound(_lightPowerCdf.begin(), _lightPowerCdf.end(), uLight);
+    int lightIdx = std::min((int)std::distance(_lightPowerCdf.begin(), itLight), (int)_activeLights.size() - 1);
+    HdGeminiLight* light = _activeLights[lightIdx];
+    
+    float lightPdf = (_lightPowerCdf[lightIdx] - (lightIdx > 0 ? _lightPowerCdf[lightIdx - 1] : 0.0f));
+    lightPdf = std::max(lightPdf, 1e-6f);
+    
+    GfVec3f origin(0.0f), dir(0.0f);
+    GfVec3f powerRGB(0.0f);
+    
+    if (light->GetLightType() == HdPrimTypeTokens->rectLight) {
+        float u = qmc::SampleDimension(sampleIdx, qmcDim++, rng) - 0.5f;
+        float v = qmc::SampleDimension(sampleIdx, qmcDim++, rng) - 0.5f;
+        GfVec3f lPosLocal(u * light->GetWidth(), v * light->GetHeight(), 0.0f);
+        origin = GfMatrix4f(light->GetTransform()).Transform(lPosLocal);
+        
+        float u1 = qmc::SampleDimension(sampleIdx, qmcDim++, rng);
+        float u2 = qmc::SampleDimension(sampleIdx, qmcDim++, rng);
+        float r = std::sqrt(u1);
+        float theta = 2.0f * M_PI * u2;
+        GfVec3f localDir(r * std::cos(theta), r * std::sin(theta), -std::sqrt(std::max(0.0f, 1.0f - u1)));
+        
+        dir = GfMatrix4f(light->GetTransform()).TransformDir(localDir).GetNormalized();
+        
+        float area = light->GetWidth() * light->GetHeight();
+        powerRGB = light->GetColor() * light->GetIntensity() * area * (float)M_PI / lightPdf;
+    } else if (light->GetLightType() == HdPrimTypeTokens->distantLight || light->GetLightType() == HdPrimTypeTokens->domeLight) {
+        return; // Skip infinite lights for standard photon mapping to avoid tracing useless photons
+    } else {
+        origin = GfMatrix4f(light->GetTransform()).ExtractTranslation();
+        float u1 = qmc::SampleDimension(sampleIdx, qmcDim++, rng);
+        float u2 = qmc::SampleDimension(sampleIdx, qmcDim++, rng);
+        float z = 1.0f - 2.0f * u1;
+        float r = std::sqrt(std::max(0.0f, 1.0f - z * z));
+        float phi = 2.0f * M_PI * u2;
+        dir = GfVec3f(r * std::cos(phi), r * std::sin(phi), z);
+        
+        powerRGB = light->GetColor() * light->GetIntensity() * 4.0f * (float)M_PI / lightPdf;
+    }
+    
+    SampledSpectrum power = RGBToSpectrum(powerRGB, lambda);
+    bool hasSpecularBounce = false;
+    
+    for (int bounce = 0; bounce < 10; ++bounce) {
+        if (renderThread->IsStopRequested()) break;
+        
+        HitRecord hit;
+        if (!this->_IntersectTLAS(origin, dir, hit, renderThread, sampleIdx, qmcDim, rng)) break;
+        
+        GfVec3f hitPos = origin + dir * hit.t;
+        GfVec3f shadingNormal = hit.normal;
+        if (GfDot(dir, shadingNormal) > 0) {
+            shadingNormal = -shadingNormal;
+        }
+        
+        if (hasSpecularBounce && hit.metallic < 1.0f && hit.transmission < 1.0f) {
+            Photon p;
+            p.pos = hitPos;
+            p.wi = -dir;
+            p.powerRGB = SpectrumToRGB(power, lambda);
+            
+            #pragma omp critical
+            {
+                _photonMap.AddPhoton(p);
+            }
+        }
+        
+        bool isSpecular = (hit.transmission > 0.5f || hit.roughness < 0.1f || hit.metallic > 0.5f);
+        if (!isSpecular) {
+            break;
+        }
+        
+        float ior = hit.ior;
+        bool isInside = (GfDot(dir, hit.normal) > 0);
+        float n1 = 1.0f;
+        float n2 = ior;
+        if (isInside) std::swap(n1, n2);
+        
+        float cosThetaI = std::abs(GfDot(dir, hit.normal));
+        float fresnel = FresnelDielectric(cosThetaI, n1, n2);
+        if (hit.metallic > 0.0f) fresnel = 1.0f;
+        
+        float uBounce = qmc::SampleDimension(sampleIdx, qmcDim++, rng);
+        if (uBounce < fresnel) {
+            dir = dir - 2.0f * GfDot(dir, shadingNormal) * shadingNormal;
+            dir = dir.GetNormalized();
+            origin = hitPos + shadingNormal * 1e-4f;
+            power = power * RGBToSpectrum(hit.baseColor, lambda);
+            hasSpecularBounce = true;
+        } else if (hit.transmission > 0.0f) {
+            float eta = n1 / n2;
+            float sin2ThetaT = eta * eta * (1.0f - cosThetaI * cosThetaI);
+            if (sin2ThetaT >= 1.0f) break;
+            
+            float cosThetaT = std::sqrt(1.0f - sin2ThetaT);
+            dir = eta * dir + (eta * cosThetaI - cosThetaT) * shadingNormal;
+            dir = dir.GetNormalized();
+            origin = hitPos - shadingNormal * 1e-4f;
+            power = power * RGBToSpectrum(hit.transmissionColor, lambda);
+            hasSpecularBounce = true;
+        } else {
+            break;
+        }
+    }
 }
 
 void
@@ -2090,6 +2312,23 @@ HdGeminiRenderer::_RenderTiles(HdRenderThread *renderThread, HdGeminiRenderDeleg
         _colorBufferVersion = _colorBuffer->GetVersion();
         
         _temporalReservoirs.assign(width * height, Reservoir{});
+        _photonMap.Clear();
+        _sppmPasses = 0;
+    }
+    
+    if (_enableSPPM && !_activeLights.empty()) {
+        _sppmPasses++;
+        _photonMap.searchRadius = std::max(0.001f, 0.1f / std::sqrt((float)_sppmPasses));
+        _photonMap.Clear();
+        
+        int numPhotons = 10000;
+        WorkParallelForN(numPhotons, [&](size_t start, size_t end) {
+            for (size_t i = start; i < end; ++i) {
+                uint32_t rng = (uint32_t)i + _sppmPasses * 1337;
+                SampledWavelengths lambda = SampledWavelengths::SampleUniform(0.5f);
+                _TracePhoton(renderThread, (uint32_t)i, rng, lambda);
+            }
+        });
     }
 
     std::vector<size_t> activeBucketIndices;

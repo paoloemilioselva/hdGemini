@@ -306,6 +306,135 @@ private:
         }
     };
 
+    struct Photon {
+        GfVec3f pos;
+        GfVec3f wi;
+        GfVec3f powerRGB;
+    };
+
+    struct PhotonMap {
+        std::vector<Photon> photons;
+        std::unordered_map<uint64_t, std::vector<int>> spatialHash;
+        float searchRadius = 0.1f;
+        
+        void Clear() {
+            photons.clear();
+            spatialHash.clear();
+        }
+        
+        uint64_t Hash(const GfVec3f& p) const {
+            int x = (int)std::floor(p[0] / searchRadius);
+            int y = (int)std::floor(p[1] / searchRadius);
+            int z = (int)std::floor(p[2] / searchRadius);
+            return (uint64_t)((x * 73856093) ^ (y * 19349663) ^ (z * 83492791));
+        }
+        
+        void AddPhoton(const Photon& p) {
+            int idx = (int)photons.size();
+            photons.push_back(p);
+            spatialHash[Hash(p.pos)].push_back(idx);
+        }
+    };
+
+    struct GuidingVoxel {
+        float bins[16] = {0};
+        float totalRadiance = 0;
+        
+        void Deposit(const GfVec3f& dir, float radiance) {
+            if (radiance <= 0) return;
+            float sum = std::abs(dir[0]) + std::abs(dir[1]) + std::abs(dir[2]);
+            if (sum < 1e-6f) return;
+            float u = dir[0] / sum;
+            float v = dir[1] / sum;
+            if (dir[2] < 0) {
+                float tu = u;
+                u = (1.0f - std::abs(v)) * (u >= 0.0f ? 1.0f : -1.0f);
+                v = (1.0f - std::abs(tu)) * (v >= 0.0f ? 1.0f : -1.0f);
+            }
+            u = u * 0.5f + 0.5f;
+            v = v * 0.5f + 0.5f;
+            int bx = std::clamp((int)(u * 4.0f), 0, 3);
+            int by = std::clamp((int)(v * 4.0f), 0, 3);
+            int binIdx = by * 4 + bx;
+            
+            #pragma omp atomic
+            bins[binIdx] += radiance;
+            #pragma omp atomic
+            totalRadiance += radiance;
+        }
+        
+        float Pdf(const GfVec3f& dir) const {
+            if (totalRadiance <= 0) return 0.0f;
+            float sum = std::abs(dir[0]) + std::abs(dir[1]) + std::abs(dir[2]);
+            if (sum < 1e-6f) return 0.0f;
+            float u = dir[0] / sum;
+            float v = dir[1] / sum;
+            if (dir[2] < 0) {
+                float tu = u;
+                u = (1.0f - std::abs(v)) * (u >= 0.0f ? 1.0f : -1.0f);
+                v = (1.0f - std::abs(tu)) * (v >= 0.0f ? 1.0f : -1.0f);
+            }
+            u = u * 0.5f + 0.5f;
+            v = v * 0.5f + 0.5f;
+            int bx = std::clamp((int)(u * 4.0f), 0, 3);
+            int by = std::clamp((int)(v * 4.0f), 0, 3);
+            int binIdx = by * 4 + bx;
+            // The bin area on the octahedral map is 1/16
+            // But we need solid angle PDF. The PDF on the sphere is p_sphere = p_oct * J.
+            // Simplified: we'll return bin_radiance / totalRadiance. We'll handle the Jacobian in the MIS weight or assume uniform within bin.
+            return (bins[binIdx] / totalRadiance) * (16.0f / (4.0f * (float)M_PI)); 
+        }
+        
+        GfVec3f Sample(float u1, float u2, float u3) const {
+            if (totalRadiance <= 0) return GfVec3f(0.0f, 0.0f, 1.0f);
+            
+            // Pick bin
+            float target = u3 * totalRadiance;
+            float accum = 0.0f;
+            int chosenBin = 15;
+            for (int i = 0; i < 16; ++i) {
+                accum += bins[i];
+                if (accum >= target) {
+                    chosenBin = i;
+                    break;
+                }
+            }
+            
+            int bx = chosenBin % 4;
+            int by = chosenBin / 4;
+            float u = (bx + u1) / 4.0f;
+            float v = (by + u2) / 4.0f;
+            
+            u = u * 2.0f - 1.0f;
+            v = v * 2.0f - 1.0f;
+            GfVec3f dir(u, v, 1.0f - std::abs(u) - std::abs(v));
+            if (dir[2] < 0) {
+                float tu = dir[0];
+                dir[0] = (1.0f - std::abs(dir[1])) * (tu >= 0.0f ? 1.0f : -1.0f);
+                dir[1] = (1.0f - std::abs(tu)) * (dir[1] >= 0.0f ? 1.0f : -1.0f);
+            }
+            return dir.GetNormalized();
+        }
+    };
+
+    struct GuidingGrid {
+        std::vector<GuidingVoxel> voxels;
+        float voxelSize = 10.0f; // Scale based on scene
+        
+        GuidingGrid() { voxels.resize(1000003); }
+        
+        uint32_t Hash(const GfVec3f& p) const {
+            int x = (int)std::floor(p[0] / voxelSize);
+            int y = (int)std::floor(p[1] / voxelSize);
+            int z = (int)std::floor(p[2] / voxelSize);
+            return (uint32_t)((x * 73856093) ^ (y * 19349663) ^ (z * 83492791)) % 1000003;
+        }
+        
+        void Clear() {
+            std::fill(voxels.begin(), voxels.end(), GuidingVoxel());
+        }
+    };
+
     struct RenderBucket {
         uint32_t startX, startY, endX, endY;
         uint32_t activePixels;
@@ -322,6 +451,7 @@ private:
     void _SubdivideTLAS(int nodeIdx, int start, int end, class HdRenderThread *renderThread);
     bool _IntersectTLAS(const GfVec3f& rayOrigin, const GfVec3f& rayDir, HitRecord& hit, class HdRenderThread* renderThread, uint32_t sampleIdx, uint32_t& qmcDim, uint32_t& rng) const;
     SampledSpectrum _TraceRay(const GfVec3f& rayOrigin, const GfVec3f& rayDir, int depth, bool isInteractive, HdRenderThread* renderThread, uint32_t sampleIdx, uint32_t& qmcDim, uint32_t& rng, const SampledWavelengths& lambda, GfVec3f* outAlbedo = nullptr, GfVec3f* outNormal = nullptr, float exposureMultiplier = 1.0f, Reservoir* temporalReservoir = nullptr) const;
+    void _TracePhoton(class HdRenderThread* renderThread, uint32_t sampleIdx, uint32_t& rng, const SampledWavelengths& lambda);
     GfVec3f _SampleEnvironment(const GfVec3f& rayDir) const;
     GfVec3f _SamplePhysicalSky(const GfVec3f& rayDir, const GfVec3f& sunDir) const;
     GfVec3f _GetSunTransmittance(const GfVec3f& sunDir) const;
@@ -364,6 +494,12 @@ private:
     int _lastWidth = 0;
     int _lastHeight = 0;
     std::vector<Reservoir> _temporalReservoirs;
+    PhotonMap _photonMap;
+    bool _enableSPPM = true;
+    uint32_t _sppmPasses = 0;
+    
+    mutable GuidingGrid _guidingGrid;
+    bool _enablePathGuiding = true;
     
     std::chrono::time_point<std::chrono::high_resolution_clock> _lastStatsUpdateTime;
 

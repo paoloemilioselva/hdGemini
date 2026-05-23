@@ -107,10 +107,8 @@ static GfVec3f AlignToNormal(const GfVec3f& sample, const GfVec3f& normal) {
     return sample[0] * tangent + sample[1] * normal + sample[2] * bitangent;
 }
 
-static float FresnelDielectric(float cosThetaI, float ior) {
+static float FresnelDielectric(float cosThetaI, float etaI, float etaT) {
     cosThetaI = std::clamp(cosThetaI, -1.0f, 1.0f);
-    float etaI = 1.0f, etaT = ior;
-    if (cosThetaI > 0) std::swap(etaI, etaT);
     float sinThetaT = etaI / etaT * std::sqrt(std::max(0.0f, 1.0f - cosThetaI * cosThetaI));
     if (sinThetaT >= 1.0f) return 1.0f;
     float cosThetaT = std::sqrt(std::max(0.0f, 1.0f - sinThetaT * sinThetaT));
@@ -335,6 +333,27 @@ HdGeminiRenderer::_PrepareScene(HdRenderThread *renderThread, HdGeminiRenderDele
         _envMapColCdf.clear();
         _envMapTotalLuminance = 0.0f;
         _lastEnvMapPath = SdfAssetPath();
+    }
+
+    _lightPowerCdf.clear();
+    _lightPowerTotal = 0.0f;
+    for (const auto& light : _activeLights) {
+        float power = 0.0f;
+        if (light->GetLightType() == HdPrimTypeTokens->distantLight) {
+            power = light->GetIntensity() * std::max({light->GetColor()[0], light->GetColor()[1], light->GetColor()[2]}) * 1000.0f;
+        } else if (light->GetLightType() == HdPrimTypeTokens->sphereLight) {
+            float r = light->GetWidth() / 2.0f;
+            power = light->GetIntensity() * std::max({light->GetColor()[0], light->GetColor()[1], light->GetColor()[2]}) * (4.0f * (float)M_PI * r * r);
+        } else if (light->GetLightType() == HdPrimTypeTokens->rectLight) {
+            power = light->GetIntensity() * std::max({light->GetColor()[0], light->GetColor()[1], light->GetColor()[2]}) * (light->GetWidth() * light->GetHeight());
+        } else if (light->GetLightType() == HdPrimTypeTokens->domeLight) {
+            power = light->GetIntensity() * std::max({light->GetColor()[0], light->GetColor()[1], light->GetColor()[2]}) * 10000.0f;
+        }
+        _lightPowerTotal += std::max(power, 1e-4f);
+        _lightPowerCdf.push_back(_lightPowerTotal);
+    }
+    if (_lightPowerTotal > 0.0f) {
+        for (auto& v : _lightPowerCdf) v /= _lightPowerTotal;
     }
 
     for (auto const& item : meshes) {
@@ -980,6 +999,9 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
 
     int reflectionBounces = 0;
     int refractionBounces = 0;
+    
+    // Nested Dielectrics tracking stack
+    std::vector<float> iorStack = { 1.0f };
 
     const int maxDepth = isInteractive ? 2 : 32;
 
@@ -1177,12 +1199,22 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
 
         // --- Direct Lighting (Light Sampling) ---
         if (!_activeLights.empty()) {
-            size_t lightIdx = std::min((size_t)(RandomFloat(rng) * _activeLights.size()), _activeLights.size() - 1);
+            float uLight = RandomFloat(rng);
+            auto itLight = std::lower_bound(_lightPowerCdf.begin(), _lightPowerCdf.end(), uLight);
+            size_t lightIdx = std::min((size_t)std::distance(_lightPowerCdf.begin(), itLight), _activeLights.size() - 1);
             HdGeminiLight* light = _activeLights[lightIdx];
+            
+            float lightSelectionPdf = 1.0f;
+            if (lightIdx == 0) {
+                lightSelectionPdf = _lightPowerCdf[0];
+            } else {
+                lightSelectionPdf = _lightPowerCdf[lightIdx] - _lightPowerCdf[lightIdx - 1];
+            }
+            lightSelectionPdf = std::max(lightSelectionPdf, 1e-6f);
             
             GfVec3f lDir;
             float lightDist = 1e30f;
-            float lightPdf = 1.0f / (float)_activeLights.size();
+            float lightPdf = lightSelectionPdf;
             GfVec3f lColor(0.0f);
 
             if (light->GetLightType() == HdPrimTypeTokens->distantLight) {
@@ -1309,7 +1341,7 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
                         float coatAtten = 1.0f;
                         GfVec3f coatSpecDirect(0.0f);
                         if (hit.coat > 0.0f && !isInside) {
-                            float coatF = hit.coat * FresnelDielectric(GfDot(-currentRayDir, shadingNormal), hit.coatIor);
+                            float coatF = hit.coat * FresnelDielectric(GfDot(-currentRayDir, shadingNormal), iorStack.back(), hit.coatIor);
                             coatAtten = 1.0f - coatF;
                             // Coat specular lobe
                             float coatAlpha = std::max(0.001f, hit.coatRoughness * hit.coatRoughness);
@@ -1326,7 +1358,7 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
                         SampledSpectrum bsdf = RGBToSpectrum(combinedBsdf, lambda);
 
                         // PDF for MIS
-                        float fresnel_eval = FresnelDielectric(nDotV_eval, hit.ior);
+                        float fresnel_eval = FresnelDielectric(nDotV_eval, iorStack.back(), hit.ior);
                         float reflectProb = fresnel_eval * hit.specular;
                         if (hit.metallic > 0.0f) reflectProb = std::max(reflectProb, hit.metallic);
                         
@@ -1394,7 +1426,7 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
 
         // --- Coat Layer (Fix 2: energy conservation) ---
         if (hit.coat > 0.0f && !isInside) {
-            float coatFresnel = hit.coat * FresnelDielectric(GfDot(currentRayDir, shadingNormal), hit.coatIor);
+            float coatFresnel = hit.coat * FresnelDielectric(GfDot(currentRayDir, shadingNormal), iorStack.back(), hit.coatIor);
             if (RandomFloat(rng) < coatFresnel) {
                 if (reflectionBounces >= (isInteractive ? 1 : _maxReflectionBounces)) break;
                 reflectionBounces++;
@@ -1448,7 +1480,7 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
         // (Fix 5: dispersion moved before direct lighting)
 
         // --- Indirect Path Selection (BSDF Sampling) ---
-        float fresnel = FresnelDielectric(GfDot(currentRayDir, hit.smoothNormal), hit.ior);
+        float fresnel = FresnelDielectric(GfDot(currentRayDir, hit.smoothNormal), iorStack.back(), hit.ior);
         float reflectProb = fresnel * hit.specular;
         if (hit.metallic > 0.0f) reflectProb = std::max(reflectProb, hit.metallic);
         reflectProb = std::min(reflectProb, 1.0f);
@@ -1511,8 +1543,11 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
             
             if (sssProb + transProb > 1e-6f && remainingProb < sssProb + transProb) {
                 // Refraction (Both Transmission and SSS refract into the volume)
-                float etaI = 1.0f, etaT = hit.ior;
-                if (isInside) std::swap(etaI, etaT);
+                float etaI = iorStack.back();
+                float etaT = hit.ior;
+                if (isInside) {
+                    etaT = (iorStack.size() > 1) ? iorStack[iorStack.size() - 2] : 1.0f;
+                }
                 
                 float eta = etaI / etaT;
                 GfVec3f n = shadingNormal;
@@ -1525,6 +1560,7 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
                     GfVec3f refractDir = (eta * currentRayDir - (eta * cosThetaI + std::sqrt(k)) * n).GetNormalized();
                     
                     // Microfacet refraction direction
+                    bool transmitted = true;
                     if (hit.roughness > 0.0f) {
                         GfVec3f h = AlignToNormal(SampleGGX(RandomFloat(rng), RandomFloat(rng), hit.roughness), n);
                         float cosThetaI_h = GfDot(currentRayDir, h); // < 0
@@ -1533,17 +1569,29 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
                             refractDir = (eta * currentRayDir - (eta * cosThetaI_h + std::sqrt(k_h)) * h).GetNormalized();
                         } else {
                             refractDir = (currentRayDir - 2.0f * cosThetaI_h * h).GetNormalized(); // TIR on microfacet
+                            transmitted = false;
                         }
                     }
                     
-                    currentRayDir = refractDir;
-                    currentRayOrigin = hitPos - n * 1e-4f;
-                    
-                    if (remainingProb >= sssProb) {
-                        // It is Transmission
-                        throughput = throughput * RGBToSpectrum(hit.transmissionColor, lambda);
+                    if (transmitted) {
+                        currentRayDir = refractDir;
+                        currentRayOrigin = hitPos - n * 1e-4f;
+                        if (isInside) {
+                            if (iorStack.size() > 1) iorStack.pop_back();
+                        } else {
+                            iorStack.push_back(hit.ior);
+                        }
+                        
+                        if (remainingProb >= sssProb) {
+                            // It is Transmission
+                            throughput = throughput * RGBToSpectrum(hit.transmissionColor, lambda);
+                        }
+                    } else {
+                        // TIR on microfacet
+                        currentRayDir = refractDir;
+                        currentRayOrigin = hitPos + n * 1e-4f;
+                        // iorStack remains unchanged
                     }
-                    // If it is SSS, throughput is unmodified here; the random walk handles attenuation.
                     
                     lastBsdfPdf = 0.0f;
                 } else {
@@ -1564,7 +1612,7 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
                 
                 lastBsdfPdf = pdf * (1.0f - reflectProb) * diffProb;
                 
-                float fresnelOut = FresnelDielectric(GfDot(diffuseDir, shadingNormal), hit.ior);
+                float fresnelOut = FresnelDielectric(GfDot(diffuseDir, shadingNormal), iorStack.back(), hit.ior);
                 float diffFresnelAtten = 1.0f - fresnelOut * hit.specular;
                 
                 GfVec3f diffuseBase = hit.baseColor * diffFresnelAtten / (float)M_PI;

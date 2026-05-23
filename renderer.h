@@ -289,6 +289,8 @@ private:
     GfMatrix4d _inverseProjMatrix;
     std::vector<MeshInstance> _instances;
     std::vector<HdGeminiLight*> _activeLights;
+    std::vector<float> _lightPowerCdf;
+    float _lightPowerTotal = 0.0f;
     int _resolutionLevel = 4;
     int _frameCount = 0;
     

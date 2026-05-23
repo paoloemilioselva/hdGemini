@@ -81,6 +81,18 @@ else()
     endif()
 endif()
 
+# --- NanoVDB ---
+message(STATUS "Fetching NanoVDB (Header-only) from GitHub...")
+include(FetchContent)
+FetchContent_Declare(
+    nanovdb_src
+    GIT_REPOSITORY https://github.com/AcademySoftwareFoundation/openvdb.git
+    GIT_TAG v11.0.0
+    SOURCE_SUBDIR nanovdb/nanovdb
+)
+FetchContent_Populate(nanovdb_src)
+add_definitions(-DHDGEMINI_HAS_NANOVDB)
+include_directories(${nanovdb_src_SOURCE_DIR}/..)
 if(OpenImageDenoise_FOUND)
     set(OIDN_LIBRARIES OpenImageDenoise)
     add_definitions(-DHDGEMINI_HAS_OIDN)

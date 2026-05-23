@@ -34,6 +34,7 @@
   - Full `standard_surface` support including Base Color, Roughness, Metallic, Clearcoat, Sheen, Volumetric Subsurface Scattering (full Monte Carlo random walk), and physical Emission.
   - **Extended Texture Support**: Fully supports `ND_extract` nodes for channel-packed textures (e.g., ORM - Occlusion, Roughness, Metallic) and correct routing for Opacity and Transmission maps.
   - Accurate physical refraction, handling Transmission, IOR (Index of Refraction), Transmission Depth/Scatter (Beer's Law volume absorption), and Thin-Walled properties.
+  - **Nested Dielectrics**: True Index of Refraction (IOR) tracking stack across intersecting transparent volumes (e.g., ice inside water) to ensure perfectly accurate physical light bending without geometric artifacting.
   - **Physical Dispersion**: Simulates wavelength-dependent Index of Refraction (IOR) using Cauchy's equation, rendering accurate rainbow dispersion through transmissive materials.
   - **Robust Defaults**: Unassigned geometry intelligently defaults to a 0.5-grey Lambertian surface, avoiding unnatural shading artifacts.
 - **Physical Camera & Optical Effects**:
@@ -54,6 +55,7 @@
   - Full suite of Hydra light types: Distant, Rect, Sphere, Point, and Dome lights.
   - Advanced **Spot Light Shaping**: Supports cone angle, cone softness, and smoothstep falloff.
   - HDR **Dome Light Importance Sampling**: Generates a 2D CDF from environment maps to aggressively sample bright regions, greatly reducing noise.
+  - **Light Power Sampling**: Dynamically builds a CDF of all active lights based on their radiant flux, drastically reducing variance in multi-light scenes by importance-sampling bright lights.
   - Environment mapping perfectly matches Pixar's `PxrDomeLight` orientation standards out of the box (+Z center with corrected UV lat-long projections).
   - **Physical Sky & Sun IBL**: Analytical atmospheric scattering model (Rayleigh and Mie) alongside a procedural directional Sun, driven dynamically by Azimuth and Altitude render settings for realistic sunrises, midday, and sunsets.
 - **Architecture & Performance**:

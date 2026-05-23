@@ -46,6 +46,8 @@ public:
     
     float GetPixelVariance(GfVec3i const& pixel) const;
     int GetPixelSampleCount(GfVec3i const& pixel) const;
+    
+    unsigned int GetVersion() const { return _version; }
 
 protected:
     virtual void _Deallocate() override;
@@ -61,6 +63,7 @@ private:
     std::vector<int> _sampleCount;
     std::atomic<bool> _converged;
     std::mutex _bufferMutex;
+    unsigned int _version = 0;
 };
 
 #endif // HD_GEMINI_RENDER_BUFFER_H

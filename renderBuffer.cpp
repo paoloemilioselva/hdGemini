@@ -183,6 +183,7 @@ void
 HdGeminiRenderBuffer::Clear(size_t numComponents, float const* value)
 {
     std::lock_guard<std::mutex> lock(_bufferMutex);
+    _version++;
     // Do not visually clear the buffer to prevent black flashes, just reset the accumulators
     _accumBuffer.assign(_width * _height * 4, 0.0f);
     _sumSquaredBuffer.assign(_width * _height * 4, 0.0f);
@@ -193,6 +194,7 @@ void
 HdGeminiRenderBuffer::Clear(size_t numComponents, int const* value)
 {
     std::lock_guard<std::mutex> lock(_bufferMutex);
+    _version++;
     // Do not visually clear the buffer to prevent black flashes, just reset the accumulators
     _accumBuffer.assign(_width * _height * 4, 0.0f);
     _sumSquaredBuffer.assign(_width * _height * 4, 0.0f);

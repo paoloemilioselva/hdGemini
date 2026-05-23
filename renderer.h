@@ -285,6 +285,12 @@ private:
 #endif
     };
 
+    struct RenderBucket {
+        uint32_t startX, startY, endX, endY;
+        uint32_t activePixels;
+        float maxVariance;
+    };
+
     static GfVec4f _GetClearColor(VtValue const& clearValue);
     void _RenderTiles(HdRenderThread *renderThread, HdGeminiRenderDelegate* delegate);
 #ifdef HDGEMINI_HAS_SYCL
@@ -331,6 +337,11 @@ private:
     long long _lastRayCount = 0;
     float _raysPerSecond = 0.0f;
     float _lastProgressionTimeMs = 0.0f;
+    
+    std::vector<RenderBucket> _buckets;
+    unsigned int _colorBufferVersion = 0xFFFFFFFF;
+    int _lastWidth = 0;
+    int _lastHeight = 0;
     std::chrono::time_point<std::chrono::high_resolution_clock> _lastStatsUpdateTime;
 
     std::vector<TLASNode> _tlasNodes;

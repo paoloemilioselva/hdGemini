@@ -1989,15 +1989,51 @@ HdGeminiRenderer::_RenderTiles(HdRenderThread *renderThread, HdGeminiRenderDeleg
     }
 #endif
 
-    WorkParallelForN(numBuckets, [&](size_t b_start, size_t b_end) {
-        for (size_t b = b_start; b < b_end; ++b) {
+    if (width != _lastWidth || height != _lastHeight || _colorBufferVersion != _colorBuffer->GetVersion()) {
+        _buckets.clear();
+        for (size_t by = 0; by < numBucketsY; ++by) {
+            for (size_t bx = 0; bx < numBucketsX; ++bx) {
+                RenderBucket b;
+                b.startX = (uint32_t)(bx * bucketSize);
+                b.startY = (uint32_t)(by * bucketSize);
+                b.endX = std::min(b.startX + bucketSize, (uint32_t)width);
+                b.endY = std::min(b.startY + bucketSize, (uint32_t)height);
+                b.activePixels = (b.endX - b.startX) * (b.endY - b.startY);
+                b.maxVariance = 1e5f;
+                _buckets.push_back(b);
+            }
+        }
+        _lastWidth = width;
+        _lastHeight = height;
+        _colorBufferVersion = _colorBuffer->GetVersion();
+    }
+
+    std::vector<size_t> activeBucketIndices;
+    activeBucketIndices.reserve(_buckets.size());
+    for (size_t i = 0; i < _buckets.size(); ++i) {
+        if (!_enableAdaptiveSampling || isInteractive || _buckets[i].activePixels > 0) {
+            activeBucketIndices.push_back(i);
+        }
+    }
+
+    std::sort(activeBucketIndices.begin(), activeBucketIndices.end(), [&](size_t a, size_t b) {
+        return _buckets[a].maxVariance > _buckets[b].maxVariance;
+    });
+
+    WorkParallelForN(activeBucketIndices.size(), [&](size_t b_start, size_t b_end) {
+        for (size_t idx = b_start; idx < b_end; ++idx) {
             if (renderThread->IsStopRequested()) return;
-            size_t bx = b % numBucketsX;
-            size_t by = b / numBucketsX;
-            size_t startX = (bx * bucketSize / res) * res;
-            size_t startY = (by * bucketSize / res) * res;
-            size_t endX = std::min(startX + bucketSize, (size_t)width);
-            size_t endY = std::min(startY + bucketSize, (size_t)height);
+            size_t b = activeBucketIndices[idx];
+            RenderBucket& bucket = _buckets[b];
+            
+            uint32_t activePixels = 0;
+            float maxVariance = 0.0f;
+
+            size_t startX = (bucket.startX / res) * res;
+            size_t startY = (bucket.startY / res) * res;
+            size_t endX = bucket.endX;
+            size_t endY = bucket.endY;
+
             for (size_t y = startY; y < endY; y += res) {
                 for (size_t x = startX; x < endX; x += res) {
                     if (renderThread->IsStopRequested()) return;
@@ -2017,10 +2053,12 @@ HdGeminiRenderer::_RenderTiles(HdRenderThread *renderThread, HdGeminiRenderDeleg
                         
                         if (!isInteractive && _enableAdaptiveSampling && sampleIdx >= _adaptiveMinSamples) {
                             float variance = _colorBuffer->GetPixelVariance(GfVec3i(x, y, 0));
+                            maxVariance = std::max(maxVariance, variance);
                             if (variance < _adaptiveVarianceThreshold) {
                                 continue;
                             }
                         }
+                        activePixels++;
                         
                         float px = (float)x;
                         float py = (float)y;
@@ -2144,6 +2182,9 @@ HdGeminiRenderer::_RenderTiles(HdRenderThread *renderThread, HdGeminiRenderDeleg
             if (!renderThread->IsStopRequested()) _colorBuffer->ResolveBucket(startX, startY, endX, endY);
             if (!renderThread->IsStopRequested() && _albedoBuffer) _albedoBuffer->ResolveBucket(startX, startY, endX, endY);
             if (!renderThread->IsStopRequested() && _normalBuffer) _normalBuffer->ResolveBucket(startX, startY, endX, endY);
+
+            bucket.activePixels = activePixels;
+            bucket.maxVariance = maxVariance;
         }
     });
 }

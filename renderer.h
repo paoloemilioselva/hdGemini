@@ -285,6 +285,27 @@ private:
 #endif
     };
 
+    struct LightSample {
+        int lightIdx = -1;
+        float u = 0.0f;
+        float v = 0.0f;
+    };
+
+    struct Reservoir {
+        LightSample sample;
+        float w_sum = 0.0f;
+        float W = 0.0f;
+        int M = 0;
+        
+        void Update(const LightSample& s, float weight, float randVal) {
+            w_sum += weight;
+            M += 1;
+            if (randVal < weight / std::max(w_sum, 1e-6f)) {
+                sample = s;
+            }
+        }
+    };
+
     struct RenderBucket {
         uint32_t startX, startY, endX, endY;
         uint32_t activePixels;
@@ -300,7 +321,7 @@ private:
     void _BuildTLAS(class HdRenderThread *renderThread);
     void _SubdivideTLAS(int nodeIdx, int start, int end, class HdRenderThread *renderThread);
     bool _IntersectTLAS(const GfVec3f& rayOrigin, const GfVec3f& rayDir, HitRecord& hit, class HdRenderThread* renderThread, uint32_t sampleIdx, uint32_t& qmcDim, uint32_t& rng) const;
-    SampledSpectrum _TraceRay(const GfVec3f& rayOrigin, const GfVec3f& rayDir, int depth, bool isInteractive, HdRenderThread* renderThread, uint32_t sampleIdx, uint32_t& qmcDim, uint32_t& rng, const SampledWavelengths& lambda, GfVec3f* outAlbedo = nullptr, GfVec3f* outNormal = nullptr, float exposureMultiplier = 1.0f) const;
+    SampledSpectrum _TraceRay(const GfVec3f& rayOrigin, const GfVec3f& rayDir, int depth, bool isInteractive, HdRenderThread* renderThread, uint32_t sampleIdx, uint32_t& qmcDim, uint32_t& rng, const SampledWavelengths& lambda, GfVec3f* outAlbedo = nullptr, GfVec3f* outNormal = nullptr, float exposureMultiplier = 1.0f, Reservoir* temporalReservoir = nullptr) const;
     GfVec3f _SampleEnvironment(const GfVec3f& rayDir) const;
     GfVec3f _SamplePhysicalSky(const GfVec3f& rayDir, const GfVec3f& sunDir) const;
     GfVec3f _GetSunTransmittance(const GfVec3f& sunDir) const;
@@ -342,6 +363,8 @@ private:
     unsigned int _colorBufferVersion = 0xFFFFFFFF;
     int _lastWidth = 0;
     int _lastHeight = 0;
+    std::vector<Reservoir> _temporalReservoirs;
+    
     std::chrono::time_point<std::chrono::high_resolution_clock> _lastStatsUpdateTime;
 
     std::vector<TLASNode> _tlasNodes;

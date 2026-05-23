@@ -1092,7 +1092,7 @@ static float PowerHeuristic(float f, float g) {
     return f2 / (f2 + g2);
 }
 
-SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVec3f& rayDir, int depth, bool isInteractive, HdRenderThread* renderThread, uint32_t sampleIdx, uint32_t& qmcDim, uint32_t& rng, const SampledWavelengths& lambda, GfVec3f* outAlbedo, GfVec3f* outNormal, float exposureMultiplier) const
+SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVec3f& rayDir, int depth, bool isInteractive, HdRenderThread* renderThread, uint32_t sampleIdx, uint32_t& qmcDim, uint32_t& rng, const SampledWavelengths& lambda, GfVec3f* outAlbedo, GfVec3f* outNormal, float exposureMultiplier, Reservoir* temporalReservoir) const
 {
     SampledSpectrum throughput(exposureMultiplier);
     SampledSpectrum totalRadiance(0.0f);
@@ -1314,106 +1314,184 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
 
         // --- Direct Lighting (Light Sampling) ---
         if (!_activeLights.empty()) {
-            float uLight = qmc::SampleDimension(sampleIdx, qmcDim++, rng);
-            auto itLight = std::lower_bound(_lightPowerCdf.begin(), _lightPowerCdf.end(), uLight);
-            size_t lightIdx = std::min((size_t)std::distance(_lightPowerCdf.begin(), itLight), _activeLights.size() - 1);
-            HdGeminiLight* light = _activeLights[lightIdx];
-            
-            float lightSelectionPdf = 1.0f;
-            if (lightIdx == 0) {
-                lightSelectionPdf = _lightPowerCdf[0];
-            } else {
-                lightSelectionPdf = _lightPowerCdf[lightIdx] - _lightPowerCdf[lightIdx - 1];
-            }
-            lightSelectionPdf = std::max(lightSelectionPdf, 1e-6f);
-            
-            GfVec3f lDir;
-            float lightDist = 1e30f;
-            float lightPdf = lightSelectionPdf;
-            GfVec3f lColor(0.0f);
-
-            if (light->GetLightType() == HdPrimTypeTokens->distantLight) {
-                lDir = GfMatrix4f(light->GetTransform()).TransformDir(GfVec3f(0, 0, -1)).GetNormalized();
-                lColor = light->GetColor() * light->GetIntensity();
-            } else if (light->GetLightType() == HdPrimTypeTokens->domeLight && !_envMapRowCdf.empty()) {
-                float u1 = qmc::SampleDimension(sampleIdx, qmcDim++, rng);
-                float u2 = qmc::SampleDimension(sampleIdx, qmcDim++, rng);
-                auto itY = std::lower_bound(_envMapRowCdf.begin(), _envMapRowCdf.end(), u1);
-                int y = std::clamp((int)std::distance(_envMapRowCdf.begin(), itY) - 1, 0, _envMapHeight - 1);
-                const float* colCdf = &_envMapColCdf[y * (_envMapWidth + 1)];
-                auto itX = std::lower_bound(colCdf, colCdf + _envMapWidth + 1, u2);
-                int x = std::clamp((int)std::distance(colCdf, itX) - 1, 0, _envMapWidth - 1);
-                float theta = M_PI * (float)(y + 0.5f) / (float)_envMapHeight;
-                float phi = 2.0f * M_PI * (float)(x + 0.5f) / (float)_envMapWidth;
-                float sinThetaL = std::max(1e-6f, std::sin(theta));
-                // Use X=sin, Z=-cos to match atan2(X, -Z) convention
-                GfVec3f localDir(sinThetaL * std::sin(phi), std::cos(theta), -sinThetaL * std::cos(phi));
-                lDir = GfMatrix4f(light->GetTransform()).TransformDir(localDir).GetNormalized();
-                size_t idx = (y * _envMapWidth + x) * 3;
-                GfVec3f texColor(_envMapPixels[idx], _envMapPixels[idx+1], _envMapPixels[idx+2]);
-                lColor = GfCompMult(texColor, light->GetColor()) * light->GetIntensity();
-                if (_envMapTotalLuminance > 0) {
-                    float lum = 0.2126f * texColor[0] + 0.7152f * texColor[1] + 0.0722f * texColor[2];
-                    // Fix 4: include sinθ Jacobian
-                    float pdf = lum / (_envMapTotalLuminance * (M_PI / (float)_envMapHeight) * (2.0f * M_PI / (float)_envMapWidth) * sinThetaL);
-                    lightPdf *= std::max(pdf, 1e-6f);
-                }
-            } else if (light->GetLightType() == HdPrimTypeTokens->rectLight) {
-                float u = qmc::SampleDimension(sampleIdx, qmcDim++, rng) - 0.5f;
-                float v = qmc::SampleDimension(sampleIdx, qmcDim++, rng) - 0.5f;
-                GfVec3f lPosLocal(u * light->GetWidth(), v * light->GetHeight(), 0.0f);
-                GfVec3f lPosWorld = GfMatrix4f(light->GetTransform()).Transform(lPosLocal);
-                GfVec3f toLight = lPosWorld - hitPos;
-                lightDist = toLight.GetLength();
-                lDir = toLight / lightDist;
-                float area = light->GetWidth() * light->GetHeight();
-                if (area > 0) {
-                    GfVec3f lNormal = GfMatrix4f(light->GetTransform()).TransformDir(GfVec3f(0, 0, -1)).GetNormalized();
-                    float cosThetaL = std::max(0.0f, GfDot(lNormal, -lDir));
-                    if (cosThetaL > 0) {
-                        lightPdf *= (lightDist * lightDist) / (area * cosThetaL);
-                        lColor = light->GetColor() * light->GetIntensity();
-                    } else {
-                        lightDist = -1.0f;
+            auto EvaluateLight = [&](const LightSample& ls, GfVec3f& lDir, float& lightDist, GfVec3f& lColor, float& lightPdf) {
+                HdGeminiLight* light = _activeLights[ls.lightIdx];
+                lightPdf = (_lightPowerCdf[ls.lightIdx] - (ls.lightIdx > 0 ? _lightPowerCdf[ls.lightIdx - 1] : 0.0f));
+                lightPdf = std::max(lightPdf, 1e-6f);
+                
+                lightDist = 1e30f;
+                lColor = GfVec3f(0.0f);
+                
+                if (light->GetLightType() == HdPrimTypeTokens->distantLight) {
+                    lDir = GfMatrix4f(light->GetTransform()).TransformDir(GfVec3f(0, 0, -1)).GetNormalized();
+                    lColor = light->GetColor() * light->GetIntensity();
+                } else if (light->GetLightType() == HdPrimTypeTokens->domeLight && !_envMapRowCdf.empty()) {
+                    float u1 = ls.u;
+                    float u2 = ls.v;
+                    auto itY = std::lower_bound(_envMapRowCdf.begin(), _envMapRowCdf.end(), u1);
+                    int y = std::clamp((int)std::distance(_envMapRowCdf.begin(), itY) - 1, 0, _envMapHeight - 1);
+                    const float* colCdf = &_envMapColCdf[y * (_envMapWidth + 1)];
+                    auto itX = std::lower_bound(colCdf, colCdf + _envMapWidth + 1, u2);
+                    int x = std::clamp((int)std::distance(colCdf, itX) - 1, 0, _envMapWidth - 1);
+                    float theta = M_PI * (float)(y + 0.5f) / (float)_envMapHeight;
+                    float phi = 2.0f * M_PI * (float)(x + 0.5f) / (float)_envMapWidth;
+                    float sinThetaL = std::max(1e-6f, std::sin(theta));
+                    GfVec3f localDir(sinThetaL * std::sin(phi), std::cos(theta), -sinThetaL * std::cos(phi));
+                    lDir = GfMatrix4f(light->GetTransform()).TransformDir(localDir).GetNormalized();
+                    size_t idx = (y * _envMapWidth + x) * 3;
+                    GfVec3f texColor(_envMapPixels[idx], _envMapPixels[idx+1], _envMapPixels[idx+2]);
+                    lColor = GfCompMult(texColor, light->GetColor()) * light->GetIntensity();
+                    if (_envMapTotalLuminance > 0) {
+                        float lum = 0.2126f * texColor[0] + 0.7152f * texColor[1] + 0.0722f * texColor[2];
+                        float pdf = lum / (_envMapTotalLuminance * (M_PI / (float)_envMapHeight) * (2.0f * M_PI / (float)_envMapWidth) * sinThetaL);
+                        lightPdf *= std::max(pdf, 1e-6f);
                     }
+                } else if (light->GetLightType() == HdPrimTypeTokens->rectLight) {
+                    GfVec3f lPosLocal((ls.u - 0.5f) * light->GetWidth(), (ls.v - 0.5f) * light->GetHeight(), 0.0f);
+                    GfVec3f lPosWorld = GfMatrix4f(light->GetTransform()).Transform(lPosLocal);
+                    GfVec3f toLight = lPosWorld - hitPos;
+                    lightDist = toLight.GetLength();
+                    lDir = toLight / lightDist;
+                    float area = light->GetWidth() * light->GetHeight();
+                    if (area > 0) {
+                        GfVec3f lNormal = GfMatrix4f(light->GetTransform()).TransformDir(GfVec3f(0, 0, -1)).GetNormalized();
+                        float cosThetaL = std::max(0.0f, GfDot(lNormal, -lDir));
+                        if (cosThetaL > 0) {
+                            lightPdf *= (lightDist * lightDist) / (area * cosThetaL);
+                            lColor = light->GetColor() * light->GetIntensity();
+                        } else {
+                            lightDist = -1.0f;
+                        }
+                    }
+                } else {
+                    GfVec3f lPos = GfMatrix4f(light->GetTransform()).ExtractTranslation();
+                    GfVec3f toLight = lPos - hitPos;
+                    lightDist = toLight.GetLength();
+                    lDir = toLight / lightDist;
+                    lightPdf *= (lightDist * lightDist);
+                    lColor = light->GetColor() * light->GetIntensity();
                 }
-            } else {
-                GfVec3f lPos = GfMatrix4f(light->GetTransform()).ExtractTranslation();
-                GfVec3f toLight = lPos - hitPos;
-                lightDist = toLight.GetLength();
-                lDir = toLight / lightDist;
-                lightPdf *= (lightDist * lightDist);
-                lColor = light->GetColor() * light->GetIntensity();
-            }
 
-            // Apply shaping parameters (cone angle & softness) for local lights
-            if (lightDist > 0 && light->GetLightType() != HdPrimTypeTokens->domeLight && light->GetLightType() != HdPrimTypeTokens->distantLight) {
-                float coneAngle = light->GetShapingConeAngle();
-                if (coneAngle < 180.0f) {
-                    GfVec3f lNormal = GfMatrix4f(light->GetTransform()).TransformDir(GfVec3f(0, 0, -1)).GetNormalized();
-                    float cosTheta = GfDot(lNormal, -lDir);
-                    float coneAngleRad = coneAngle * (float)(M_PI / 180.0);
-                    float cosConeAngle = std::cos(coneAngleRad);
-
-                    if (cosTheta <= cosConeAngle) {
-                        lColor = GfVec3f(0.0f);
-                    } else {
-                        float softness = light->GetShapingConeSoftness();
-                        if (softness > 0.0f) {
-                            float innerAngleRad = coneAngleRad * (1.0f - softness);
-                            float cosInnerAngle = std::cos(innerAngleRad);
-                            if (cosTheta < cosInnerAngle) {
-                                float factor = (cosTheta - cosConeAngle) / (cosInnerAngle - cosConeAngle);
-                                // smoothstep
-                                factor = factor * factor * (3.0f - 2.0f * factor);
-                                lColor *= factor;
+                if (lightDist > 0 && light->GetLightType() != HdPrimTypeTokens->domeLight && light->GetLightType() != HdPrimTypeTokens->distantLight) {
+                    float coneAngle = light->GetShapingConeAngle();
+                    if (coneAngle < 180.0f) {
+                        GfVec3f lNormal = GfMatrix4f(light->GetTransform()).TransformDir(GfVec3f(0, 0, -1)).GetNormalized();
+                        float cosTheta = GfDot(lNormal, -lDir);
+                        float coneAngleRad = coneAngle * (float)(M_PI / 180.0);
+                        float cosConeAngle = std::cos(coneAngleRad);
+                        if (cosTheta <= cosConeAngle) {
+                            lColor = GfVec3f(0.0f);
+                        } else {
+                            float softness = light->GetShapingConeSoftness();
+                            if (softness > 0.0f) {
+                                float innerAngleRad = coneAngleRad * (1.0f - softness);
+                                float cosInnerAngle = std::cos(innerAngleRad);
+                                if (cosTheta < cosInnerAngle) {
+                                    float factor = (cosTheta - cosConeAngle) / (cosInnerAngle - cosConeAngle);
+                                    factor = factor * factor * (3.0f - 2.0f * factor);
+                                    lColor *= factor;
+                                }
                             }
                         }
                     }
                 }
+            };
+
+            auto EvaluatePHat = [&](const GfVec3f& lDir, const GfVec3f& lColor) -> float {
+                float nDotL = std::max(0.0f, GfDot(shadingNormal, lDir));
+                if (nDotL <= 0.0f) return 0.0f;
+                
+                float effectiveSubsurface = hit.subsurface;
+                GfVec3f finalDiffuse = hit.baseColor * (1.0f - effectiveSubsurface) + hit.subsurfaceColor * effectiveSubsurface;
+                float effectiveTransmission = hit.transmission * (1.0f - hit.subsurface);
+                GfVec3f diffuseBase = finalDiffuse * (1.0f - hit.metallic) * (1.0f - effectiveTransmission) / (float)M_PI;
+                GfVec3f F0 = hit.specular * hit.specularColor * (1.0f - hit.metallic) + hit.baseColor * hit.metallic;
+                GfVec3f combined = diffuseBase + F0;
+                
+                GfVec3f radiance = GfCompMult(combined, lColor) * nDotL;
+                return 0.2126f * radiance[0] + 0.7152f * radiance[1] + 0.0722f * radiance[2];
+            };
+
+            GfVec3f lDir;
+            float lightDist = 1e30f;
+            GfVec3f lColor(0.0f);
+            float lightPdf = 1.0f;
+            float restirWeight = 1.0f;
+            HdGeminiLight* light = nullptr;
+            
+            bool useRestir = (temporalReservoir != nullptr && depth == 0);
+            
+            if (useRestir) {
+                Reservoir risReservoir;
+                const int M_init = 8;
+                for (int m = 0; m < M_init; ++m) {
+                    float uLight = qmc::SampleDimension(sampleIdx, qmcDim++, rng);
+                    auto itLight = std::lower_bound(_lightPowerCdf.begin(), _lightPowerCdf.end(), uLight);
+                    int lightIdx = std::min((int)std::distance(_lightPowerCdf.begin(), itLight), (int)_activeLights.size() - 1);
+                    
+                    LightSample cand;
+                    cand.lightIdx = lightIdx;
+                    cand.u = qmc::SampleDimension(sampleIdx, qmcDim++, rng);
+                    cand.v = qmc::SampleDimension(sampleIdx, qmcDim++, rng);
+                    
+                    GfVec3f cLDir; float cLDist; GfVec3f cLColor; float cLPdf;
+                    EvaluateLight(cand, cLDir, cLDist, cLColor, cLPdf);
+                    float p_hat = EvaluatePHat(cLDir, cLColor);
+                    
+                    float weight = (cLPdf > 0.0f) ? (p_hat / cLPdf) : 0.0f;
+                    float randVal = qmc::SampleDimension(sampleIdx, qmcDim++, rng);
+                    risReservoir.Update(cand, weight, randVal);
+                }
+                
+                float p_hat_ris = 0.0f;
+                if (risReservoir.sample.lightIdx != -1) {
+                    GfVec3f cLDir; float cLDist; GfVec3f cLColor; float cLPdf;
+                    EvaluateLight(risReservoir.sample, cLDir, cLDist, cLColor, cLPdf);
+                    p_hat_ris = EvaluatePHat(cLDir, cLColor);
+                    risReservoir.W = (p_hat_ris > 0.0f) ? (risReservoir.w_sum / (p_hat_ris * risReservoir.M)) : 0.0f;
+                }
+                
+                Reservoir combined;
+                float randVal1 = qmc::SampleDimension(sampleIdx, qmcDim++, rng);
+                combined.Update(risReservoir.sample, p_hat_ris * risReservoir.W * risReservoir.M, randVal1);
+                combined.M += risReservoir.M;
+                
+                float p_hat_temporal = 0.0f;
+                if (temporalReservoir->sample.lightIdx != -1 && temporalReservoir->M > 0) {
+                    temporalReservoir->M = std::min(temporalReservoir->M, 20 * M_init);
+                    GfVec3f cLDir; float cLDist; GfVec3f cLColor; float cLPdf;
+                    EvaluateLight(temporalReservoir->sample, cLDir, cLDist, cLColor, cLPdf);
+                    p_hat_temporal = EvaluatePHat(cLDir, cLColor);
+                    
+                    float randVal2 = qmc::SampleDimension(sampleIdx, qmcDim++, rng);
+                    combined.Update(temporalReservoir->sample, p_hat_temporal * temporalReservoir->W * temporalReservoir->M, randVal2);
+                    combined.M += temporalReservoir->M;
+                }
+                
+                float p_hat_final = 0.0f;
+                if (combined.sample.lightIdx != -1) {
+                    EvaluateLight(combined.sample, lDir, lightDist, lColor, lightPdf);
+                    p_hat_final = EvaluatePHat(lDir, lColor);
+                    combined.W = (p_hat_final > 0.0f) ? (combined.w_sum / (p_hat_final * combined.M)) : 0.0f;
+                    light = _activeLights[combined.sample.lightIdx];
+                }
+                
+                *temporalReservoir = combined;
+                restirWeight = combined.W;
+                
+            } else {
+                float uLight = qmc::SampleDimension(sampleIdx, qmcDim++, rng);
+                auto itLight = std::lower_bound(_lightPowerCdf.begin(), _lightPowerCdf.end(), uLight);
+                int lightIdx = std::min((int)std::distance(_lightPowerCdf.begin(), itLight), (int)_activeLights.size() - 1);
+                LightSample cand;
+                cand.lightIdx = lightIdx;
+                cand.u = qmc::SampleDimension(sampleIdx, qmcDim++, rng);
+                cand.v = qmc::SampleDimension(sampleIdx, qmcDim++, rng);
+                EvaluateLight(cand, lDir, lightDist, lColor, lightPdf);
+                light = _activeLights[cand.lightIdx];
             }
 
-            if (lightDist > 0 && (lColor[0] > 0 || lColor[1] > 0 || lColor[2] > 0)) {
+            if (light && lightDist > 0 && (lColor[0] > 0 || lColor[1] > 0 || lColor[2] > 0)) {
                 float nDotL = std::max(0.0f, GfDot(shadingNormal, lDir));
                 if (nDotL > 0) {
                     HitRecord shadowHit;
@@ -1483,8 +1561,12 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
                         
                         bool isDeltaLight = (light->GetLightType() == HdPrimTypeTokens->distantLight);
                         float misWeight = isDeltaLight ? 1.0f : PowerHeuristic(lightPdf, bsdfPdf);
-
-                        totalRadiance += throughput * bsdf * specLColor * (nDotL / (lightPdf + 1e-6f)) * misWeight;
+                        
+                        if (useRestir) {
+                            totalRadiance += throughput * bsdf * specLColor * restirWeight;
+                        } else {
+                            totalRadiance += throughput * bsdf * specLColor * (nDotL / (lightPdf + 1e-6f)) * misWeight;
+                        }
                     }
                 }
             }
@@ -2006,6 +2088,8 @@ HdGeminiRenderer::_RenderTiles(HdRenderThread *renderThread, HdGeminiRenderDeleg
         _lastWidth = width;
         _lastHeight = height;
         _colorBufferVersion = _colorBuffer->GetVersion();
+        
+        _temporalReservoirs.assign(width * height, Reservoir{});
     }
 
     std::vector<size_t> activeBucketIndices;
@@ -2146,8 +2230,13 @@ HdGeminiRenderer::_RenderTiles(HdRenderThread *renderThread, HdGeminiRenderDeleg
                     }
                     
                     GfVec3f albedo(0.0f), normal(0.0f);
+                    
+                    Reservoir* pixelReservoir = nullptr;
+                    if (!_temporalReservoirs.empty() && (y * width + x) < _temporalReservoirs.size()) {
+                        pixelReservoir = &_temporalReservoirs[y * width + x];
+                    }
 
-                    SampledSpectrum hitSpectrum = _TraceRay(rayOriginWorld, rayDirWorld, 0, isInteractive, renderThread, sampleIdx, qmcDim, rng, lambda, &albedo, &normal, exposureMultiplier);
+                    SampledSpectrum hitSpectrum = _TraceRay(rayOriginWorld, rayDirWorld, 0, isInteractive, renderThread, sampleIdx, qmcDim, rng, lambda, &albedo, &normal, exposureMultiplier, pixelReservoir);
                     
                     SampledSpectrum heroSpec;
                     for(int i=0; i<SPECTRUM_SAMPLES; ++i) heroSpec[i] = hitSpectrum[0];

@@ -975,11 +975,11 @@ bool HdGeminiRenderer::_IntersectTLAS(const GfVec3f& rayOrigin, const GfVec3f& r
                                     hit.sheen = 0.0f;
                                     hit.sheenColor = GfVec3f(1.0f);
                                     hit.sheenRoughness = 0.2f;
-                                    hit.subsurface = 1.0f;
-                                    hit.subsurfaceColor = GfVec3f(0.02f, 0.15f, 0.25f);
-                                    hit.subsurfaceRadius = GfVec3f(10.0f);
+                                    hit.subsurface = 0.0f;
+                                    hit.subsurfaceColor = GfVec3f(1.0f);
+                                    hit.subsurfaceRadius = GfVec3f(1.0f);
                                     hit.subsurfaceScale = 1.0f;
-                                    hit.subsurfaceAnisotropy = 0.8f;
+                                    hit.subsurfaceAnisotropy = 0.0f;
                                     hit.thinWalled = false;
                                     hit.diffuseRoughness = 0.0f;
                                 }
@@ -1516,19 +1516,52 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
 
         bool isInside = GfDot(hit.smoothNormal, currentRayDir) > 0;
 
-        // --- Beer's Law (Transmission Depth) ---
-        if (isInside && hit.transmissionDepth > 0.0f && !hit.thinWalled) {
+        // --- Medium Volumetric Scattering (Ocean) ---
+        if (iorStack.back() == 1.33f) {
+            GfVec3f oceanScatterColor = GfVec3f(0.02f, 0.15f, 0.25f);
+            GfVec3f d_mfp = GfVec3f(10.0f);
+            
+            GfVec3f sigma_t_rgb(1.0f / d_mfp[0], 1.0f / d_mfp[1], 1.0f / d_mfp[2]);
+            GfVec3f sigma_s_rgb = GfCompMult(oceanScatterColor, sigma_t_rgb);
+            
+            SampledSpectrum sigma_t = RGBToSpectrum(sigma_t_rgb, lambda);
+            SampledSpectrum sigma_s = RGBToSpectrum(sigma_s_rgb, lambda);
+            
+            float ext = std::max(sigma_t[0], 1e-4f);
+            float d = -std::log(std::max(qmc::SampleDimension(sampleIdx, qmcDim++, rng), 1e-6f)) / ext;
+            
+            if (d < hit.t) {
+                // Volumetric Scatter
+                currentRayOrigin = currentRayOrigin + currentRayDir * d;
+                
+                // Henyey-Greenstein phase function for water
+                float g = 0.8f;
+                float sqrTerm = (1.0f - g * g) / (1.0f - g + 2.0f * g * qmc::SampleDimension(sampleIdx, qmcDim++, rng));
+                float cosTheta = (1.0f + g * g - sqrTerm * sqrTerm) / (2.0f * g);
+                float sinTheta = std::sqrt(std::max(0.0f, 1.0f - cosTheta * cosTheta));
+                float phi = 2.0f * (float)M_PI * qmc::SampleDimension(sampleIdx, qmcDim++, rng);
+                
+                GfVec3f up = std::abs(currentRayDir[2]) < 0.999f ? GfVec3f(0,0,1) : GfVec3f(1,0,0);
+                GfVec3f t = GfCross(up, currentRayDir).GetNormalized();
+                GfVec3f b = GfCross(currentRayDir, t);
+                
+                currentRayDir = (t * std::cos(phi) * sinTheta + b * std::sin(phi) * sinTheta + currentRayDir * cosTheta).GetNormalized();
+                
+                for(int i=0; i<SPECTRUM_SAMPLES; ++i) {
+                    throughput[i] *= (sigma_s[i] / std::max(sigma_t[i], 1e-6f));
+                }
+                continue; // Proceed directly to next scattering event
+            } else {
+                // Reached boundary, attenuate by transmittance
+                for(int i=0; i<SPECTRUM_SAMPLES; ++i) {
+                    throughput[i] *= std::exp(-sigma_t[i] * hit.t);
+                }
+            }
+        } else if (isInside && hit.transmissionDepth > 0.0f && !hit.thinWalled) {
             SampledSpectrum transSpec = RGBToSpectrum(hit.transmissionColor, lambda);
             SampledSpectrum sigma_a;
             for(int i=0; i<SPECTRUM_SAMPLES; ++i) {
                 sigma_a[i] = -std::log(std::max(transSpec[i], 1e-4f)) / hit.transmissionDepth;
-                throughput[i] *= std::exp(-sigma_a[i] * hit.t);
-            }
-        } else if (!isInside && iorStack.back() == 1.33f) {
-            SampledSpectrum transSpec = RGBToSpectrum(GfVec3f(0.8f, 0.9f, 0.95f), lambda);
-            SampledSpectrum sigma_a;
-            for(int i=0; i<SPECTRUM_SAMPLES; ++i) {
-                sigma_a[i] = -std::log(std::max(transSpec[i], 1e-4f)) / 10.0f;
                 throughput[i] *= std::exp(-sigma_a[i] * hit.t);
             }
         }
@@ -1536,7 +1569,7 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
         GfVec3f shadingNormal = hit.smoothNormal;
         if (isInside) shadingNormal = -shadingNormal;
 
-        // --- Volumetric SSS (Random Walk) ---
+        // --- Volumetric SSS (Random Walk for Objects) ---
         if (isInside && hit.subsurface > 0.0f && !hit.thinWalled) {
             GfVec3f d_mfp = GfCompMult(hit.subsurfaceRadius, GfVec3f(hit.subsurfaceScale));
             d_mfp[0] = std::max(d_mfp[0], 1e-4f);

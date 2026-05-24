@@ -86,9 +86,9 @@ void HdGeminiMesh::UpdateOcean(const GfMatrix4f& viewProj, const GfVec3f& camera
         displacedPoints[i] = GfVec3f(displacedScaledPoints[i][0] / scale[0],
                                      displacedScaledPoints[i][1] / scale[1],
                                      displacedScaledPoints[i][2] / scale[2]);
-        displacedNormals[i] = GfVec3f(displacedScaledNormals[i][0] / scale[0],
-                                      displacedScaledNormals[i][1] / scale[1],
-                                      displacedScaledNormals[i][2] / scale[2]).GetNormalized();
+        displacedNormals[i] = GfVec3f(displacedScaledNormals[i][0] * scale[0],
+                                      displacedScaledNormals[i][1] * scale[1],
+                                      displacedScaledNormals[i][2] * scale[2]).GetNormalized();
     }
     
     VtVec3fArray vtPoints(displacedPoints.begin(), displacedPoints.end());

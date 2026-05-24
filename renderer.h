@@ -13,6 +13,7 @@
 #include "pxr/usd/sdf/assetPath.h"
 #include "mesh.h"
 #include "curves.h"
+#include "ocean.h"
 #include "spectrum.h"
 #include <vector>
 #include <atomic>
@@ -88,6 +89,17 @@ public:
     void SetAdaptiveVarianceThreshold(float threshold) { _adaptiveVarianceThreshold = threshold; }
     void SetAdaptiveMinSamples(int samples) { _adaptiveMinSamples = samples; }
 
+    void SetOceanEnable(bool enable) { _oceanEnable = enable; }
+    void SetOceanWaterHeight(float height) { _oceanWaterHeight = height; }
+    void SetOceanResolution(int res) { _oceanParams.resolution = res; }
+    void SetOceanSize(float size) { _oceanParams.size = size; }
+    void SetOceanAmplitude(float amp) { _oceanParams.amplitude = amp; }
+    void SetOceanChoppiness(float chop) { _oceanParams.choppiness = chop; }
+    void SetOceanWindSpeed(float speed) { _oceanParams.windSpeed = speed; }
+    void SetOceanWindDirection(const GfVec2f& dir) { _oceanParams.windDirection = dir; }
+    void SetOceanDisableShader(bool disable) { _oceanParams.disableShader = disable; }
+    void SetOceanTime(float time) { _time = time; }
+
 private:
     bool _isConverged = false;
     bool _enableSubsurface = true;
@@ -125,29 +137,35 @@ private:
     bool _enableAdaptiveSampling = true;
     float _adaptiveVarianceThreshold = 0.01f;
     int _adaptiveMinSamples = 16;
+    
+    bool _oceanEnable = false;
+    float _oceanWaterHeight = 0.0f;
+    HdGeminiOceanParams _oceanParams;
+    std::unique_ptr<HdGeminiOcean> _globalOcean;
+    std::unique_ptr<BVH> _globalOceanBvh;
+    std::vector<GfVec3f> _globalOceanBasePoints;
+    std::vector<GfVec3i> _globalOceanIndices;
+    std::vector<GfVec2f> _globalOceanUvs;
+    float _time = 0.0f;
 
     struct SceneInstance {
-        enum class Type { Mesh, Volume, BasisCurves };
-        Type type = Type::Mesh;
-
-        // Mesh specific
-        HdGeminiMesh* mesh = nullptr;
+        enum class Type { Mesh, Volume, BasisCurves, Ocean };
+        Type type;
+        class HdGeminiMesh* mesh = nullptr;
         const HdGeminiMesh::Subset* subset = nullptr;
-
-        // BasisCurves specific
-        HdGeminiBasisCurves* curves = nullptr;
-        const HdGeminiBasisCurves::Subset* curveSubset = nullptr;
-
-        HdGeminiMaterial* material = nullptr;
-
-        // Volume specific
         class HdGeminiVolume* volume = nullptr;
+        class HdGeminiBasisCurves* curves = nullptr;
+        const HdGeminiBasisCurves::Subset* curveSubset = nullptr;
+        
+        HdGeminiMaterial* material = nullptr;
         const void* densityGrid = nullptr; // nanovdb::FloatGrid* cast
-
         GfMatrix4f transform;
         GfMatrix4f invTransform;
         GfRange3f bounds;
         GfVec3f centroid;
+        
+        // For Ocean
+        class BVH* dynamicBvh = nullptr;
     };
 
     struct TLASNode {

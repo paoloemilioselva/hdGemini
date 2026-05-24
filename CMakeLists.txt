@@ -130,6 +130,9 @@ add_library( ${DELEGATE_NAME} SHARED
     volume.h
     field.cpp
     field.h
+    ocean.cpp
+    ocean_grid.cpp
+    ocean.h
     renderer.cpp
     renderer.h
     bvh.cpp

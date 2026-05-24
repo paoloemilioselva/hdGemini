@@ -397,6 +397,26 @@ HdGeminiRenderer::_PrepareScene(HdRenderThread *renderThread, HdGeminiRenderDele
         if (renderThread->IsStopRequested()) return;
         HdGeminiMesh* mesh = item.second;
         if (!mesh->IsVisible()) continue;
+        
+        if (mesh->IsOcean()) {
+            GfMatrix4f viewProj(GfMatrix4f(_viewMatrix) * GfMatrix4f(_projMatrix));
+            GfVec3f camPos(GfVec3f(_viewMatrix.GetInverse().ExtractTranslation()));
+            mesh->UpdateOcean(viewProj, camPos, _time);
+            
+            SceneInstance inst;
+            inst.type = SceneInstance::Type::Ocean;
+            inst.mesh = mesh;
+            if (!mesh->GetSubsets().empty()) inst.material = delegate->GetMaterial(mesh->GetSubsets()[0].materialId);
+            inst.dynamicBvh = mesh->GetOceanBvh();
+            inst.transform = GfMatrix4f(1.0f);
+            inst.invTransform = GfMatrix4f(1.0f);
+            if (inst.dynamicBvh) {
+                inst.bounds = inst.dynamicBvh->GetBounds();
+                inst.centroid = (inst.bounds.GetMin() + inst.bounds.GetMax()) * 0.5f;
+                _instances.push_back(inst);
+            }
+            continue;
+        }
 
         if (!mesh->GetInstancerId().IsEmpty()) {
             HdGeminiInstancer* instancer = delegate->GetInstancer(mesh->GetInstancerId());
@@ -501,7 +521,56 @@ HdGeminiRenderer::_PrepareScene(HdRenderThread *renderThread, HdGeminiRenderDele
         
         _instances.push_back(inst);
     }
+    
+    if (_oceanEnable) {
+        bool rebuildTopology = false;
+        if (!_globalOcean) {
+            _globalOcean = std::make_unique<HdGeminiOcean>();
+            _oceanParams.waterHeight = _oceanWaterHeight;
+            _globalOcean->Init(_oceanParams);
+            rebuildTopology = true;
+        } else if (_globalOcean->GetParams() != _oceanParams || _oceanParams.waterHeight != _oceanWaterHeight) {
+            _oceanParams.waterHeight = _oceanWaterHeight;
+            _globalOcean->Init(_oceanParams);
+            rebuildTopology = true;
+        }
+        
+        _globalOcean->Update(_time);
+        
+        if (rebuildTopology || _globalOceanBasePoints.empty()) {
+            GfMatrix4f viewProj(GfMatrix4f(_viewMatrix) * GfMatrix4f(_projMatrix));
+            GfVec3f camPos(GfVec3f(_viewMatrix.GetInverse().ExtractTranslation()));
+            GfRange3f worldBounds(-GfVec3f(100000.0f), GfVec3f(100000.0f));
+            
+            _globalOceanBasePoints.clear();
+            _globalOceanIndices.clear();
+            _globalOceanUvs.clear();
+            _globalOcean->GenerateGridTopology(viewProj, camPos, worldBounds, _globalOceanBasePoints, _globalOceanIndices, _globalOceanUvs);
+        }
+        
+        std::vector<GfVec3f> points, normals;
+        _globalOcean->DisplaceGrid(_globalOceanBasePoints, points, normals);
+        
+        if (!_globalOceanBvh) _globalOceanBvh = std::make_unique<BVH>();
+        VtVec3fArray vtPoints(points.begin(), points.end());
+        VtVec3iArray vtIndices(_globalOceanIndices.begin(), _globalOceanIndices.end());
+        VtVec2fArray vtUvs(_globalOceanUvs.begin(), _globalOceanUvs.end());
+        VtVec3fArray vtNormals(normals.begin(), normals.end());
+        VtVec3fArray vtColors;
+        std::vector<int> matIndices(_globalOceanIndices.size(), -1);
+        _globalOceanBvh->Build(vtPoints, vtIndices, vtUvs, vtNormals, vtColors, matIndices);
+        
+        SceneInstance inst;
+        inst.type = SceneInstance::Type::Ocean;
+        inst.dynamicBvh = _globalOceanBvh.get();
+        inst.transform = GfMatrix4f(1.0f);
+        inst.invTransform = GfMatrix4f(1.0f);
+        inst.bounds = inst.dynamicBvh->GetBounds();
+        inst.centroid = (inst.bounds.GetMin() + inst.bounds.GetMax()) * 0.5f;
+        _instances.push_back(inst);
+    }
 
+    _BuildTLAS(renderThread);
 #ifdef HDGEMINI_HAS_SYCL
     if (_syclQueue) {
         size_t numLights = _activeLights.size();
@@ -792,6 +861,144 @@ bool HdGeminiRenderer::_IntersectTLAS(const GfVec3f& rayOrigin, const GfVec3f& r
                     }
                 }
                 } // end else if Mesh
+                else if (inst.type == SceneInstance::Type::Ocean) {
+                    GfVec3f instNormal;
+                    GfVec2f instUv;
+                    GfVec3f instSmoothNormal;
+                    GfVec3f instDpdu, instDpdv;
+                    GfVec3f instSmoothColor;
+                    int matIdx = -1;
+                    if (inst.dynamicBvh && inst.dynamicBvh->Intersect(objRayOrigin, objRayDir, instT, instNormal, instUv, instSmoothNormal, instDpdu, instDpdv, instSmoothColor, matIdx)) {
+                        if (instT < hit.t) {
+                            hit.t = instT;
+                            GfMatrix4f invTransp = inst.invTransform.GetTranspose();
+                            hit.normal = invTransp.TransformDir(instNormal).GetNormalized();
+                            hit.smoothNormal = invTransp.TransformDir(instSmoothNormal).GetNormalized();
+                            hit.dpdu = inst.transform.TransformDir(instDpdu).GetNormalized();
+                            hit.dpdv = inst.transform.TransformDir(instDpdv).GetNormalized();
+                            hit.uv = instUv;
+                            
+                            if (inst.material) {
+                                hit.baseColor = inst.material->GetDiffuseColor();
+                                hit.metallic = inst.material->GetMetallic();
+                                hit.roughness = inst.material->GetRoughness();
+                                hit.specularColor = inst.material->GetSpecularColor();
+                                hit.specular = inst.material->GetSpecular();
+                                hit.opacity = inst.material->GetOpacity();
+                                hit.ior = inst.material->GetIor();
+                                hit.transmission = inst.material->GetTransmission();
+                                hit.transmissionColor = inst.material->GetTransmissionColor();
+                                hit.emission = inst.material->GetEmissionColor() * inst.material->GetEmission();
+                                hit.diffuseTexture = inst.material->GetDiffuseTexture();
+                                hit.normalTexture = inst.material->GetNormalTexture();
+                                hit.metallicTexture = inst.material->GetMetallicTexture();
+                                hit.roughnessTexture = inst.material->GetRoughnessTexture();
+                                hit.opacityTexture = inst.material->GetOpacityTexture();
+                                hit.transmissionTexture = inst.material->GetTransmissionTexture();
+                                hit.metallicTextureChannel = inst.material->GetMetallicTextureChannel();
+                                hit.roughnessTextureChannel = inst.material->GetRoughnessTextureChannel();
+                                hit.opacityTextureChannel = inst.material->GetOpacityTextureChannel();
+                                hit.transmissionTextureChannel = inst.material->GetTransmissionTextureChannel();
+
+                                hit.coat = inst.material->GetCoat();
+                                hit.coatColor = inst.material->GetCoatColor();
+                                hit.coatRoughness = inst.material->GetCoatRoughness();
+                                hit.coatIor = inst.material->GetCoatIor();
+                                hit.transmissionDepth = inst.material->GetTransmissionDepth();
+                                hit.transmissionScatter = inst.material->GetTransmissionScatter();
+                                hit.sheen = inst.material->GetSheen();
+                                hit.sheenColor = inst.material->GetSheenColor();
+                                hit.sheenRoughness = inst.material->GetSheenRoughness();
+                                hit.subsurface = inst.material->GetSubsurface();
+                                hit.subsurfaceColor = inst.material->GetSubsurfaceColor();
+                                hit.subsurfaceRadius = inst.material->GetSubsurfaceRadius();
+                                hit.subsurfaceScale = inst.material->GetSubsurfaceScale();
+                                hit.subsurfaceAnisotropy = inst.material->GetSubsurfaceAnisotropy();
+                                hit.thinWalled = inst.material->GetThinWalled();
+                                hit.diffuseRoughness = inst.material->GetDiffuseRoughness();
+                            } else {
+                                bool isShaderDisabled = inst.mesh ? inst.mesh->GetOceanParams().disableShader : _oceanParams.disableShader;
+                                if (isShaderDisabled) {
+                                    hit.baseColor = GfVec3f(0.8f, 0.8f, 0.8f);
+                                    hit.metallic = 0.0f;
+                                    hit.roughness = 1.0f;
+                                    hit.specularColor = GfVec3f(0.0f);
+                                    hit.specular = 0.0f;
+                                    hit.opacity = 1.0f;
+                                    hit.ior = 1.0f;
+                                    hit.transmission = 0.0f;
+                                    hit.transmissionColor = GfVec3f(0.0f);
+                                    hit.emission = GfVec3f(0.0f);
+                                    hit.diffuseTexture = SdfAssetPath();
+                                    hit.normalTexture = SdfAssetPath();
+                                    hit.metallicTexture = SdfAssetPath();
+                                    hit.roughnessTexture = SdfAssetPath();
+                                    hit.opacityTexture = SdfAssetPath();
+                                    hit.transmissionTexture = SdfAssetPath();
+                                    hit.metallicTextureChannel = 0;
+                                    hit.roughnessTextureChannel = 0;
+                                    hit.opacityTextureChannel = 0;
+                                    hit.transmissionTextureChannel = 0;
+                                    hit.coat = 0.0f;
+                                    hit.coatColor = GfVec3f(1.0f);
+                                    hit.coatRoughness = 0.0f;
+                                    hit.coatIor = 1.5f;
+                                    hit.transmissionDepth = 0.0f;
+                                    hit.transmissionScatter = GfVec3f(0.0f);
+                                    hit.sheen = 0.0f;
+                                    hit.sheenColor = GfVec3f(1.0f);
+                                    hit.sheenRoughness = 0.2f;
+                                    hit.subsurface = 0.0f;
+                                    hit.subsurfaceColor = GfVec3f(1.0f);
+                                    hit.subsurfaceRadius = GfVec3f(1.0f);
+                                    hit.subsurfaceScale = 1.0f;
+                                    hit.subsurfaceAnisotropy = 0.0f;
+                                    hit.thinWalled = false;
+                                    hit.diffuseRoughness = 0.0f;
+                                } else {
+                                    hit.baseColor = GfVec3f(0.8f, 0.9f, 0.95f);
+                                    hit.metallic = 0.0f;
+                                    hit.roughness = 0.02f;
+                                    hit.specularColor = GfVec3f(1.0f);
+                                    hit.specular = 1.0f;
+                                    hit.opacity = 1.0f;
+                                    hit.ior = 1.33f;
+                                    hit.transmission = 1.0f;
+                                    hit.transmissionColor = GfVec3f(0.8f, 0.9f, 0.95f);
+                                    hit.emission = GfVec3f(0.0f);
+                                    hit.diffuseTexture = SdfAssetPath();
+                                    hit.normalTexture = SdfAssetPath();
+                                    hit.metallicTexture = SdfAssetPath();
+                                    hit.roughnessTexture = SdfAssetPath();
+                                    hit.opacityTexture = SdfAssetPath();
+                                    hit.transmissionTexture = SdfAssetPath();
+                                    hit.metallicTextureChannel = 0;
+                                    hit.roughnessTextureChannel = 0;
+                                    hit.opacityTextureChannel = 0;
+                                    hit.transmissionTextureChannel = 0;
+                                    hit.coat = 0.0f;
+                                    hit.coatColor = GfVec3f(1.0f);
+                                    hit.coatRoughness = 0.0f;
+                                    hit.coatIor = 1.5f;
+                                    hit.transmissionDepth = 10.0f;
+                                    hit.transmissionScatter = GfVec3f(0.0f);
+                                    hit.sheen = 0.0f;
+                                    hit.sheenColor = GfVec3f(1.0f);
+                                    hit.sheenRoughness = 0.2f;
+                                    hit.subsurface = 0.0f;
+                                    hit.subsurfaceColor = GfVec3f(1.0f);
+                                    hit.subsurfaceRadius = GfVec3f(1.0f);
+                                    hit.subsurfaceScale = 1.0f;
+                                    hit.subsurfaceAnisotropy = 0.0f;
+                                    hit.thinWalled = false;
+                                    hit.diffuseRoughness = 0.0f;
+                                }
+                            }
+                            hit.hit = true;
+                            wasHit = true;
+                        }
+                    }
+                } // end else if Ocean
             }
         } else {
             stack[stackPtr++] = node.leftChild + 1;
@@ -1156,6 +1363,9 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
     
     // Nested Dielectrics tracking stack
     std::vector<float> iorStack = { 1.0f };
+    if (_oceanEnable && currentRayOrigin[1] < _oceanWaterHeight) {
+        iorStack.push_back(1.33f);
+    }
 
     const int maxDepth = isInteractive ? 2 : 32;
 
@@ -1297,6 +1507,13 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
             SampledSpectrum sigma_a;
             for(int i=0; i<SPECTRUM_SAMPLES; ++i) {
                 sigma_a[i] = -std::log(std::max(transSpec[i], 1e-4f)) / hit.transmissionDepth;
+                throughput[i] *= std::exp(-sigma_a[i] * hit.t);
+            }
+        } else if (!isInside && iorStack.back() == 1.33f) {
+            SampledSpectrum transSpec = RGBToSpectrum(GfVec3f(0.8f, 0.9f, 0.95f), lambda);
+            SampledSpectrum sigma_a;
+            for(int i=0; i<SPECTRUM_SAMPLES; ++i) {
+                sigma_a[i] = -std::log(std::max(transSpec[i], 1e-4f)) / 10.0f;
                 throughput[i] *= std::exp(-sigma_a[i] * hit.t);
             }
         }

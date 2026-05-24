@@ -43,6 +43,7 @@ public:
     void BuildCurves(const VtVec3fArray& points, const VtFloatArray& widths, const VtVec3fArray& normals, const VtIntArray& curveVertexCounts, const VtIntArray& indices, int materialId);
     bool Intersect(const GfVec3f& rayOrigin, const GfVec3f& rayDir, float& t, GfVec3f& normal, GfVec2f& uv, GfVec3f& smoothNormal, GfVec3f& dpdu, GfVec3f& dpdv, GfVec3f& smoothColor, int& materialIndex) const;
     bool IsEmpty() const { return _nodes.empty(); }
+    GfRange3f GetBounds() const { return _nodes.empty() ? GfRange3f() : _nodes[0].bounds; }
 
 private:
     struct BuildItem {

@@ -489,6 +489,62 @@ HdGeminiRenderDelegate::GetRenderSettingDescriptors() const
         HdGeminiRenderSettingsTokens->adaptiveMinSamples,
         VtValue(16)
     });
+    list.push_back({
+        "Ocean Enable",
+        HdGeminiRenderSettingsTokens->oceanEnable,
+        VtValue(false)
+    });
+    list.push_back({
+        "Ocean Water Height",
+        HdGeminiRenderSettingsTokens->oceanWaterHeight,
+        VtValue(0.0f)
+    });
+    list.push_back({
+        "Ocean Time",
+        HdGeminiRenderSettingsTokens->oceanTime,
+        VtValue(0.0f)
+    });
+    list.push_back({
+        "Ocean Resolution",
+        HdGeminiRenderSettingsTokens->oceanResolution,
+        VtValue(256)
+    });
+    list.push_back({
+        "Ocean Size",
+        HdGeminiRenderSettingsTokens->oceanSize,
+        VtValue(100.0f)
+    });
+    list.push_back({
+        "Ocean Amplitude",
+        HdGeminiRenderSettingsTokens->oceanAmplitude,
+        VtValue(1.0f)
+    });
+    list.push_back({
+        "Ocean Choppiness",
+        HdGeminiRenderSettingsTokens->oceanChoppiness,
+        VtValue(1.2f)
+    });
+    list.push_back({
+        "Ocean Wind Speed",
+        HdGeminiRenderSettingsTokens->oceanWindSpeed,
+        VtValue(20.0f)
+    });
+    list.push_back({
+        "Ocean Wind Direction X",
+        HdGeminiRenderSettingsTokens->oceanWindDirectionX,
+        VtValue(1.0f)
+    });
+    list.push_back({
+        "Ocean Wind Direction Y",
+        HdGeminiRenderSettingsTokens->oceanWindDirectionY,
+        VtValue(1.0f)
+    });
+    
+    list.push_back({
+        "Ocean Disable Shader",
+        HdGeminiRenderSettingsTokens->oceanDisableShader,
+        VtValue(false)
+    });
     return list;
 }
 
@@ -567,6 +623,28 @@ HdGeminiRenderDelegate::GetRenderSetting(TfToken const& key) const
         return VtValue(0.01f);
     } else if (key == HdGeminiRenderSettingsTokens->adaptiveMinSamples) {
         return VtValue(16);
+    } else if (key == HdGeminiRenderSettingsTokens->oceanEnable) {
+        return VtValue(false);
+    } else if (key == HdGeminiRenderSettingsTokens->oceanWaterHeight) {
+        return VtValue(0.0f);
+    } else if (key == HdGeminiRenderSettingsTokens->oceanResolution) {
+        return VtValue(256);
+    } else if (key == HdGeminiRenderSettingsTokens->oceanSize) {
+        return VtValue(100.0f);
+    } else if (key == HdGeminiRenderSettingsTokens->oceanAmplitude) {
+        return VtValue(1.0f);
+    } else if (key == HdGeminiRenderSettingsTokens->oceanChoppiness) {
+        return VtValue(1.2f);
+    } else if (key == HdGeminiRenderSettingsTokens->oceanWindSpeed) {
+        return VtValue(20.0f);
+    } else if (key == HdGeminiRenderSettingsTokens->oceanWindDirectionX) {
+        return VtValue(1.0f);
+    } else if (key == HdGeminiRenderSettingsTokens->oceanWindDirectionY) {
+        return VtValue(1.0f);
+    } else if (key == HdGeminiRenderSettingsTokens->oceanDisableShader) {
+        return VtValue(false);
+    } else if (key == HdGeminiRenderSettingsTokens->oceanTime) {
+        return VtValue(0.0f);
     }
     
     return VtValue();
@@ -681,9 +759,50 @@ HdGeminiRenderDelegate::SetRenderSetting(TfToken const& key, VtValue const& valu
     } else if (key == HdGeminiRenderSettingsTokens->enableAdaptiveSampling) {
         if (value.IsHolding<bool>()) { _renderer.SetEnableAdaptiveSampling(value.Get<bool>()); changed = true; }
     } else if (key == HdGeminiRenderSettingsTokens->adaptiveVarianceThreshold) {
-        _renderer.SetAdaptiveVarianceThreshold(getFloat(value, 0.01f)); changed = true;
+        _renderer.SetAdaptiveVarianceThreshold(getFloat(value, 0.01f));
+        changed = true;
     } else if (key == HdGeminiRenderSettingsTokens->adaptiveMinSamples) {
-        _renderer.SetAdaptiveMinSamples(getInt(value, 16)); changed = true;
+        _renderer.SetAdaptiveMinSamples(getInt(value, 16));
+        changed = true;
+    } else if (key == HdGeminiRenderSettingsTokens->oceanEnable) {
+        if (value.IsHolding<bool>()) {
+            _renderer.SetOceanEnable(value.Get<bool>());
+            changed = true;
+        }
+    } else if (key == HdGeminiRenderSettingsTokens->oceanWaterHeight) {
+        _renderer.SetOceanWaterHeight(getFloat(value, 0.0f));
+        changed = true;
+    } else if (key == HdGeminiRenderSettingsTokens->oceanResolution) {
+        _renderer.SetOceanResolution(getInt(value, 256));
+        changed = true;
+    } else if (key == HdGeminiRenderSettingsTokens->oceanSize) {
+        _renderer.SetOceanSize(getFloat(value, 100.0f));
+        changed = true;
+    } else if (key == HdGeminiRenderSettingsTokens->oceanAmplitude) {
+        _renderer.SetOceanAmplitude(getFloat(value, 1.0f));
+        changed = true;
+    } else if (key == HdGeminiRenderSettingsTokens->oceanChoppiness) {
+        _renderer.SetOceanChoppiness(getFloat(value, 1.2f));
+        changed = true;
+    } else if (key == HdGeminiRenderSettingsTokens->oceanWindSpeed) {
+        _renderer.SetOceanWindSpeed(getFloat(value, 20.0f));
+        changed = true;
+    } else if (key == HdGeminiRenderSettingsTokens->oceanWindDirectionX) {
+        float y = getFloat(GetRenderSetting(HdGeminiRenderSettingsTokens->oceanWindDirectionY), 1.0f);
+        _renderer.SetOceanWindDirection(GfVec2f(getFloat(value, 1.0f), y));
+        changed = true;
+    } else if (key == HdGeminiRenderSettingsTokens->oceanWindDirectionY) {
+        float x = getFloat(GetRenderSetting(HdGeminiRenderSettingsTokens->oceanWindDirectionX), 1.0f);
+        _renderer.SetOceanWindDirection(GfVec2f(x, getFloat(value, 1.0f)));
+        changed = true;
+    } else if (key == HdGeminiRenderSettingsTokens->oceanDisableShader) {
+        if (value.IsHolding<bool>()) {
+            _renderer.SetOceanDisableShader(value.Get<bool>());
+            changed = true;
+        }
+    } else if (key == HdGeminiRenderSettingsTokens->oceanTime) {
+        _renderer.SetOceanTime(getFloat(value, 0.0f));
+        changed = true;
     }
 
     if (changed || postProcessChanged) {

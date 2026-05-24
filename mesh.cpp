@@ -47,6 +47,54 @@ HdGeminiMesh::Finalize(HdRenderParam *renderParam)
     geminiRenderParam->GetRenderDelegate()->RemoveMesh(GetId());
 }
 
+void HdGeminiMesh::UpdateOcean(const GfMatrix4f& viewProj, const GfVec3f& cameraPos, float time) {
+    if (!_isOcean) return;
+    
+    bool rebuildTopology = false;
+    if (!_oceanSimulator) {
+        _oceanSimulator = std::make_unique<HdGeminiOcean>();
+        _oceanSimulator->Init(_oceanParams);
+        rebuildTopology = true;
+    } else if (_oceanSimulator->GetParams() != _oceanParams) {
+        _oceanSimulator->Init(_oceanParams);
+        rebuildTopology = true;
+    }
+    
+    _oceanSimulator->Update(time);
+    
+    if (rebuildTopology || _oceanBasePoints.empty()) {
+        GfRange3f bounds(-GfVec3f(1000.0f), GfVec3f(1000.0f));
+        if (!_subsets.empty()) bounds = _subsets[0].range;
+        
+        GfRange3f worldBounds;
+        for (int i = 0; i < 8; ++i) {
+            GfVec3f corner(
+                (i & 1) ? bounds.GetMax()[0] : bounds.GetMin()[0],
+                (i & 2) ? bounds.GetMax()[1] : bounds.GetMin()[1],
+                (i & 4) ? bounds.GetMax()[2] : bounds.GetMin()[2]
+            );
+            worldBounds.UnionWith(_transform.Transform(corner));
+        }
+        
+        _oceanBasePoints.clear();
+        _oceanIndices.clear();
+        _oceanUvs.clear();
+        _oceanSimulator->GenerateGridTopology(viewProj, cameraPos, worldBounds, _oceanBasePoints, _oceanIndices, _oceanUvs);
+    }
+    
+    std::vector<GfVec3f> points, normals;
+    _oceanSimulator->DisplaceGrid(_oceanBasePoints, points, normals);
+    
+    if (!_oceanBvh) _oceanBvh = std::make_unique<BVH>();
+    VtVec3fArray vtPoints(points.begin(), points.end());
+    VtVec3iArray vtIndices(_oceanIndices.begin(), _oceanIndices.end());
+    VtVec2fArray vtUvs(_oceanUvs.begin(), _oceanUvs.end());
+    VtVec3fArray vtNormals(normals.begin(), normals.end());
+    VtVec3fArray vtColors;
+    std::vector<int> matIndices(_oceanIndices.size(), -1);
+    _oceanBvh->Build(vtPoints, vtIndices, vtUvs, vtNormals, vtColors, matIndices);
+}
+
 HdDirtyBits
 HdGeminiMesh::GetInitialDirtyBitsMask() const
 {
@@ -159,6 +207,49 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
     
     if (HdChangeTracker::IsVisibilityDirty(*dirtyBits, id)) {
         _visible = sceneDelegate->GetVisible(id);
+    }
+    
+    VtValue oceanEnable = sceneDelegate->Get(id, TfToken("primvars:gemini:oceanEnable"));
+    if (oceanEnable.IsHolding<bool>()) _isOcean = oceanEnable.Get<bool>();
+    else {
+        oceanEnable = sceneDelegate->Get(id, TfToken("gemini:oceanEnable"));
+        if (oceanEnable.IsHolding<bool>()) _isOcean = oceanEnable.Get<bool>();
+    }
+    
+    if (_isOcean) {
+        VtValue height = sceneDelegate->Get(id, TfToken("primvars:gemini:oceanWaterHeight"));
+        if (height.IsHolding<float>()) _oceanParams.waterHeight = height.Get<float>();
+        else if (height.IsHolding<double>()) _oceanParams.waterHeight = (float)height.Get<double>();
+        
+        VtValue res = sceneDelegate->Get(id, TfToken("primvars:gemini:oceanResolution"));
+        if (res.IsHolding<int>()) _oceanParams.resolution = res.Get<int>();
+        
+        VtValue size = sceneDelegate->Get(id, TfToken("primvars:gemini:oceanSize"));
+        if (size.IsHolding<float>()) _oceanParams.size = size.Get<float>();
+        else if (size.IsHolding<double>()) _oceanParams.size = (float)size.Get<double>();
+        
+        VtValue amp = sceneDelegate->Get(id, TfToken("primvars:gemini:oceanAmplitude"));
+        if (amp.IsHolding<float>()) _oceanParams.amplitude = amp.Get<float>();
+        else if (amp.IsHolding<double>()) _oceanParams.amplitude = (float)amp.Get<double>();
+        
+        VtValue chop = sceneDelegate->Get(id, TfToken("primvars:gemini:oceanChoppiness"));
+        if (chop.IsHolding<float>()) _oceanParams.choppiness = chop.Get<float>();
+        else if (chop.IsHolding<double>()) _oceanParams.choppiness = (float)chop.Get<double>();
+        
+        VtValue ws = sceneDelegate->Get(id, TfToken("primvars:gemini:oceanWindSpeed"));
+        if (ws.IsHolding<float>()) _oceanParams.windSpeed = ws.Get<float>();
+        else if (ws.IsHolding<double>()) _oceanParams.windSpeed = (float)ws.Get<double>();
+        
+        VtValue wdx = sceneDelegate->Get(id, TfToken("primvars:gemini:oceanWindDirectionX"));
+        if (wdx.IsHolding<float>()) _oceanParams.windDirection[0] = wdx.Get<float>();
+        else if (wdx.IsHolding<double>()) _oceanParams.windDirection[0] = (float)wdx.Get<double>();
+        
+        VtValue wdy = sceneDelegate->Get(id, TfToken("primvars:gemini:oceanWindDirectionY"));
+        if (wdy.IsHolding<float>()) _oceanParams.windDirection[1] = wdy.Get<float>();
+        else if (wdy.IsHolding<double>()) _oceanParams.windDirection[1] = (float)wdy.Get<double>();
+        
+        VtValue ds = sceneDelegate->Get(id, TfToken("primvars:gemini:oceanDisableShader"));
+        if (ds.IsHolding<bool>()) _oceanParams.disableShader = ds.Get<bool>();
     }
     
     if (HdChangeTracker::IsTransformDirty(*dirtyBits, id)) {

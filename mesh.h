@@ -8,6 +8,7 @@
 #include "pxr/base/gf/vec3f.h"
 #include "pxr/base/gf/vec3i.h"
 #include "bvh.h"
+#include "ocean.h"
 #include <string>
 #include <vector>
 #include <memory>
@@ -45,6 +46,13 @@ public:
     const std::vector<Subset>& GetSubsets() const { return _subsets; }
     const SdfPath& GetInstancerId() const { return _instancerId; }
 
+    bool IsOcean() const { return _isOcean; }
+    const HdGeminiOceanParams& GetOceanParams() const { return _oceanParams; }
+    
+    class BVH* GetOceanBvh() const { return _oceanBvh.get(); }
+    class HdGeminiOcean* GetOceanSimulator() { return _oceanSimulator.get(); }
+    void UpdateOcean(const GfMatrix4f& viewProj, const GfVec3f& cameraPos, float time);
+
 protected:
     virtual void _InitRepr(TfToken const &reprToken,
                            HdDirtyBits *dirtyBits) override;
@@ -61,6 +69,14 @@ private:
     std::vector<Subset> _subsets;
     bool _visible;
     bool _subsetsDirty;
+    
+    bool _isOcean = false;
+    HdGeminiOceanParams _oceanParams;
+    std::unique_ptr<HdGeminiOcean> _oceanSimulator;
+    std::unique_ptr<BVH> _oceanBvh;
+    std::vector<GfVec3f> _oceanBasePoints;
+    std::vector<GfVec3i> _oceanIndices;
+    std::vector<GfVec2f> _oceanUvs;
     
     VtVec3fArray _colors;
     VtVec2fArray _uvs;

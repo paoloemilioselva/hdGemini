@@ -47,16 +47,28 @@ HdGeminiMesh::Finalize(HdRenderParam *renderParam)
     geminiRenderParam->GetRenderDelegate()->RemoveMesh(GetId());
 }
 
-void HdGeminiMesh::UpdateOcean(const GfMatrix4f& viewProj, const GfVec3f& cameraPos, float time) {
+void HdGeminiMesh::UpdateOcean(const HdGeminiOceanParams& globalParams, const GfMatrix4f& viewProj, const GfVec3f& cameraPos, float time) {
     if (!_isOcean) return;
+    
+    HdGeminiOceanParams activeParams = globalParams;
+    if (_authoredOceanPrimvars & 1) activeParams.waterHeight = _oceanParams.waterHeight;
+    if (_authoredOceanPrimvars & 2) activeParams.resolution = _oceanParams.resolution;
+    if (_authoredOceanPrimvars & 4) activeParams.size = _oceanParams.size;
+    if (_authoredOceanPrimvars & 8) activeParams.amplitude = _oceanParams.amplitude;
+    if (_authoredOceanPrimvars & 16) activeParams.choppiness = _oceanParams.choppiness;
+    if (_authoredOceanPrimvars & 32) activeParams.windSpeed = _oceanParams.windSpeed;
+    if (_authoredOceanPrimvars & 64) activeParams.windDirection[0] = _oceanParams.windDirection[0];
+    if (_authoredOceanPrimvars & 128) activeParams.windDirection[1] = _oceanParams.windDirection[1];
+    if (_authoredOceanPrimvars & 256) activeParams.disableShader = _oceanParams.disableShader;
+    if (_authoredOceanPrimvars & 512) activeParams.repeat = _oceanParams.repeat;
     
     bool rebuildTopology = false;
     if (!_oceanSimulator) {
         _oceanSimulator = std::make_unique<HdGeminiOcean>();
-        _oceanSimulator->Init(_oceanParams);
+        _oceanSimulator->Init(activeParams);
         rebuildTopology = true;
-    } else if (_oceanSimulator->GetParams() != _oceanParams) {
-        _oceanSimulator->Init(_oceanParams);
+    } else if (_oceanSimulator->GetParams() != activeParams) {
+        _oceanSimulator->Init(activeParams);
         rebuildTopology = true;
     }
     
@@ -207,39 +219,45 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
     }
     
     if (_isOcean) {
+        _oceanParams = geminiRenderParam->GetRenderDelegate()->GetRenderer()->GetOceanParams();
+        _authoredOceanPrimvars = 0;
+
         VtValue height = sceneDelegate->Get(id, TfToken("primvars:gemini:oceanWaterHeight"));
-        if (height.IsHolding<float>()) _oceanParams.waterHeight = height.Get<float>();
-        else if (height.IsHolding<double>()) _oceanParams.waterHeight = (float)height.Get<double>();
+        if (height.IsHolding<float>()) { _oceanParams.waterHeight = height.Get<float>(); _authoredOceanPrimvars |= 1; }
+        else if (height.IsHolding<double>()) { _oceanParams.waterHeight = (float)height.Get<double>(); _authoredOceanPrimvars |= 1; }
         
         VtValue res = sceneDelegate->Get(id, TfToken("primvars:gemini:oceanResolution"));
-        if (res.IsHolding<int>()) _oceanParams.resolution = res.Get<int>();
+        if (res.IsHolding<int>()) { _oceanParams.resolution = res.Get<int>(); _authoredOceanPrimvars |= 2; }
         
         VtValue size = sceneDelegate->Get(id, TfToken("primvars:gemini:oceanSize"));
-        if (size.IsHolding<float>()) _oceanParams.size = size.Get<float>();
-        else if (size.IsHolding<double>()) _oceanParams.size = (float)size.Get<double>();
+        if (size.IsHolding<float>()) { _oceanParams.size = size.Get<float>(); _authoredOceanPrimvars |= 4; }
+        else if (size.IsHolding<double>()) { _oceanParams.size = (float)size.Get<double>(); _authoredOceanPrimvars |= 4; }
         
         VtValue amp = sceneDelegate->Get(id, TfToken("primvars:gemini:oceanAmplitude"));
-        if (amp.IsHolding<float>()) _oceanParams.amplitude = amp.Get<float>();
-        else if (amp.IsHolding<double>()) _oceanParams.amplitude = (float)amp.Get<double>();
+        if (amp.IsHolding<float>()) { _oceanParams.amplitude = amp.Get<float>(); _authoredOceanPrimvars |= 8; }
+        else if (amp.IsHolding<double>()) { _oceanParams.amplitude = (float)amp.Get<double>(); _authoredOceanPrimvars |= 8; }
         
         VtValue chop = sceneDelegate->Get(id, TfToken("primvars:gemini:oceanChoppiness"));
-        if (chop.IsHolding<float>()) _oceanParams.choppiness = chop.Get<float>();
-        else if (chop.IsHolding<double>()) _oceanParams.choppiness = (float)chop.Get<double>();
+        if (chop.IsHolding<float>()) { _oceanParams.choppiness = chop.Get<float>(); _authoredOceanPrimvars |= 16; }
+        else if (chop.IsHolding<double>()) { _oceanParams.choppiness = (float)chop.Get<double>(); _authoredOceanPrimvars |= 16; }
         
         VtValue ws = sceneDelegate->Get(id, TfToken("primvars:gemini:oceanWindSpeed"));
-        if (ws.IsHolding<float>()) _oceanParams.windSpeed = ws.Get<float>();
-        else if (ws.IsHolding<double>()) _oceanParams.windSpeed = (float)ws.Get<double>();
+        if (ws.IsHolding<float>()) { _oceanParams.windSpeed = ws.Get<float>(); _authoredOceanPrimvars |= 32; }
+        else if (ws.IsHolding<double>()) { _oceanParams.windSpeed = (float)ws.Get<double>(); _authoredOceanPrimvars |= 32; }
         
         VtValue wdx = sceneDelegate->Get(id, TfToken("primvars:gemini:oceanWindDirectionX"));
-        if (wdx.IsHolding<float>()) _oceanParams.windDirection[0] = wdx.Get<float>();
-        else if (wdx.IsHolding<double>()) _oceanParams.windDirection[0] = (float)wdx.Get<double>();
+        if (wdx.IsHolding<float>()) { _oceanParams.windDirection[0] = wdx.Get<float>(); _authoredOceanPrimvars |= 64; }
+        else if (wdx.IsHolding<double>()) { _oceanParams.windDirection[0] = (float)wdx.Get<double>(); _authoredOceanPrimvars |= 64; }
         
         VtValue wdy = sceneDelegate->Get(id, TfToken("primvars:gemini:oceanWindDirectionY"));
-        if (wdy.IsHolding<float>()) _oceanParams.windDirection[1] = wdy.Get<float>();
-        else if (wdy.IsHolding<double>()) _oceanParams.windDirection[1] = (float)wdy.Get<double>();
+        if (wdy.IsHolding<float>()) { _oceanParams.windDirection[1] = wdy.Get<float>(); _authoredOceanPrimvars |= 128; }
+        else if (wdy.IsHolding<double>()) { _oceanParams.windDirection[1] = (float)wdy.Get<double>(); _authoredOceanPrimvars |= 128; }
         
         VtValue ds = sceneDelegate->Get(id, TfToken("primvars:gemini:oceanDisableShader"));
-        if (ds.IsHolding<bool>()) _oceanParams.disableShader = ds.Get<bool>();
+        if (ds.IsHolding<bool>()) { _oceanParams.disableShader = ds.Get<bool>(); _authoredOceanPrimvars |= 256; }
+        
+        VtValue rep = sceneDelegate->Get(id, TfToken("primvars:gemini:oceanRepeat"));
+        if (rep.IsHolding<bool>()) { _oceanParams.repeat = rep.Get<bool>(); _authoredOceanPrimvars |= 512; }
     }
     
     if (HdChangeTracker::IsTransformDirty(*dirtyBits, id)) {

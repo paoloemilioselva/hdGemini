@@ -52,7 +52,7 @@ public:
     const HdGeminiOceanParams& GetOceanParams() const { return _oceanParams; }
     
     class HdGeminiOcean* GetOceanSimulator() { return _oceanSimulator.get(); }
-    void UpdateOcean(const GfMatrix4f& viewProj, const GfVec3f& cameraPos, float time);
+    void UpdateOcean(const HdGeminiOceanParams& globalParams, const GfMatrix4f& viewProj, const GfVec3f& cameraPos, float time);
 
 protected:
     virtual void _InitRepr(TfToken const &reprToken,
@@ -73,6 +73,7 @@ private:
     
     bool _isOcean = false;
     HdGeminiOceanParams _oceanParams;
+    uint32_t _authoredOceanPrimvars = 0;
     std::unique_ptr<HdGeminiOcean> _oceanSimulator;
     
     VtVec3fArray _colors;

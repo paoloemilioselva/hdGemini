@@ -100,6 +100,8 @@ public:
     void SetOceanDisableShader(bool disable) { _oceanParams.disableShader = disable; }
     void SetOceanTime(float time) { _time = time; }
     void SetOceanRepeat(bool repeat) { _oceanParams.repeat = repeat; }
+    
+    const HdGeminiOceanParams& GetOceanParams() const { return _oceanParams; }
 
 private:
     bool _isConverged = false;

@@ -153,6 +153,7 @@ public:
     const std::map<SdfPath, HdGeminiLight*>& GetLights() const { return _lights; }
 
     std::recursive_mutex& GetSceneLock() { return _sceneLock; }
+    HdGeminiRenderer* GetRenderer() { return &_renderer; }
 
 private:
     static const TfTokenVector SUPPORTED_RPRIM_TYPES;

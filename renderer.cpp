@@ -401,7 +401,7 @@ HdGeminiRenderer::_PrepareScene(HdRenderThread *renderThread, HdGeminiRenderDele
         if (mesh->IsOcean()) {
             GfMatrix4f viewProj(GfMatrix4f(_viewMatrix) * GfMatrix4f(_projMatrix));
             GfVec3f camPos(GfVec3f(_viewMatrix.GetInverse().ExtractTranslation()));
-            mesh->UpdateOcean(viewProj, camPos, _time);
+            mesh->UpdateOcean(GetOceanParams(), viewProj, camPos, _time);
         }
 
         if (!mesh->GetInstancerId().IsEmpty()) {

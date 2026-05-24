@@ -76,9 +76,24 @@ void HdGeminiMesh::UpdateOcean(const HdGeminiOceanParams& globalParams, const Gf
     
     if (_points.empty()) return;
 
-    std::vector<GfVec3f> basePoints(_points.begin(), _points.end());
-    std::vector<GfVec3f> displacedPoints, displacedNormals;
-    _oceanSimulator->DisplaceGrid(basePoints, displacedPoints, displacedNormals);
+    GfMatrix4f transform = GfMatrix4f(_transform);
+    GfMatrix4f invTransform = transform.GetInverse();
+    GfMatrix4f invTranspose = invTransform.GetTranspose();
+
+    std::vector<GfVec3f> worldPoints(_points.size());
+    for (size_t i = 0; i < _points.size(); ++i) {
+        worldPoints[i] = transform.Transform(_points[i]);
+    }
+
+    std::vector<GfVec3f> displacedWorldPoints, displacedWorldNormals;
+    _oceanSimulator->DisplaceGrid(worldPoints, displacedWorldPoints, displacedWorldNormals);
+    
+    std::vector<GfVec3f> displacedPoints(_points.size());
+    std::vector<GfVec3f> displacedNormals(_points.size());
+    for (size_t i = 0; i < _points.size(); ++i) {
+        displacedPoints[i] = invTransform.Transform(displacedWorldPoints[i]);
+        displacedNormals[i] = invTranspose.TransformDir(displacedWorldNormals[i]).GetNormalized();
+    }
     
     VtVec3fArray vtPoints(displacedPoints.begin(), displacedPoints.end());
     VtVec3fArray vtNormals(displacedNormals.begin(), displacedNormals.end());

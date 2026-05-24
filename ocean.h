@@ -13,21 +13,27 @@
 PXR_NAMESPACE_USING_DIRECTIVE
 
 struct HdGeminiOceanParams {
-    int resolution = 256;
+    int fftResolution = 256;
+    float dicingScale = 1.0f;
     float size = 10.0f;
     float amplitude = 0.0f;
+    float amplitudeFine = 0.0f;
     float choppiness = 1.2f;
     float windSpeed = 0.0f;
     float waterHeight = 0.0f;
     GfVec2f windDirection = GfVec2f(1.0f, 1.0f);
     bool disableShader = false;
     bool repeat = true;
+    GfVec3f scatteringColor = GfVec3f(0.02f, 0.15f, 0.25f);
+    float scatteringDepth = 10.0f;
     
     bool operator==(const HdGeminiOceanParams& o) const {
-        return resolution == o.resolution && size == o.size && amplitude == o.amplitude &&
+        return fftResolution == o.fftResolution && dicingScale == o.dicingScale && size == o.size && amplitude == o.amplitude &&
+               amplitudeFine == o.amplitudeFine &&
                choppiness == o.choppiness && windSpeed == o.windSpeed && 
                waterHeight == o.waterHeight && windDirection == o.windDirection &&
-               disableShader == o.disableShader && repeat == o.repeat;
+               disableShader == o.disableShader && repeat == o.repeat &&
+               scatteringColor == o.scatteringColor && scatteringDepth == o.scatteringDepth;
     }
     bool operator!=(const HdGeminiOceanParams& o) const { return !(*this == o); }
 };
@@ -52,9 +58,12 @@ public:
         const GfMatrix4f& viewProj, 
         const GfVec3f& cameraPos,
         const GfRange3f& bounds,
+        int screenWidth,
+        int screenHeight,
         std::vector<GfVec3f>& outBasePoints,
         std::vector<GfVec3i>& outIndices,
-        std::vector<GfVec2f>& outUvs) const;
+        std::vector<GfVec2f>& outUvs,
+        std::vector<GfVec3f>& outColors) const;
 
     void DisplaceGrid(
         const std::vector<GfVec3f>& basePoints,

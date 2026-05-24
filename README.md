@@ -55,8 +55,11 @@
   - **Procedural FFT Oceans**: Dynamically generated, animated ocean waves utilizing Fast Fourier Transforms (FFT) directly within the render delegate.
     - **Global & Per-Prim Modes**: Can be enabled globally (generating an infinite ocean plane) or applied directly to user-authored mesh prims.
     - **Adaptive Subdivision**: Per-prim authored ocean geometry seamlessly integrates with OpenSubdiv, allowing low-poly base meshes to be cleanly subdivided and refined before dynamic FFT displacement is applied.
-    - Fully configurable parameters available dynamically via Render Settings: Size, Amplitude, Choppiness, Wind Speed, Direction, and Resolution.
+    - **Adaptive Dicing LOD**: Uses screen-space NDC projections for dynamic, REYES-style pixel-level dicing to adaptively scale ocean mesh tessellation based on camera distance via a dynamically configurable `dicingScale` multiplier.
+    - **Dual-Amplitude FFT**: Implements dual amplitude control (`oceanAmplitude` for large/coarse dominant waves and `oceanAmplitudeFine` for small/fine high-frequency waves) over the Phillips spectrum for advanced wave shaping.
+    - Fully configurable parameters available dynamically via Render Settings: Size, Amplitude, Fine Amplitude, Choppiness, Wind Speed, Direction, and Dicing Scale.
     - Supports an `oceanRepeat` toggle to seamlessly repeat the simulated wave patch infinitely or cleanly constrain it to a single localized tile.
+    - Includes a built-in diagnostic mode: disabling the shader on the ocean dynamically visualizes the raw per-micropolygon dicing density via random solid colors for rapid LOD tuning.
 - **Lighting**:
   - Full suite of Hydra light types: Distant, Rect, Sphere, Point, and Dome lights.
   - Advanced **Spot Light Shaping**: Supports cone angle, cone softness, and smoothstep falloff.

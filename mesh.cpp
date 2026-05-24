@@ -241,11 +241,20 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
             else if (height.IsHolding<double>()) _oceanParams.waterHeight = (float)height.Get<double>();
         }
 
-        VtValue res = sceneDelegate->Get(id, TfToken("primvars:gemini:oceanResolution"));
-        if (res.IsHolding<int>()) _oceanParams.resolution = res.Get<int>();
+        VtValue res = sceneDelegate->Get(id, TfToken("primvars:gemini:oceanFFTResolution"));
+        if (res.IsHolding<int>()) _oceanParams.fftResolution = res.Get<int>();
         else {
-            res = sceneDelegate->Get(id, TfToken("gemini:oceanResolution"));
-            if (res.IsHolding<int>()) _oceanParams.resolution = res.Get<int>();
+            res = sceneDelegate->Get(id, TfToken("gemini:oceanFFTResolution"));
+            if (res.IsHolding<int>()) _oceanParams.fftResolution = res.Get<int>();
+        }
+
+        VtValue dScale = sceneDelegate->Get(id, TfToken("primvars:gemini:oceanDicingScale"));
+        if (dScale.IsHolding<float>()) _oceanParams.dicingScale = dScale.Get<float>();
+        else if (dScale.IsHolding<double>()) _oceanParams.dicingScale = (float)dScale.Get<double>();
+        else {
+            dScale = sceneDelegate->Get(id, TfToken("gemini:oceanDicingScale"));
+            if (dScale.IsHolding<float>()) _oceanParams.dicingScale = dScale.Get<float>();
+            else if (dScale.IsHolding<double>()) _oceanParams.dicingScale = (float)dScale.Get<double>();
         }
 
         VtValue size = sceneDelegate->Get(id, TfToken("primvars:gemini:oceanSize"));
@@ -264,6 +273,15 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
             amp = sceneDelegate->Get(id, TfToken("gemini:oceanAmplitude"));
             if (amp.IsHolding<float>()) _oceanParams.amplitude = amp.Get<float>();
             else if (amp.IsHolding<double>()) _oceanParams.amplitude = (float)amp.Get<double>();
+        }
+
+        VtValue ampFine = sceneDelegate->Get(id, TfToken("primvars:gemini:oceanAmplitudeFine"));
+        if (ampFine.IsHolding<float>()) _oceanParams.amplitudeFine = ampFine.Get<float>();
+        else if (ampFine.IsHolding<double>()) _oceanParams.amplitudeFine = (float)ampFine.Get<double>();
+        else {
+            ampFine = sceneDelegate->Get(id, TfToken("gemini:oceanAmplitudeFine"));
+            if (ampFine.IsHolding<float>()) _oceanParams.amplitudeFine = ampFine.Get<float>();
+            else if (ampFine.IsHolding<double>()) _oceanParams.amplitudeFine = (float)ampFine.Get<double>();
         }
 
         VtValue chop = sceneDelegate->Get(id, TfToken("primvars:gemini:oceanChoppiness"));
@@ -302,21 +320,38 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
             else if (speed.IsHolding<double>()) _oceanParams.windSpeed = (float)speed.Get<double>();
         }
         
-        VtValue ds = sceneDelegate->Get(id, TfToken("primvars:gemini:oceanDisableShader"));
-        if (ds.IsHolding<bool>()) _oceanParams.disableShader = ds.Get<bool>();
+        VtValue disableShader = sceneDelegate->Get(id, TfToken("primvars:gemini:oceanDisableShader"));
+        if (disableShader.IsHolding<bool>()) _oceanParams.disableShader = disableShader.Get<bool>();
         else {
-            ds = sceneDelegate->Get(id, TfToken("gemini:oceanDisableShader"));
-            if (ds.IsHolding<bool>()) _oceanParams.disableShader = ds.Get<bool>();
+            disableShader = sceneDelegate->Get(id, TfToken("gemini:oceanDisableShader"));
+            if (disableShader.IsHolding<bool>()) _oceanParams.disableShader = disableShader.Get<bool>();
+        }
+
+        VtValue repeat = sceneDelegate->Get(id, TfToken("primvars:gemini:oceanRepeat"));
+        if (repeat.IsHolding<bool>()) _oceanParams.repeat = repeat.Get<bool>();
+        else {
+            repeat = sceneDelegate->Get(id, TfToken("gemini:oceanRepeat"));
+            if (repeat.IsHolding<bool>()) _oceanParams.repeat = repeat.Get<bool>();
         }
         
-        VtValue rep = sceneDelegate->Get(id, TfToken("primvars:gemini:oceanRepeat"));
-        if (rep.IsHolding<bool>()) _oceanParams.repeat = rep.Get<bool>();
+        VtValue scC = sceneDelegate->Get(id, TfToken("primvars:gemini:oceanScatteringColor"));
+        if (scC.IsHolding<GfVec3f>()) _oceanParams.scatteringColor = scC.Get<GfVec3f>();
         else {
-            rep = sceneDelegate->Get(id, TfToken("gemini:oceanRepeat"));
-            if (rep.IsHolding<bool>()) _oceanParams.repeat = rep.Get<bool>();
+            scC = sceneDelegate->Get(id, TfToken("gemini:oceanScatteringColor"));
+            if (scC.IsHolding<GfVec3f>()) _oceanParams.scatteringColor = scC.Get<GfVec3f>();
+        }
+        
+        VtValue scD = sceneDelegate->Get(id, TfToken("primvars:gemini:oceanScatteringDepth"));
+        if (scD.IsHolding<float>()) _oceanParams.scatteringDepth = scD.Get<float>();
+        else if (scD.IsHolding<double>()) _oceanParams.scatteringDepth = (float)scD.Get<double>();
+        else {
+            scD = sceneDelegate->Get(id, TfToken("gemini:oceanScatteringDepth"));
+            if (scD.IsHolding<float>()) _oceanParams.scatteringDepth = scD.Get<float>();
+            else if (scD.IsHolding<double>()) _oceanParams.scatteringDepth = (float)scD.Get<double>();
         }
     }
-    
+
+    HdMeshTopology topology = GetMeshTopology(sceneDelegate);    
     if (HdChangeTracker::IsTransformDirty(*dirtyBits, id)) {
         _transform = GfMatrix4f(sceneDelegate->GetTransform(id));
     }
@@ -510,8 +545,8 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
     if (HdChangeTracker::IsTopologyDirty(*dirtyBits, id) || 
         (*dirtyBits & HdChangeTracker::DirtyMaterialId) ||
         _subsetsDirty) {
-        
-        SdfPath defaultMaterialId = sceneDelegate->GetMaterialId(id);
+                SdfPath defaultMaterialId = sceneDelegate->GetMaterialId(id);
+
         HdMeshTopology topology = GetMeshTopology(sceneDelegate);
         
         bool globalSubdivision = true;

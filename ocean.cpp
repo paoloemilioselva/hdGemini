@@ -29,13 +29,14 @@ float HdGeminiOcean::Phillips(float kx, float kz) const {
     float damping = 0.001f;
     float l2 = L2 * damping * damping;
 
-    float amplitude = _params.amplitude;
+    float blend = std::clamp((2.0f * (float)M_PI / k_length - 1.0f) / 4.0f, 0.0f, 1.0f);
+    float amplitude = _params.amplitudeFine + blend * (_params.amplitude - _params.amplitudeFine);
 
     return amplitude * std::exp(-1.0f / (k_length2 * L2)) / k_length4 * k_dot_w2 * std::exp(-k_length2 * l2);
 }
 
 void HdGeminiOcean::ComputeH0() {
-    int N = _params.resolution;
+    int N = _params.fftResolution;
     _h0.resize(N * N);
     _h0_minus.resize(N * N);
     std::mt19937 gen(12345);
@@ -69,7 +70,7 @@ void HdGeminiOcean::ComputeH0() {
 
 void HdGeminiOcean::Init(const HdGeminiOceanParams& params) {
     _params = params;
-    int N = _params.resolution;
+    int N = _params.fftResolution;
 
     ComputeH0();
 
@@ -94,7 +95,7 @@ void HdGeminiOcean::Init(const HdGeminiOceanParams& params) {
 }
 
 void HdGeminiOcean::PerformFFT2D(std::vector<std::complex<float>>& data) const {
-    int N = _params.resolution;
+    int N = _params.fftResolution;
     int log2N = (int)std::log2(N);
 
     // 1D FFT over rows
@@ -153,7 +154,7 @@ void HdGeminiOcean::Update(float time) {
     if (!_initialized || std::abs(time - _lastTime) < 1e-4f) return;
     _lastTime = time;
 
-    int N = _params.resolution;
+    int N = _params.fftResolution;
 
     tbb::parallel_for(tbb::blocked_range2d<int>(0, N, 0, N), [&](const tbb::blocked_range2d<int>& r) {
         for (int z = r.rows().begin(); z != r.rows().end(); ++z) {
@@ -207,28 +208,29 @@ void HdGeminiOcean::Update(float time) {
         }
     });
 
-    // Compute normals via central differences
+    // Compute normals using finite differences on the fully displaced grid (Jacobian included)
     tbb::parallel_for(tbb::blocked_range2d<int>(0, N, 0, N), [&](const tbb::blocked_range2d<int>& r) {
         for (int z = r.rows().begin(); z != r.rows().end(); ++z) {
             for (int x = r.cols().begin(); x != r.cols().end(); ++x) {
-                int xl = (x - 1 + N) % N;
-                int xr = (x + 1) % N;
-                int zl = (z - 1 + N) % N;
-                int zr = (z + 1) % N;
+                int idx = z * N + x;
+                int x0 = (x - 1 + N) % N;
+                int x1 = (x + 1) % N;
+                int z0 = (z - 1 + N) % N;
+                int z1 = (z + 1) % N;
                 
-                GfVec3f left = _displacementMap[z * N + xl] + GfVec3f((xl - x) * _params.size / N, 0, 0);
-                GfVec3f right = _displacementMap[z * N + xr] + GfVec3f((xr - x) * _params.size / N, 0, 0);
-                GfVec3f bottom = _displacementMap[zl * N + x] + GfVec3f(0, 0, (zl - z) * _params.size / N);
-                GfVec3f top = _displacementMap[zr * N + x] + GfVec3f(0, 0, (zr - z) * _params.size / N);
+                GfVec3f p00 = GfVec3f((x0 - x) * _params.size / N, 0, (z - z) * _params.size / N) + _displacementMap[z * N + x0];
+                GfVec3f p10 = GfVec3f((x1 - x) * _params.size / N, 0, (z - z) * _params.size / N) + _displacementMap[z * N + x1];
+                GfVec3f p01 = GfVec3f((x - x) * _params.size / N, 0, (z0 - z) * _params.size / N) + _displacementMap[z0 * N + x];
+                GfVec3f p11 = GfVec3f((x - x) * _params.size / N, 0, (z1 - z) * _params.size / N) + _displacementMap[z1 * N + x];
                 
-                GfVec3f dpdx = right - left;
-                GfVec3f dpdz = top - bottom;
-                GfVec3f n = GfCross(dpdz, dpdx).GetNormalized();
+                GfVec3f tx = p10 - p00;
+                GfVec3f tz = p11 - p01;
                 
-                _normalMap[z * N + x] = n;
+                _normalMap[idx] = GfCross(tz, tx).GetNormalized();
             }
         }
     });
+
 }
 
 GfVec3f HdGeminiOcean::GetDisplacedPosition(const GfVec3f& basePos) const {
@@ -244,7 +246,7 @@ GfVec3f HdGeminiOcean::GetDisplacedPosition(const GfVec3f& basePos) const {
     u = u - std::floor(u);
     v = v - std::floor(v);
 
-    int N = _params.resolution;
+    int N = _params.fftResolution;
     float x = u * N;
     float z = v * N;
     
@@ -283,7 +285,7 @@ GfVec3f HdGeminiOcean::GetNormal(const GfVec3f& basePos) const {
     u = u - std::floor(u);
     v = v - std::floor(v);
 
-    int N = _params.resolution;
+    int N = _params.fftResolution;
     float x = u * N;
     float z = v * N;
     

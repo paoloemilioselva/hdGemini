@@ -535,7 +535,8 @@ HdGeminiRenderer::_PrepareScene(HdRenderThread *renderThread, HdGeminiRenderDele
             _globalOceanBasePoints.clear();
             _globalOceanIndices.clear();
             _globalOceanUvs.clear();
-            _globalOcean->GenerateGridTopology(viewProj, camPos, worldBounds, _globalOceanBasePoints, _globalOceanIndices, _globalOceanUvs);
+            _globalOceanColors.clear();
+            _globalOcean->GenerateGridTopology(viewProj, camPos, worldBounds, _lastWidth, _lastHeight, _globalOceanBasePoints, _globalOceanIndices, _globalOceanUvs, _globalOceanColors);
         }
         
         std::vector<GfVec3f> points, normals;
@@ -546,7 +547,7 @@ HdGeminiRenderer::_PrepareScene(HdRenderThread *renderThread, HdGeminiRenderDele
         VtVec3iArray vtIndices(_globalOceanIndices.begin(), _globalOceanIndices.end());
         VtVec2fArray vtUvs(_globalOceanUvs.begin(), _globalOceanUvs.end());
         VtVec3fArray vtNormals(normals.begin(), normals.end());
-        VtVec3fArray vtColors;
+        VtVec3fArray vtColors(_globalOceanColors.begin(), _globalOceanColors.end());
         std::vector<int> matIndices(_globalOceanIndices.size(), -1);
         _globalOceanBvh->Build(vtPoints, vtIndices, vtUvs, vtNormals, vtColors, matIndices);
         
@@ -867,6 +868,7 @@ bool HdGeminiRenderer::_IntersectTLAS(const GfVec3f& rayOrigin, const GfVec3f& r
                             hit.dpdu = inst.transform.TransformDir(instDpdu).GetNormalized();
                             hit.dpdv = inst.transform.TransformDir(instDpdv).GetNormalized();
                             hit.uv = instUv;
+                            hit.isOcean = true;
                             
                             if (inst.material) {
                                 hit.baseColor = inst.material->GetDiffuseColor();
@@ -909,7 +911,8 @@ bool HdGeminiRenderer::_IntersectTLAS(const GfVec3f& rayOrigin, const GfVec3f& r
                             } else {
                                 bool isShaderDisabled = inst.mesh ? inst.mesh->GetOceanParams().disableShader : _oceanParams.disableShader;
                                 if (isShaderDisabled) {
-                                    hit.baseColor = GfVec3f(0.8f, 0.8f, 0.8f);
+                                    hit.baseColor = instSmoothColor;
+                                    if (instSmoothColor == GfVec3f(0.0f)) hit.baseColor = GfVec3f(0.8f, 0.8f, 0.8f);
                                     hit.metallic = 0.0f;
                                     hit.roughness = 1.0f;
                                     hit.specularColor = GfVec3f(0.0f);
@@ -970,8 +973,8 @@ bool HdGeminiRenderer::_IntersectTLAS(const GfVec3f& rayOrigin, const GfVec3f& r
                                     hit.coatColor = GfVec3f(1.0f);
                                     hit.coatRoughness = 0.0f;
                                     hit.coatIor = 1.5f;
-                                    hit.transmissionDepth = 50.0f;
-                                    hit.transmissionScatter = GfVec3f(0.0f);
+                                    hit.transmissionDepth = inst.mesh ? inst.mesh->GetOceanParams().scatteringDepth : _oceanParams.scatteringDepth;
+                                    hit.transmissionScatter = inst.mesh ? inst.mesh->GetOceanParams().scatteringColor : _oceanParams.scatteringColor;
                                     hit.sheen = 0.0f;
                                     hit.sheenColor = GfVec3f(1.0f);
                                     hit.sheenRoughness = 0.2f;
@@ -1365,6 +1368,89 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
     GfVec3f currentRayOrigin = rayOrigin;
     GfVec3f currentRayDir = rayDir;
 
+    auto EvaluateLight = [&](const LightSample& ls, const GfVec3f& targetPos, GfVec3f& lDir, float& lightDist, GfVec3f& lColor, float& lightPdf) {
+        HdGeminiLight* light = _activeLights[ls.lightIdx];
+        lightPdf = (_lightPowerCdf[ls.lightIdx] - (ls.lightIdx > 0 ? _lightPowerCdf[ls.lightIdx - 1] : 0.0f));
+        lightPdf = std::max(lightPdf, 1e-6f);
+        
+        lightDist = 1e30f;
+        lColor = GfVec3f(0.0f);
+        
+        if (light->GetLightType() == HdPrimTypeTokens->distantLight) {
+            lDir = GfMatrix4f(light->GetTransform()).TransformDir(GfVec3f(0, 0, -1)).GetNormalized();
+            lColor = light->GetColor() * light->GetIntensity();
+        } else if (light->GetLightType() == HdPrimTypeTokens->domeLight && !_envMapRowCdf.empty()) {
+            float u1 = ls.u;
+            float u2 = ls.v;
+            auto itY = std::lower_bound(_envMapRowCdf.begin(), _envMapRowCdf.end(), u1);
+            int y = std::clamp((int)std::distance(_envMapRowCdf.begin(), itY) - 1, 0, _envMapHeight - 1);
+            const float* colCdf = &_envMapColCdf[y * (_envMapWidth + 1)];
+            auto itX = std::lower_bound(colCdf, colCdf + _envMapWidth + 1, u2);
+            int x = std::clamp((int)std::distance(colCdf, itX) - 1, 0, _envMapWidth - 1);
+            float theta = M_PI * (float)(y + 0.5f) / (float)_envMapHeight;
+            float phi = 2.0f * M_PI * (float)(x + 0.5f) / (float)_envMapWidth;
+            float sinThetaL = std::max(1e-6f, std::sin(theta));
+            GfVec3f localDir(sinThetaL * std::sin(phi), std::cos(theta), -sinThetaL * std::cos(phi));
+            lDir = GfMatrix4f(light->GetTransform()).TransformDir(localDir).GetNormalized();
+            size_t idx = (y * _envMapWidth + x) * 3;
+            GfVec3f texColor(_envMapPixels[idx], _envMapPixels[idx+1], _envMapPixels[idx+2]);
+            lColor = GfCompMult(texColor, light->GetColor()) * light->GetIntensity();
+            if (_envMapTotalLuminance > 0) {
+                float lum = 0.2126f * texColor[0] + 0.7152f * texColor[1] + 0.0722f * texColor[2];
+                float pdf = lum / (_envMapTotalLuminance * (M_PI / (float)_envMapHeight) * (2.0f * M_PI / (float)_envMapWidth) * sinThetaL);
+                lightPdf *= std::max(pdf, 1e-6f);
+            }
+        } else if (light->GetLightType() == HdPrimTypeTokens->rectLight) {
+            GfVec3f lPosLocal((ls.u - 0.5f) * light->GetWidth(), (ls.v - 0.5f) * light->GetHeight(), 0.0f);
+            GfVec3f lPosWorld = GfMatrix4f(light->GetTransform()).Transform(lPosLocal);
+            GfVec3f toLight = lPosWorld - targetPos;
+            lightDist = toLight.GetLength();
+            lDir = toLight / lightDist;
+            float area = light->GetWidth() * light->GetHeight();
+            if (area > 0) {
+                GfVec3f lNormal = GfMatrix4f(light->GetTransform()).TransformDir(GfVec3f(0, 0, -1)).GetNormalized();
+                float cosThetaL = std::max(0.0f, GfDot(lNormal, -lDir));
+                if (cosThetaL > 0) {
+                    lightPdf *= (lightDist * lightDist) / (area * cosThetaL);
+                    lColor = light->GetColor() * light->GetIntensity();
+                } else {
+                    lightDist = -1.0f;
+                }
+            }
+        } else {
+            GfVec3f lPos = GfMatrix4f(light->GetTransform()).ExtractTranslation();
+            GfVec3f toLight = lPos - targetPos;
+            lightDist = toLight.GetLength();
+            lDir = toLight / lightDist;
+            lightPdf *= (lightDist * lightDist);
+            lColor = light->GetColor() * light->GetIntensity();
+        }
+
+        if (lightDist > 0 && light->GetLightType() != HdPrimTypeTokens->domeLight && light->GetLightType() != HdPrimTypeTokens->distantLight) {
+            float coneAngle = light->GetShapingConeAngle();
+            if (coneAngle < 180.0f) {
+                GfVec3f lNormal = GfMatrix4f(light->GetTransform()).TransformDir(GfVec3f(0, 0, -1)).GetNormalized();
+                float cosTheta = GfDot(lNormal, -lDir);
+                float coneAngleRad = coneAngle * (float)(M_PI / 180.0);
+                float cosConeAngle = std::cos(coneAngleRad);
+                if (cosTheta <= cosConeAngle) {
+                    lColor = GfVec3f(0.0f);
+                } else {
+                    float softness = light->GetShapingConeSoftness();
+                    if (softness > 0.0f) {
+                        float innerAngleRad = coneAngleRad * (1.0f - softness);
+                        float cosInnerAngle = std::cos(innerAngleRad);
+                        if (cosTheta < cosInnerAngle) {
+                            float factor = (cosTheta - cosConeAngle) / (cosInnerAngle - cosConeAngle);
+                            factor = factor * factor * (3.0f - 2.0f * factor);
+                            lColor *= factor;
+                        }
+                    }
+                }
+            }
+        }
+    };
+
     int reflectionBounces = 0;
     int refractionBounces = 0;
     
@@ -1376,10 +1462,34 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
     };
     std::vector<PathVertex> pathHistory;
     
+    struct MediumState {
+        float ior = 1.0f;
+        GfVec3f scatterColor = GfVec3f(0.0f);
+        float depth = 0.0f;
+    };
+    
     // Nested Dielectrics tracking stack
-    std::vector<float> iorStack = { 1.0f };
-    if (_IsPointInsideOcean(currentRayOrigin)) {
-        iorStack.push_back(1.33f);
+    std::vector<MediumState> mediumStack = { MediumState{1.0f, GfVec3f(0.0f), 0.0f} };
+    
+    // Perform a BVH-accurate test to see if the camera is underwater
+    if (_oceanEnable) {
+        GfVec3f ro = currentRayOrigin;
+        GfVec3f rd(0.0f, 1.0f, 0.0f);
+        uint32_t dummyQmc = 0, dummyRng = rng;
+        while (true) {
+            HitRecord hit;
+            if (!_IntersectTLAS(ro, rd, hit, renderThread, sampleIdx, dummyQmc, dummyRng)) {
+                break;
+            }
+            if (hit.isOcean) {
+                // If we hit the ocean from below (smoothNormal points roughly up +Y, rd is up +Y -> dot > 0)
+                if (GfDot(hit.smoothNormal, rd) > 0.0f) {
+                    mediumStack.push_back(MediumState{hit.ior, hit.transmissionScatter, hit.transmissionDepth});
+                }
+                break; // First ocean hit determines if we are above or below
+            }
+            ro = ro + rd * (hit.t + 1e-4f);
+        }
     }
 
     const int maxDepth = isInteractive ? 2 : 32;
@@ -1515,14 +1625,19 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
         }
 
         bool isInside = GfDot(hit.smoothNormal, currentRayDir) > 0;
+        float etaI_fresnel = mediumStack.back().ior;
+        float etaT_fresnel = hit.ior;
+        if (isInside) {
+            etaT_fresnel = (mediumStack.size() > 1) ? mediumStack[mediumStack.size() - 2].ior : 1.0f;
+        }
 
-        // --- Medium Volumetric Scattering (Ocean) ---
-        if (iorStack.back() == 1.33f) {
-            GfVec3f oceanScatterColor = GfVec3f(0.02f, 0.15f, 0.25f);
-            GfVec3f d_mfp = GfVec3f(10.0f);
+        // --- Medium Volumetric Scattering ---
+        const MediumState& currentMedium = mediumStack.back();
+        if (currentMedium.depth > 0.0f) {
+            GfVec3f d_mfp = GfVec3f(currentMedium.depth);
             
             GfVec3f sigma_t_rgb(1.0f / d_mfp[0], 1.0f / d_mfp[1], 1.0f / d_mfp[2]);
-            GfVec3f sigma_s_rgb = GfCompMult(oceanScatterColor, sigma_t_rgb);
+            GfVec3f sigma_s_rgb = GfCompMult(currentMedium.scatterColor, sigma_t_rgb);
             
             SampledSpectrum sigma_t = RGBToSpectrum(sigma_t_rgb, lambda);
             SampledSpectrum sigma_s = RGBToSpectrum(sigma_s_rgb, lambda);
@@ -1533,6 +1648,60 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
             if (d < hit.t) {
                 // Volumetric Scatter
                 currentRayOrigin = currentRayOrigin + currentRayDir * d;
+                
+                // --- Volumetric Next Event Estimation (NEE) ---
+                if (!_activeLights.empty()) {
+                    LightSample ls = {0};
+                    ls.lightIdx = 0;
+                    ls.u = qmc::SampleDimension(sampleIdx, qmcDim++, rng);
+                    ls.v = qmc::SampleDimension(sampleIdx, qmcDim++, rng);
+                    
+                    float uLight = qmc::SampleDimension(sampleIdx, qmcDim++, rng);
+                    auto itLight = std::lower_bound(_lightPowerCdf.begin(), _lightPowerCdf.end(), uLight);
+                    ls.lightIdx = std::clamp((int)std::distance(_lightPowerCdf.begin(), itLight), 0, (int)_activeLights.size() - 1);
+
+                    GfVec3f lDir;
+                    float lightDist;
+                    GfVec3f lColor;
+                    float lightPdf;
+                    EvaluateLight(ls, currentRayOrigin, lDir, lightDist, lColor, lightPdf);
+                    
+                    if (lightDist > 0.0f && lightPdf > 0.0f && (lColor[0]>0 || lColor[1]>0 || lColor[2]>0)) {
+                        bool inShadow = false;
+                        float shadowDist = lightDist;
+                        HitRecord sHit;
+                        sHit.t = shadowDist - 1e-4f;
+                        if (this->_IntersectTLAS(currentRayOrigin, lDir, sHit, renderThread, sampleIdx, qmcDim, rng)) {
+                            if (sHit.hit && sHit.transmission < 0.5f) {
+                                inShadow = true;
+                            }
+                        }
+                        
+                        if (!inShadow) {
+                            float g = 0.8f;
+                            float cosThetaL = GfDot(currentRayDir, lDir);
+                            float denom = 1.0f + g * g - 2.0f * g * cosThetaL;
+                            float phase = (1.0f / (4.0f * (float)M_PI)) * (1.0f - g * g) / (denom * std::sqrt(denom));
+                            
+                            // Approximate distance to water surface for shadow ray transmittance
+                            float distToSurface = 1000.0f;
+                            if (lDir[1] > 1e-4f) {
+                                float waveHeight = 0.0f;
+                                if (_globalOcean) waveHeight = _globalOcean->GetDisplacedPosition(currentRayOrigin)[1];
+                                distToSurface = std::max(0.0f, waveHeight - currentRayOrigin[1]) / lDir[1];
+                            }
+                            
+                            SampledSpectrum tr;
+                            for(int i=0; i<SPECTRUM_SAMPLES; ++i) tr[i] = std::exp(-sigma_t[i] * distToSurface);
+                            
+                            SampledSpectrum contrib;
+                            for(int i=0; i<SPECTRUM_SAMPLES; ++i) {
+                                contrib[i] = throughput[i] * (sigma_s[i] * phase * tr[i] * lColor[i]) / lightPdf;
+                            }
+                            totalRadiance += contrib;
+                        }
+                    }
+                }
                 
                 // Henyey-Greenstein phase function for water
                 float g = 0.8f;
@@ -1629,92 +1798,11 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
         float CauchyB = iorBase - CauchyC / (589.3f * 589.3f);
         hit.ior = CauchyB + CauchyC / (lambda.lambda[0] * lambda.lambda[0]);
 
+
+
         // --- Direct Lighting (Light Sampling) ---
         if (!_activeLights.empty()) {
-            auto EvaluateLight = [&](const LightSample& ls, GfVec3f& lDir, float& lightDist, GfVec3f& lColor, float& lightPdf) {
-                HdGeminiLight* light = _activeLights[ls.lightIdx];
-                lightPdf = (_lightPowerCdf[ls.lightIdx] - (ls.lightIdx > 0 ? _lightPowerCdf[ls.lightIdx - 1] : 0.0f));
-                lightPdf = std::max(lightPdf, 1e-6f);
-                
-                lightDist = 1e30f;
-                lColor = GfVec3f(0.0f);
-                
-                if (light->GetLightType() == HdPrimTypeTokens->distantLight) {
-                    lDir = GfMatrix4f(light->GetTransform()).TransformDir(GfVec3f(0, 0, -1)).GetNormalized();
-                    lColor = light->GetColor() * light->GetIntensity();
-                } else if (light->GetLightType() == HdPrimTypeTokens->domeLight && !_envMapRowCdf.empty()) {
-                    float u1 = ls.u;
-                    float u2 = ls.v;
-                    auto itY = std::lower_bound(_envMapRowCdf.begin(), _envMapRowCdf.end(), u1);
-                    int y = std::clamp((int)std::distance(_envMapRowCdf.begin(), itY) - 1, 0, _envMapHeight - 1);
-                    const float* colCdf = &_envMapColCdf[y * (_envMapWidth + 1)];
-                    auto itX = std::lower_bound(colCdf, colCdf + _envMapWidth + 1, u2);
-                    int x = std::clamp((int)std::distance(colCdf, itX) - 1, 0, _envMapWidth - 1);
-                    float theta = M_PI * (float)(y + 0.5f) / (float)_envMapHeight;
-                    float phi = 2.0f * M_PI * (float)(x + 0.5f) / (float)_envMapWidth;
-                    float sinThetaL = std::max(1e-6f, std::sin(theta));
-                    GfVec3f localDir(sinThetaL * std::sin(phi), std::cos(theta), -sinThetaL * std::cos(phi));
-                    lDir = GfMatrix4f(light->GetTransform()).TransformDir(localDir).GetNormalized();
-                    size_t idx = (y * _envMapWidth + x) * 3;
-                    GfVec3f texColor(_envMapPixels[idx], _envMapPixels[idx+1], _envMapPixels[idx+2]);
-                    lColor = GfCompMult(texColor, light->GetColor()) * light->GetIntensity();
-                    if (_envMapTotalLuminance > 0) {
-                        float lum = 0.2126f * texColor[0] + 0.7152f * texColor[1] + 0.0722f * texColor[2];
-                        float pdf = lum / (_envMapTotalLuminance * (M_PI / (float)_envMapHeight) * (2.0f * M_PI / (float)_envMapWidth) * sinThetaL);
-                        lightPdf *= std::max(pdf, 1e-6f);
-                    }
-                } else if (light->GetLightType() == HdPrimTypeTokens->rectLight) {
-                    GfVec3f lPosLocal((ls.u - 0.5f) * light->GetWidth(), (ls.v - 0.5f) * light->GetHeight(), 0.0f);
-                    GfVec3f lPosWorld = GfMatrix4f(light->GetTransform()).Transform(lPosLocal);
-                    GfVec3f toLight = lPosWorld - hitPos;
-                    lightDist = toLight.GetLength();
-                    lDir = toLight / lightDist;
-                    float area = light->GetWidth() * light->GetHeight();
-                    if (area > 0) {
-                        GfVec3f lNormal = GfMatrix4f(light->GetTransform()).TransformDir(GfVec3f(0, 0, -1)).GetNormalized();
-                        float cosThetaL = std::max(0.0f, GfDot(lNormal, -lDir));
-                        if (cosThetaL > 0) {
-                            lightPdf *= (lightDist * lightDist) / (area * cosThetaL);
-                            lColor = light->GetColor() * light->GetIntensity();
-                        } else {
-                            lightDist = -1.0f;
-                        }
-                    }
-                } else {
-                    GfVec3f lPos = GfMatrix4f(light->GetTransform()).ExtractTranslation();
-                    GfVec3f toLight = lPos - hitPos;
-                    lightDist = toLight.GetLength();
-                    lDir = toLight / lightDist;
-                    lightPdf *= (lightDist * lightDist);
-                    lColor = light->GetColor() * light->GetIntensity();
-                }
-
-                if (lightDist > 0 && light->GetLightType() != HdPrimTypeTokens->domeLight && light->GetLightType() != HdPrimTypeTokens->distantLight) {
-                    float coneAngle = light->GetShapingConeAngle();
-                    if (coneAngle < 180.0f) {
-                        GfVec3f lNormal = GfMatrix4f(light->GetTransform()).TransformDir(GfVec3f(0, 0, -1)).GetNormalized();
-                        float cosTheta = GfDot(lNormal, -lDir);
-                        float coneAngleRad = coneAngle * (float)(M_PI / 180.0);
-                        float cosConeAngle = std::cos(coneAngleRad);
-                        if (cosTheta <= cosConeAngle) {
-                            lColor = GfVec3f(0.0f);
-                        } else {
-                            float softness = light->GetShapingConeSoftness();
-                            if (softness > 0.0f) {
-                                float innerAngleRad = coneAngleRad * (1.0f - softness);
-                                float cosInnerAngle = std::cos(innerAngleRad);
-                                if (cosTheta < cosInnerAngle) {
-                                    float factor = (cosTheta - cosConeAngle) / (cosInnerAngle - cosConeAngle);
-                                    factor = factor * factor * (3.0f - 2.0f * factor);
-                                    lColor *= factor;
-                                }
-                            }
-                        }
-                    }
-                }
-            };
-
-            auto EvaluatePHat = [&](const GfVec3f& lDir, const GfVec3f& lColor) -> float {
+            LightSample ls = {0}; auto EvaluatePHat = [&](const GfVec3f& lDir, const GfVec3f& lColor) -> float {
                 float nDotL = std::max(0.0f, GfDot(shadingNormal, lDir));
                 if (nDotL <= 0.0f) return 0.0f;
                 
@@ -1752,7 +1840,7 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
                     cand.v = qmc::SampleDimension(sampleIdx, qmcDim++, rng);
                     
                     GfVec3f cLDir; float cLDist; GfVec3f cLColor; float cLPdf;
-                    EvaluateLight(cand, cLDir, cLDist, cLColor, cLPdf);
+                    EvaluateLight(cand, hitPos, cLDir, cLDist, cLColor, cLPdf);
                     float p_hat = EvaluatePHat(cLDir, cLColor);
                     
                     float weight = (cLPdf > 0.0f) ? (p_hat / cLPdf) : 0.0f;
@@ -1763,7 +1851,7 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
                 float p_hat_ris = 0.0f;
                 if (risReservoir.sample.lightIdx != -1) {
                     GfVec3f cLDir; float cLDist; GfVec3f cLColor; float cLPdf;
-                    EvaluateLight(risReservoir.sample, cLDir, cLDist, cLColor, cLPdf);
+                    EvaluateLight(risReservoir.sample, hitPos, cLDir, cLDist, cLColor, cLPdf);
                     p_hat_ris = EvaluatePHat(cLDir, cLColor);
                     risReservoir.W = (p_hat_ris > 0.0f) ? (risReservoir.w_sum / (p_hat_ris * risReservoir.M)) : 0.0f;
                 }
@@ -1777,7 +1865,7 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
                 if (temporalReservoir->sample.lightIdx != -1 && temporalReservoir->M > 0) {
                     temporalReservoir->M = std::min(temporalReservoir->M, 20 * M_init);
                     GfVec3f cLDir; float cLDist; GfVec3f cLColor; float cLPdf;
-                    EvaluateLight(temporalReservoir->sample, cLDir, cLDist, cLColor, cLPdf);
+                    EvaluateLight(temporalReservoir->sample, hitPos, cLDir, cLDist, cLColor, cLPdf);
                     p_hat_temporal = EvaluatePHat(cLDir, cLColor);
                     
                     float randVal2 = qmc::SampleDimension(sampleIdx, qmcDim++, rng);
@@ -1787,7 +1875,7 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
                 
                 float p_hat_final = 0.0f;
                 if (combined.sample.lightIdx != -1) {
-                    EvaluateLight(combined.sample, lDir, lightDist, lColor, lightPdf);
+                    EvaluateLight(combined.sample, hitPos, lDir, lightDist, lColor, lightPdf);
                     p_hat_final = EvaluatePHat(lDir, lColor);
                     combined.W = (p_hat_final > 0.0f) ? (combined.w_sum / (p_hat_final * combined.M)) : 0.0f;
                     light = _activeLights[combined.sample.lightIdx];
@@ -1804,7 +1892,7 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
                 cand.lightIdx = lightIdx;
                 cand.u = qmc::SampleDimension(sampleIdx, qmcDim++, rng);
                 cand.v = qmc::SampleDimension(sampleIdx, qmcDim++, rng);
-                EvaluateLight(cand, lDir, lightDist, lColor, lightPdf);
+                EvaluateLight(cand, hitPos, lDir, lightDist, lColor, lightPdf);
                 light = _activeLights[cand.lightIdx];
             }
 
@@ -1851,7 +1939,7 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
                         float coatAtten = 1.0f;
                         GfVec3f coatSpecDirect(0.0f);
                         if (hit.coat > 0.0f && !isInside) {
-                            float coatF = hit.coat * FresnelDielectric(GfDot(-currentRayDir, shadingNormal), iorStack.back(), hit.coatIor);
+                            float coatF = hit.coat * FresnelDielectric(GfDot(-currentRayDir, shadingNormal), mediumStack.back().ior, hit.coatIor);
                             coatAtten = 1.0f - coatF;
                             // Coat specular lobe
                             float coatAlpha = std::max(0.001f, hit.coatRoughness * hit.coatRoughness);
@@ -1868,7 +1956,7 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
                         SampledSpectrum bsdf = RGBToSpectrum(combinedBsdf, lambda);
 
                         // PDF for MIS
-                        float fresnel_eval = FresnelDielectric(nDotV_eval, iorStack.back(), hit.ior);
+                        float fresnel_eval = FresnelDielectric(nDotV_eval, etaI_fresnel, etaT_fresnel);
                         float reflectProb = fresnel_eval * hit.specular;
                         if (hit.metallic > 0.0f) reflectProb = std::max(reflectProb, hit.metallic);
                         
@@ -1940,7 +2028,7 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
 
         // --- Coat Layer (Fix 2: energy conservation) ---
         if (hit.coat > 0.0f && !isInside) {
-            float coatFresnel = hit.coat * FresnelDielectric(GfDot(currentRayDir, shadingNormal), iorStack.back(), hit.coatIor);
+            float coatFresnel = hit.coat * FresnelDielectric(GfDot(currentRayDir, shadingNormal), mediumStack.back().ior, hit.coatIor);
             if (qmc::SampleDimension(sampleIdx, qmcDim++, rng) < coatFresnel) {
                 if (reflectionBounces >= (isInteractive ? 1 : _maxReflectionBounces)) break;
                 reflectionBounces++;
@@ -2036,7 +2124,7 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
         }
 
         // --- Indirect Path Selection (BSDF Sampling) ---
-        float fresnel = FresnelDielectric(GfDot(currentRayDir, hit.smoothNormal), iorStack.back(), hit.ior);
+        float fresnel = FresnelDielectric(GfDot(currentRayDir, hit.smoothNormal), etaI_fresnel, etaT_fresnel);
         float reflectProb = fresnel * hit.specular;
         if (hit.metallic > 0.0f) reflectProb = std::max(reflectProb, hit.metallic);
         reflectProb = std::min(reflectProb, 1.0f);
@@ -2101,10 +2189,10 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
             
             if (sssProb + transProb > 1e-6f && remainingProb < sssProb + transProb) {
                 // Refraction (Both Transmission and SSS refract into the volume)
-                float etaI = iorStack.back();
+                float etaI = mediumStack.back().ior;
                 float etaT = hit.ior;
                 if (isInside) {
-                    etaT = (iorStack.size() > 1) ? iorStack[iorStack.size() - 2] : 1.0f;
+                    etaT = (mediumStack.size() > 1) ? mediumStack[mediumStack.size() - 2].ior : 1.0f;
                 }
                 
                 float eta = etaI / etaT;
@@ -2137,9 +2225,9 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
                         currentRayDir = refractDir;
                         currentRayOrigin = hitPos - n * 1e-4f;
                         if (isInside) {
-                            if (iorStack.size() > 1) iorStack.pop_back();
+                            if (mediumStack.size() > 1) mediumStack.pop_back();
                         } else {
-                            iorStack.push_back(hit.ior);
+                            mediumStack.push_back(MediumState{hit.ior, hit.transmissionScatter, hit.transmissionDepth});
                         }
                         
                         if (remainingProb >= sssProb) {
@@ -2197,7 +2285,7 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
                     
                     lastBsdfPdf = combinedPdf * (1.0f - reflectProb) * diffProb;
                     
-                    float fresnelOut = FresnelDielectric(GfDot(diffuseDir, shadingNormal), iorStack.back(), hit.ior);
+                    float fresnelOut = FresnelDielectric(GfDot(diffuseDir, shadingNormal), etaI_fresnel, etaT_fresnel);
                     float diffFresnelAtten = 1.0f - fresnelOut * hit.specular;
                     GfVec3f diffuseBase = hit.baseColor * diffFresnelAtten / (float)M_PI;
                     
@@ -2211,7 +2299,7 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
                     
                     lastBsdfPdf = pdfBsdf * (1.0f - reflectProb) * diffProb;
                     
-                    float fresnelOut = FresnelDielectric(GfDot(diffuseDir, shadingNormal), iorStack.back(), hit.ior);
+                    float fresnelOut = FresnelDielectric(GfDot(diffuseDir, shadingNormal), etaI_fresnel, etaT_fresnel);
                     float diffFresnelAtten = 1.0f - fresnelOut * hit.specular;
                     
                     GfVec3f diffuseBase = hit.baseColor * diffFresnelAtten / (float)M_PI;

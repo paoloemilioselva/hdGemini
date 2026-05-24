@@ -162,6 +162,34 @@ static void _ProcessNodeUpstream(
             }
         }
         material->SetDiffuseColor(baseColor * base);
+    } else if (shaderId == TfToken("GeminiWater")) {
+        material->SetIor(1.33f);
+        material->SetTransmission(1.0f);
+        material->SetRoughness(0.0f);
+        material->SetMetallic(0.0f);
+        material->SetSpecular(1.0f);
+        material->SetDiffuseColor(GfVec3f(1.0f)); // Pure transmission
+        
+        bool hasScatterParams = false;
+        
+        for (auto const& param : node.parameters) {
+            if (param.first == TfToken("ior") && param.second.IsHolding<float>()) {
+                material->SetIor(param.second.UncheckedGet<float>());
+            } else if (param.first == TfToken("scatteringColor") && param.second.IsHolding<GfVec3f>()) {
+                material->SetTransmissionScatter(param.second.UncheckedGet<GfVec3f>());
+                hasScatterParams = true;
+            } else if (param.first == TfToken("scatteringDepth") && param.second.IsHolding<float>()) {
+                material->SetTransmissionDepth(param.second.UncheckedGet<float>());
+                hasScatterParams = true;
+            } else if (param.first == TfToken("roughness") && param.second.IsHolding<float>()) {
+                material->SetRoughness(param.second.UncheckedGet<float>());
+            }
+        }
+        
+        if (!hasScatterParams || material->GetTransmissionDepth() <= 0.0f) {
+            material->SetTransmissionDepth(10.0f);
+            material->SetTransmissionScatter(GfVec3f(0.02f, 0.15f, 0.25f));
+        }
     } else if (shaderId == TfToken("ND_open_pbr_surface_surfaceshader") ||
                shaderId == TfToken("open_pbr_surface")) {
         float base = 1.0f;

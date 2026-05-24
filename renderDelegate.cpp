@@ -95,6 +95,18 @@ HdGeminiRenderDelegate::_Initialize()
     if (_counterResourceRegistry.fetch_add(1) == 0) {
         _resourceRegistry = std::make_shared<HdResourceRegistry>();
     }
+    
+    // Create fallback GeminiWater material for ocean meshes
+    HdGeminiMaterial* waterMat = new HdGeminiMaterial(SdfPath("/GeminiWater_Default"));
+    waterMat->SetIor(1.33f);
+    waterMat->SetTransmission(1.0f);
+    waterMat->SetRoughness(0.0f);
+    waterMat->SetMetallic(0.0f);
+    waterMat->SetSpecular(1.0f);
+    waterMat->SetDiffuseColor(GfVec3f(1.0f));
+    waterMat->SetTransmissionDepth(10.0f);
+    waterMat->SetTransmissionScatter(GfVec3f(0.02f, 0.15f, 0.25f));
+    AddMaterial(SdfPath("/GeminiWater_Default"), waterMat);
 }
 
 HdGeminiRenderDelegate::~HdGeminiRenderDelegate()
@@ -106,6 +118,12 @@ HdGeminiRenderDelegate::~HdGeminiRenderDelegate()
         }
     }
     _renderThread.StopThread();
+    
+    auto it = _materials.find(SdfPath("/GeminiWater_Default"));
+    if (it != _materials.end()) {
+        delete it->second;
+        _materials.erase(it);
+    }
 }
 
 HdRenderParam*
@@ -505,9 +523,9 @@ HdGeminiRenderDelegate::GetRenderSettingDescriptors() const
         VtValue(0.0f)
     });
     list.push_back({
-        "Ocean Resolution",
-        HdGeminiRenderSettingsTokens->oceanResolution,
-        VtValue(256)
+        "Ocean Dicing Scale",
+        HdGeminiRenderSettingsTokens->oceanDicingScale,
+        VtValue(1.0f)
     });
     list.push_back({
         "Ocean Size",
@@ -517,6 +535,11 @@ HdGeminiRenderDelegate::GetRenderSettingDescriptors() const
     list.push_back({
         "Ocean Amplitude",
         HdGeminiRenderSettingsTokens->oceanAmplitude,
+        VtValue(0.0f)
+    });
+    list.push_back({
+        "Ocean Amplitude (Fine)",
+        HdGeminiRenderSettingsTokens->oceanAmplitudeFine,
         VtValue(0.0f)
     });
     list.push_back({
@@ -549,6 +572,16 @@ HdGeminiRenderDelegate::GetRenderSettingDescriptors() const
         "Ocean Repeat",
         HdGeminiRenderSettingsTokens->oceanRepeat,
         VtValue(true)
+    });
+    list.push_back({
+        "Ocean Scattering Color",
+        HdGeminiRenderSettingsTokens->oceanScatteringColor,
+        VtValue(GfVec3f(0.02f, 0.15f, 0.25f))
+    });
+    list.push_back({
+        "Ocean Scattering Depth",
+        HdGeminiRenderSettingsTokens->oceanScatteringDepth,
+        VtValue(10.0f)
     });
     return list;
 }
@@ -632,11 +665,15 @@ HdGeminiRenderDelegate::GetRenderSetting(TfToken const& key) const
         return VtValue(false);
     } else if (key == HdGeminiRenderSettingsTokens->oceanWaterHeight) {
         return VtValue(0.0f);
-    } else if (key == HdGeminiRenderSettingsTokens->oceanResolution) {
+    } else if (key == HdGeminiRenderSettingsTokens->oceanFFTResolution) {
         return VtValue(256);
+    } else if (key == HdGeminiRenderSettingsTokens->oceanDicingScale) {
+        return VtValue(1.0f);
     } else if (key == HdGeminiRenderSettingsTokens->oceanSize) {
         return VtValue(10.0f);
     } else if (key == HdGeminiRenderSettingsTokens->oceanAmplitude) {
+        return VtValue(0.0f);
+    } else if (key == HdGeminiRenderSettingsTokens->oceanAmplitudeFine) {
         return VtValue(0.0f);
     } else if (key == HdGeminiRenderSettingsTokens->oceanChoppiness) {
         return VtValue(1.2f);
@@ -652,6 +689,10 @@ HdGeminiRenderDelegate::GetRenderSetting(TfToken const& key) const
         return VtValue(0.0f);
     } else if (key == HdGeminiRenderSettingsTokens->oceanRepeat) {
         return VtValue(true);
+    } else if (key == HdGeminiRenderSettingsTokens->oceanScatteringColor) {
+        return VtValue(GfVec3f(0.02f, 0.15f, 0.25f));
+    } else if (key == HdGeminiRenderSettingsTokens->oceanScatteringDepth) {
+        return VtValue(10.0f);
     }
     
     return VtValue();
@@ -779,14 +820,20 @@ HdGeminiRenderDelegate::SetRenderSetting(TfToken const& key, VtValue const& valu
     } else if (key == HdGeminiRenderSettingsTokens->oceanWaterHeight) {
         _renderer.SetOceanWaterHeight(getFloat(value, 0.0f));
         changed = true;
-    } else if (key == HdGeminiRenderSettingsTokens->oceanResolution) {
-        _renderer.SetOceanResolution(getInt(value, 256));
+    } else if (key == HdGeminiRenderSettingsTokens->oceanFFTResolution) {
+        _renderer.SetOceanFFTResolution(getInt(value, 256));
+        changed = true;
+    } else if (key == HdGeminiRenderSettingsTokens->oceanDicingScale) {
+        _renderer.SetOceanDicingScale(getFloat(value, 1.0f));
         changed = true;
     } else if (key == HdGeminiRenderSettingsTokens->oceanSize) {
         _renderer.SetOceanSize(getFloat(value, 10.0f));
         changed = true;
     } else if (key == HdGeminiRenderSettingsTokens->oceanAmplitude) {
         _renderer.SetOceanAmplitude(getFloat(value, 0.0f));
+        changed = true;
+    } else if (key == HdGeminiRenderSettingsTokens->oceanAmplitudeFine) {
+        _renderer.SetOceanAmplitudeFine(getFloat(value, 0.0f));
         changed = true;
     } else if (key == HdGeminiRenderSettingsTokens->oceanChoppiness) {
         _renderer.SetOceanChoppiness(getFloat(value, 1.2f));
@@ -815,6 +862,26 @@ HdGeminiRenderDelegate::SetRenderSetting(TfToken const& key, VtValue const& valu
             _renderer.SetOceanRepeat(value.Get<bool>());
             changed = true;
         }
+    } else if (key == HdGeminiRenderSettingsTokens->oceanScatteringColor) {
+        if (value.IsHolding<GfVec3f>()) {
+            GfVec3f c = value.Get<GfVec3f>();
+            _renderer.SetOceanScatteringColor(c);
+            auto it = _materials.find(SdfPath("/GeminiWater_Default"));
+            if (it != _materials.end()) {
+                it->second->SetTransmissionScatter(c);
+            }
+            changed = true;
+        }
+    } else if (key == HdGeminiRenderSettingsTokens->oceanScatteringDepth) {
+        float d = 10.0f;
+        if (value.IsHolding<float>()) d = value.Get<float>();
+        else if (value.IsHolding<double>()) d = (float)value.Get<double>();
+        _renderer.SetOceanScatteringDepth(d);
+        auto it = _materials.find(SdfPath("/GeminiWater_Default"));
+        if (it != _materials.end()) {
+            it->second->SetTransmissionDepth(d);
+        }
+        changed = true;
     }
 
     if (changed || postProcessChanged) {

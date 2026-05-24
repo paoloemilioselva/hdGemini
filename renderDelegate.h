@@ -62,16 +62,20 @@ TF_DECLARE_PUBLIC_TOKENS(HdGeminiAovTokens, HD_GEMINI_AOV_TOKENS);
     (adaptiveMinSamples)                 \
     (oceanEnable)                        \
     (oceanWaterHeight)                   \
-    (oceanResolution)                    \
+    (oceanFFTResolution)                 \
+    (oceanDicingScale)                   \
     (oceanSize)                          \
     (oceanAmplitude)                     \
+    (oceanAmplitudeFine)                 \
     (oceanChoppiness)                    \
     (oceanWindSpeed)                     \
     (oceanWindDirectionX)                \
     (oceanWindDirectionY)                \
     (oceanDisableShader)                 \
     (oceanTime)                          \
-    (oceanRepeat)
+    (oceanRepeat)                        \
+    (oceanScatteringColor)               \
+    (oceanScatteringDepth)
 
 TF_DECLARE_PUBLIC_TOKENS(HdGeminiRenderSettingsTokens, HD_GEMINI_RENDER_SETTINGS_TOKENS);
 

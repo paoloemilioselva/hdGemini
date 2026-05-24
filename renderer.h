@@ -91,15 +91,19 @@ public:
 
     void SetOceanEnable(bool enable) { _oceanEnable = enable; }
     void SetOceanWaterHeight(float height) { _oceanWaterHeight = height; }
-    void SetOceanResolution(int res) { _oceanParams.resolution = res; }
+    void SetOceanFFTResolution(int res) { _oceanParams.fftResolution = res; }
+    void SetOceanDicingScale(float scale) { _oceanParams.dicingScale = scale; }
     void SetOceanSize(float size) { _oceanParams.size = size; }
     void SetOceanAmplitude(float amp) { _oceanParams.amplitude = amp; }
+    void SetOceanAmplitudeFine(float amp) { _oceanParams.amplitudeFine = amp; }
     void SetOceanChoppiness(float chop) { _oceanParams.choppiness = chop; }
     void SetOceanWindSpeed(float speed) { _oceanParams.windSpeed = speed; }
     void SetOceanWindDirection(const GfVec2f& dir) { _oceanParams.windDirection = dir; }
     void SetOceanDisableShader(bool disable) { _oceanParams.disableShader = disable; }
     void SetOceanTime(float time) { _time = time; }
     void SetOceanRepeat(bool repeat) { _oceanParams.repeat = repeat; }
+    void SetOceanScatteringColor(const GfVec3f& color) { _oceanParams.scatteringColor = color; }
+    void SetOceanScatteringDepth(float depth) { _oceanParams.scatteringDepth = depth; }
     
     const HdGeminiOceanParams& GetOceanParams() const { return _oceanParams; }
 
@@ -149,6 +153,7 @@ private:
     std::vector<GfVec3f> _globalOceanBasePoints;
     std::vector<GfVec3i> _globalOceanIndices;
     std::vector<GfVec2f> _globalOceanUvs;
+    std::vector<GfVec3f> _globalOceanColors;
     float _time = 0.0f;
 
     struct SceneInstance {
@@ -226,6 +231,7 @@ private:
         // Volume properties
         bool isVolumeHit = false;
         const void* densityGrid = nullptr;
+        bool isOcean = false;
     };
 
     struct TextureData {

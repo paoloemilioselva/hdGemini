@@ -52,6 +52,11 @@
   - Smooth shading via computed and triangulated vertex normals, featuring mathematically exact normal transformations that gracefully handle non-uniform mesh scaling.
   - Seamless handling of `leftHanded` vs `rightHanded` mesh orientation via correct winding order adjustments and tangent space synchronization for accurate normal mapping regardless of topology.
   - Support for animated meshes via ExtComputations (e.g., skinning).
+  - **Procedural FFT Oceans**: Dynamically generated, animated ocean waves utilizing Fast Fourier Transforms (FFT) directly within the render delegate.
+    - **Global & Per-Prim Modes**: Can be enabled globally (generating an infinite ocean plane) or applied directly to user-authored mesh prims.
+    - **Adaptive Subdivision**: Per-prim authored ocean geometry seamlessly integrates with OpenSubdiv, allowing low-poly base meshes to be cleanly subdivided and refined before dynamic FFT displacement is applied.
+    - Fully configurable parameters available dynamically via Render Settings: Size, Amplitude, Choppiness, Wind Speed, Direction, and Resolution.
+    - Supports an `oceanRepeat` toggle to seamlessly repeat the simulated wave patch infinitely or cleanly constrain it to a single localized tile.
 - **Lighting**:
   - Full suite of Hydra light types: Distant, Rect, Sphere, Point, and Dome lights.
   - Advanced **Spot Light Shaping**: Supports cone angle, cone softness, and smoothstep falloff.

@@ -116,6 +116,8 @@ add_library( ${DELEGATE_NAME} SHARED
     renderBuffer.h
     mesh.cpp
     mesh.h
+    curves.cpp
+    curves.h
     camera.cpp
     camera.h
     instancer.cpp

@@ -4,6 +4,8 @@
 #include "mesh.h"
 #include "instancer.h"
 #include "light.h"
+#include "mesh.h"
+#include "curves.h"
 #include "material.h"
 #include "volume.h"
 #include "field.h"
@@ -425,6 +427,48 @@ HdGeminiRenderer::_PrepareScene(HdRenderThread *renderThread, HdGeminiRenderDele
             inst.subset = &subset;
             inst.material = delegate->GetMaterial(subset.materialId);
             inst.transform = mesh->GetTransform();
+            inst.invTransform = inst.transform.GetInverse();
+            inst.bounds = TransformBounds(subset.range, inst.transform);
+            inst.centroid = (inst.bounds.GetMin() + inst.bounds.GetMax()) * 0.5f;
+            _instances.push_back(inst);
+        }
+    }
+
+    const auto& basisCurves = delegate->GetBasisCurves();
+    for (auto const& item : basisCurves) {
+        if (renderThread->IsStopRequested()) return;
+        HdGeminiBasisCurves* curves = item.second;
+        if (!curves->IsVisible()) continue;
+
+        if (!curves->GetInstancerId().IsEmpty()) {
+            HdGeminiInstancer* instancer = delegate->GetInstancer(curves->GetInstancerId());
+            if (instancer) {
+                VtMatrix4dArray transforms = instancer->ComputeInstanceTransforms(curves->GetId());
+                for (const auto& t : transforms) {
+                    for (const auto& subset : curves->GetSubsets()) {
+                        SceneInstance inst;
+                        inst.type = SceneInstance::Type::BasisCurves;
+                        inst.curves = curves;
+                        inst.curveSubset = &subset;
+                        inst.material = delegate->GetMaterial(subset.materialId);
+                        inst.transform = GfMatrix4f(t) * curves->GetTransform();
+                        inst.invTransform = inst.transform.GetInverse();
+                        inst.bounds = TransformBounds(subset.range, inst.transform);
+                        inst.centroid = (inst.bounds.GetMin() + inst.bounds.GetMax()) * 0.5f;
+                        _instances.push_back(inst);
+                    }
+                }
+            }
+            continue;
+        }
+
+        for (const auto& subset : curves->GetSubsets()) {
+            SceneInstance inst;
+            inst.type = SceneInstance::Type::BasisCurves;
+            inst.curves = curves;
+            inst.curveSubset = &subset;
+            inst.material = delegate->GetMaterial(subset.materialId);
+            inst.transform = curves->GetTransform();
             inst.invTransform = inst.transform.GetInverse();
             inst.bounds = TransformBounds(subset.range, inst.transform);
             inst.centroid = (inst.bounds.GetMin() + inst.bounds.GetMax()) * 0.5f;

@@ -198,7 +198,11 @@ void BVH::_Subdivide(int nodeIdx, int start, int end) {
 
 bool BVH::Intersect(const GfVec3f& rayOrigin, const GfVec3f& rayDir, float& t, GfVec3f& normal, GfVec2f& uv, GfVec3f& smoothNormal, GfVec3f& dpdu, GfVec3f& dpdv, GfVec3f& smoothColor, int& materialIndex) const {
     if (_nodes.empty()) return false;
-    return _IntersectNode(0, rayOrigin, rayDir, t, normal, uv, smoothNormal, dpdu, dpdv, smoothColor, materialIndex);
+    if (_isCurveBVH) {
+        return _IntersectCurveNode(0, rayOrigin, rayDir, t, normal, uv, smoothNormal, dpdu, dpdv, smoothColor, materialIndex);
+    } else {
+        return _IntersectNode(0, rayOrigin, rayDir, t, normal, uv, smoothNormal, dpdu, dpdv, smoothColor, materialIndex);
+    }
 }
 
 bool BVH::_IntersectNode(int nodeIdx, const GfVec3f& rayOrigin, const GfVec3f& rayDir, float& t, GfVec3f& normal, GfVec2f& uv, GfVec3f& smoothNormal, GfVec3f& dpdu, GfVec3f& dpdv, GfVec3f& smoothColor, int& materialIndex) const {
@@ -237,6 +241,156 @@ bool BVH::_IntersectNode(int nodeIdx, const GfVec3f& rayOrigin, const GfVec3f& r
     } else {
         bool hitLeft = _IntersectNode(node.leftChild, rayOrigin, rayDir, t, normal, uv, smoothNormal, dpdu, dpdv, smoothColor, materialIndex);
         bool hitRight = _IntersectNode(node.leftChild + 1, rayOrigin, rayDir, t, normal, uv, smoothNormal, dpdu, dpdv, smoothColor, materialIndex);
+        return hitLeft || hitRight;
+    }
+}
+
+static bool IntersectCurveSegment(const GfVec3f& ro, const GfVec3f& rd, const BVHCurveSegment& seg, float& tHit, GfVec3f& normalHit, GfVec2f& uvHit)
+{
+    if (seg.hasNormals) {
+        GfVec3f edge = seg.p1 - seg.p0;
+        GfVec3f n_avg = (seg.n0 + seg.n1).GetNormalized();
+        GfVec3f bitangent = GfCross(edge, n_avg).GetNormalized();
+        
+        GfVec3f v0 = seg.p0 - bitangent * (seg.w0 * 0.5f);
+        GfVec3f v1 = seg.p0 + bitangent * (seg.w0 * 0.5f);
+        GfVec3f v2 = seg.p1 + bitangent * (seg.w1 * 0.5f);
+        GfVec3f v3 = seg.p1 - bitangent * (seg.w1 * 0.5f);
+        
+        float t, u, v;
+        if (IntersectTriangle(ro, rd, v0, v1, v2, t, u, v)) {
+            tHit = t; normalHit = GfCross(v1-v0, v2-v0).GetNormalized(); uvHit = GfVec2f(u, v); return true;
+        }
+        if (IntersectTriangle(ro, rd, v0, v2, v3, t, u, v)) {
+            tHit = t; normalHit = GfCross(v2-v0, v3-v0).GetNormalized(); uvHit = GfVec2f(u, v); return true;
+        }
+        return false;
+    } else {
+        GfVec3f pa = seg.p0; GfVec3f pb = seg.p1;
+        float r = (seg.w0 + seg.w1) * 0.25f; // avg radius
+        GfVec3f ba = pb - pa;
+        float baba = GfDot(ba, ba);
+        if (baba < 1e-8f) return false;
+        
+        GfVec3f oc = ro - pa;
+        float bard = GfDot(ba, rd);
+        float baoc = GfDot(ba, oc);
+        float k2 = baba - bard * bard;
+        float k1 = baba * GfDot(oc, rd) - baoc * bard;
+        float k0 = baba * GfDot(oc, oc) - baoc * baoc - r * r * baba;
+        float h = k1 * k1 - k2 * k0;
+        if (h < 0.0f) return false;
+        
+        h = std::sqrt(h);
+        float t = (-k1 - h) / k2;
+        float y = baoc + t * bard;
+        if (y > 0.0f && y < baba && t > 1e-6f) {
+            tHit = t;
+            GfVec3f p = ro + rd * tHit;
+            normalHit = (p - pa - ba * (y / baba)).GetNormalized();
+            uvHit = GfVec2f(0.5f, y / baba);
+            return true;
+        }
+        return false;
+    }
+}
+
+void BVH::BuildCurves(const VtVec3fArray& points, const VtFloatArray& widths, const VtVec3fArray& normals, const VtIntArray& curveVertexCounts, const VtIntArray& indices, int materialId) {
+    _isCurveBVH = true;
+    _curveSegments.clear();
+    _nodes.clear();
+    if (points.empty() || curveVertexCounts.empty()) return;
+    
+    int pointOffset = 0;
+    for (size_t i = 0; i < curveVertexCounts.size(); ++i) {
+        int count = curveVertexCounts[i];
+        for (int j = 0; j < count - 1; ++j) {
+            int i0 = pointOffset + j;
+            int i1 = pointOffset + j + 1;
+            if (!indices.empty()) { i0 = indices[i0]; i1 = indices[i1]; }
+            
+            BVHCurveSegment seg;
+            seg.p0 = points[i0]; seg.p1 = points[i1];
+            seg.w0 = (i0 < widths.size()) ? widths[i0] : 0.1f;
+            seg.w1 = (i1 < widths.size()) ? widths[i1] : 0.1f;
+            if (!normals.empty() && i0 < normals.size() && i1 < normals.size()) {
+                seg.n0 = normals[i0]; seg.n1 = normals[i1]; seg.hasNormals = true;
+            } else { seg.hasNormals = false; }
+            seg.centroid = (seg.p0 + seg.p1) * 0.5f;
+            seg.materialIndex = materialId;
+            _curveSegments.push_back(seg);
+        }
+        pointOffset += count;
+    }
+    
+    if (_curveSegments.empty()) return;
+    _nodes.reserve(_curveSegments.size() * 2);
+    _nodes.push_back(BVHNode());
+    _SubdivideCurves(0, 0, (int)_curveSegments.size());
+}
+
+void BVH::_SubdivideCurves(int nodeIdx, int start, int end) {
+    BVHNode& node = _nodes[nodeIdx];
+    node.bounds.SetEmpty();
+    for (int i = start; i < end; ++i) {
+        float r = std::max(_curveSegments[i].w0, _curveSegments[i].w1) * 0.5f;
+        GfVec3f rvec(r);
+        node.bounds.ExtendBy(_curveSegments[i].p0 - rvec);
+        node.bounds.ExtendBy(_curveSegments[i].p0 + rvec);
+        node.bounds.ExtendBy(_curveSegments[i].p1 - rvec);
+        node.bounds.ExtendBy(_curveSegments[i].p1 + rvec);
+    }
+
+    int count = end - start;
+    if (count <= 4) { node.leftChild = -start - 1; node.triangleCount = count; return; }
+
+    GfVec3f size = node.bounds.GetSize();
+    int axis = 0;
+    if (size[1] > size[0]) axis = 1;
+    if (size[2] > size[axis]) axis = 2;
+    float splitPos = node.bounds.GetMin()[axis] + size[axis] * 0.5f;
+
+    int i = start; int j = end - 1;
+    while (i <= j) {
+        if (_curveSegments[i].centroid[axis] < splitPos) { i++; } else { std::swap(_curveSegments[i], _curveSegments[j]); j--; }
+    }
+
+    int leftCount = i - start;
+    if (leftCount == 0 || leftCount == count) i = start + count / 2;
+
+    int leftChildIdx = (int)_nodes.size();
+    _nodes.push_back(BVHNode()); _nodes.push_back(BVHNode());
+    _nodes[nodeIdx].leftChild = leftChildIdx; _nodes[nodeIdx].triangleCount = 0;
+
+    _SubdivideCurves(leftChildIdx, start, i);
+    _SubdivideCurves(leftChildIdx + 1, i, end);
+}
+
+bool BVH::_IntersectCurveNode(int nodeIdx, const GfVec3f& rayOrigin, const GfVec3f& rayDir, float& t, GfVec3f& normal, GfVec2f& uv, GfVec3f& smoothNormal, GfVec3f& dpdu, GfVec3f& dpdv, GfVec3f& smoothColor, int& materialIndex) const {
+    const BVHNode& node = _nodes[nodeIdx];
+    float tAabb;
+    if (!IntersectAABB(rayOrigin, rayDir, node.bounds, tAabb)) return false;
+    if (tAabb > t) return false;
+
+    if (node.leftChild < 0) {
+        bool hit = false;
+        int start = -node.leftChild - 1;
+        for (int i = 0; i < node.triangleCount; ++i) {
+            const auto& seg = _curveSegments[start + i];
+            float segT; GfVec3f segN; GfVec2f segUV;
+            if (IntersectCurveSegment(rayOrigin, rayDir, seg, segT, segN, segUV)) {
+                if (segT < t) {
+                    t = segT; normal = segN; smoothNormal = segN; uv = segUV;
+                    dpdu = GfVec3f(1,0,0); dpdv = GfVec3f(0,1,0); smoothColor = GfVec3f(0.5f);
+                    materialIndex = seg.materialIndex;
+                    hit = true;
+                }
+            }
+        }
+        return hit;
+    } else {
+        bool hitLeft = _IntersectCurveNode(node.leftChild, rayOrigin, rayDir, t, normal, uv, smoothNormal, dpdu, dpdv, smoothColor, materialIndex);
+        bool hitRight = _IntersectCurveNode(node.leftChild + 1, rayOrigin, rayDir, t, normal, uv, smoothNormal, dpdu, dpdv, smoothColor, materialIndex);
         return hitLeft || hitRight;
     }
 }

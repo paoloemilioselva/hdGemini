@@ -124,6 +124,10 @@ public:
     void RemoveVolume(const SdfPath& id);
     const std::map<SdfPath, class HdGeminiVolume*>& GetVolumes() const { return _volumes; }
 
+    void AddBasisCurves(const SdfPath& id, class HdGeminiBasisCurves* curves);
+    void RemoveBasisCurves(const SdfPath& id);
+    const std::map<SdfPath, class HdGeminiBasisCurves*>& GetBasisCurves() const { return _basisCurves; }
+
     void AddInstancer(const SdfPath& id, HdGeminiInstancer* instancer);
     void RemoveInstancer(const SdfPath& id);
     HdGeminiInstancer* GetInstancer(const SdfPath& id) const;
@@ -159,6 +163,7 @@ private:
 
     std::map<SdfPath, HdGeminiMesh*> _meshes;
     std::map<SdfPath, class HdGeminiVolume*> _volumes;
+    std::map<SdfPath, class HdGeminiBasisCurves*> _basisCurves;
     std::map<SdfPath, HdGeminiInstancer*> _instancers;
     std::map<SdfPath, HdGeminiLight*> _lights;
     std::map<SdfPath, HdGeminiMaterial*> _materials;

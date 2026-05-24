@@ -3,6 +3,7 @@
 #include "renderPass.h"
 #include "renderBuffer.h"
 #include "mesh.h"
+#include "curves.h"
 #include "instancer.h"
 #include "light.h"
 #include "material.h"
@@ -28,6 +29,7 @@ const TfTokenVector HdGeminiRenderDelegate::SUPPORTED_RPRIM_TYPES =
 {
     HdPrimTypeTokens->mesh,
     HdPrimTypeTokens->volume,
+    HdPrimTypeTokens->basisCurves,
 };
 
 const TfTokenVector HdGeminiRenderDelegate::SUPPORTED_SPRIM_TYPES =
@@ -190,6 +192,9 @@ HdGeminiRenderDelegate::CreateRprim(TfToken const& typeId,
     if (typeId == HdPrimTypeTokens->volume) {
         return new HdGeminiVolume(rprimId);
     }
+    if (typeId == HdPrimTypeTokens->basisCurves) {
+        return new HdGeminiBasisCurves(rprimId);
+    }
     return nullptr;
 }
 
@@ -198,6 +203,7 @@ HdGeminiRenderDelegate::DestroyRprim(HdRprim *rPrim)
 {
     if (rPrim) {
         RemoveMesh(rPrim->GetId());
+        RemoveBasisCurves(rPrim->GetId());
         delete rPrim;
     }
 }
@@ -735,6 +741,20 @@ HdGeminiRenderDelegate::RemoveVolume(const SdfPath& id)
     std::lock_guard<std::recursive_mutex> guard(_sceneLock);
     _volumes.erase(id);
     _sceneVersion.fetch_add(1);
+}
+
+void
+HdGeminiRenderDelegate::AddBasisCurves(const SdfPath& id, HdGeminiBasisCurves* curves)
+{
+    std::lock_guard<std::recursive_mutex> lock(_sceneLock);
+    _basisCurves[id] = curves;
+}
+
+void
+HdGeminiRenderDelegate::RemoveBasisCurves(const SdfPath& id)
+{
+    std::lock_guard<std::recursive_mutex> lock(_sceneLock);
+    _basisCurves.erase(id);
 }
 
 void

@@ -12,6 +12,7 @@
 #include "pxr/base/gf/vec2f.h"
 #include "pxr/usd/sdf/assetPath.h"
 #include "mesh.h"
+#include "curves.h"
 #include "spectrum.h"
 #include <vector>
 #include <atomic>
@@ -126,12 +127,17 @@ private:
     int _adaptiveMinSamples = 16;
 
     struct SceneInstance {
-        enum class Type { Mesh, Volume };
+        enum class Type { Mesh, Volume, BasisCurves };
         Type type = Type::Mesh;
 
         // Mesh specific
         HdGeminiMesh* mesh = nullptr;
         const HdGeminiMesh::Subset* subset = nullptr;
+
+        // BasisCurves specific
+        HdGeminiBasisCurves* curves = nullptr;
+        const HdGeminiBasisCurves::Subset* curveSubset = nullptr;
+
         HdGeminiMaterial* material = nullptr;
 
         // Volume specific

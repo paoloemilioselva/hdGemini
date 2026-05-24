@@ -402,20 +402,6 @@ HdGeminiRenderer::_PrepareScene(HdRenderThread *renderThread, HdGeminiRenderDele
             GfMatrix4f viewProj(GfMatrix4f(_viewMatrix) * GfMatrix4f(_projMatrix));
             GfVec3f camPos(GfVec3f(_viewMatrix.GetInverse().ExtractTranslation()));
             mesh->UpdateOcean(viewProj, camPos, _time);
-            
-            SceneInstance inst;
-            inst.type = SceneInstance::Type::Ocean;
-            inst.mesh = mesh;
-            if (!mesh->GetSubsets().empty()) inst.material = delegate->GetMaterial(mesh->GetSubsets()[0].materialId);
-            inst.dynamicBvh = mesh->GetOceanBvh();
-            inst.transform = GfMatrix4f(1.0f);
-            inst.invTransform = GfMatrix4f(1.0f);
-            if (inst.dynamicBvh) {
-                inst.bounds = inst.dynamicBvh->GetBounds();
-                inst.centroid = (inst.bounds.GetMin() + inst.bounds.GetMax()) * 0.5f;
-                _instances.push_back(inst);
-            }
-            continue;
         }
 
         if (!mesh->GetInstancerId().IsEmpty()) {

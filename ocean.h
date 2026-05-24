@@ -14,19 +14,20 @@ PXR_NAMESPACE_USING_DIRECTIVE
 
 struct HdGeminiOceanParams {
     int resolution = 256;
-    float size = 100.0f;
-    float amplitude = 1.0f;
+    float size = 10.0f;
+    float amplitude = 0.0f;
     float choppiness = 1.2f;
-    float windSpeed = 20.0f;
+    float windSpeed = 0.0f;
     float waterHeight = 0.0f;
     GfVec2f windDirection = GfVec2f(1.0f, 1.0f);
     bool disableShader = false;
+    bool repeat = true;
     
     bool operator==(const HdGeminiOceanParams& o) const {
         return resolution == o.resolution && size == o.size && amplitude == o.amplitude &&
                choppiness == o.choppiness && windSpeed == o.windSpeed && 
                waterHeight == o.waterHeight && windDirection == o.windDirection &&
-               disableShader == o.disableShader;
+               disableShader == o.disableShader && repeat == o.repeat;
     }
     bool operator!=(const HdGeminiOceanParams& o) const { return !(*this == o); }
 };

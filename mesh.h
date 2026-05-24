@@ -22,6 +22,8 @@ public:
         VtVec3iArray indices;
         BVH bvh;
         GfRange3f range;
+        VtVec2fArray uvs;
+        VtVec3fArray colors;
     };
 
     HdGeminiMesh(SdfPath const& id);
@@ -49,7 +51,6 @@ public:
     bool IsOcean() const { return _isOcean; }
     const HdGeminiOceanParams& GetOceanParams() const { return _oceanParams; }
     
-    class BVH* GetOceanBvh() const { return _oceanBvh.get(); }
     class HdGeminiOcean* GetOceanSimulator() { return _oceanSimulator.get(); }
     void UpdateOcean(const GfMatrix4f& viewProj, const GfVec3f& cameraPos, float time);
 
@@ -73,10 +74,6 @@ private:
     bool _isOcean = false;
     HdGeminiOceanParams _oceanParams;
     std::unique_ptr<HdGeminiOcean> _oceanSimulator;
-    std::unique_ptr<BVH> _oceanBvh;
-    std::vector<GfVec3f> _oceanBasePoints;
-    std::vector<GfVec3i> _oceanIndices;
-    std::vector<GfVec2f> _oceanUvs;
     
     VtVec3fArray _colors;
     VtVec2fArray _uvs;

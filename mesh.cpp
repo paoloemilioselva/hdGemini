@@ -62,37 +62,27 @@ void HdGeminiMesh::UpdateOcean(const GfMatrix4f& viewProj, const GfVec3f& camera
     
     _oceanSimulator->Update(time);
     
-    if (rebuildTopology || _oceanBasePoints.empty()) {
-        GfRange3f bounds(-GfVec3f(1000.0f), GfVec3f(1000.0f));
-        if (!_subsets.empty()) bounds = _subsets[0].range;
-        
-        GfRange3f worldBounds;
-        for (int i = 0; i < 8; ++i) {
-            GfVec3f corner(
-                (i & 1) ? bounds.GetMax()[0] : bounds.GetMin()[0],
-                (i & 2) ? bounds.GetMax()[1] : bounds.GetMin()[1],
-                (i & 4) ? bounds.GetMax()[2] : bounds.GetMin()[2]
-            );
-            worldBounds.UnionWith(_transform.Transform(corner));
+    if (_points.empty()) return;
+
+    std::vector<GfVec3f> basePoints(_points.begin(), _points.end());
+    std::vector<GfVec3f> displacedPoints, displacedNormals;
+    _oceanSimulator->DisplaceGrid(basePoints, displacedPoints, displacedNormals);
+    
+    VtVec3fArray vtPoints(displacedPoints.begin(), displacedPoints.end());
+    VtVec3fArray vtNormals(displacedNormals.begin(), displacedNormals.end());
+
+    for (auto& subset : _subsets) {
+        if (!subset.indices.empty()) {
+            subset.bvh.Build(vtPoints, subset.indices, subset.uvs, vtNormals, subset.colors, std::vector<int>());
+            
+            subset.range.SetEmpty();
+            for (const auto& tri : subset.indices) {
+                subset.range.ExtendBy(vtPoints[tri[0]]);
+                subset.range.ExtendBy(vtPoints[tri[1]]);
+                subset.range.ExtendBy(vtPoints[tri[2]]);
+            }
         }
-        
-        _oceanBasePoints.clear();
-        _oceanIndices.clear();
-        _oceanUvs.clear();
-        _oceanSimulator->GenerateGridTopology(viewProj, cameraPos, worldBounds, _oceanBasePoints, _oceanIndices, _oceanUvs);
     }
-    
-    std::vector<GfVec3f> points, normals;
-    _oceanSimulator->DisplaceGrid(_oceanBasePoints, points, normals);
-    
-    if (!_oceanBvh) _oceanBvh = std::make_unique<BVH>();
-    VtVec3fArray vtPoints(points.begin(), points.end());
-    VtVec3iArray vtIndices(_oceanIndices.begin(), _oceanIndices.end());
-    VtVec2fArray vtUvs(_oceanUvs.begin(), _oceanUvs.end());
-    VtVec3fArray vtNormals(normals.begin(), normals.end());
-    VtVec3fArray vtColors;
-    std::vector<int> matIndices(_oceanIndices.size(), -1);
-    _oceanBvh->Build(vtPoints, vtIndices, vtUvs, vtNormals, vtColors, matIndices);
 }
 
 HdDirtyBits
@@ -824,12 +814,12 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
             
             HDGEMINI_LOG << "[Gemini]   Created sub-mesh from " << id.GetText() << " for material " << subset.materialId.GetText() << " with " << subset.indices.size() << " triangles." << std::endl;
 
-            VtVec3fArray subsetColors = pair.second.colors.empty() ? _colors : pair.second.colors;
-            VtVec2fArray subsetUvs = pair.second.uvs.empty() ? _uvs : pair.second.uvs;
+            subset.colors = pair.second.colors.empty() ? _colors : pair.second.colors;
+            subset.uvs = pair.second.uvs.empty() ? _uvs : pair.second.uvs;
             VtVec3fArray subsetNormals = pair.second.normals.empty() ? _normals : pair.second.normals;
 
             if (!subset.indices.empty() && !_points.empty()) {
-                subset.bvh.Build(_points, subset.indices, subsetUvs, subsetNormals, subsetColors, std::vector<int>());
+                subset.bvh.Build(_points, subset.indices, subset.uvs, subsetNormals, subset.colors, std::vector<int>());
                 
                 subset.range.SetEmpty();
                 for (const auto& tri : subset.indices) {

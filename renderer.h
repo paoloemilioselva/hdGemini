@@ -99,6 +99,7 @@ public:
     void SetOceanWindDirection(const GfVec2f& dir) { _oceanParams.windDirection = dir; }
     void SetOceanDisableShader(bool disable) { _oceanParams.disableShader = disable; }
     void SetOceanTime(float time) { _time = time; }
+    void SetOceanRepeat(bool repeat) { _oceanParams.repeat = repeat; }
 
 private:
     bool _isConverged = false;

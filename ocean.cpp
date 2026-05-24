@@ -234,8 +234,12 @@ void HdGeminiOcean::Update(float time) {
 GfVec3f HdGeminiOcean::GetDisplacedPosition(const GfVec3f& basePos) const {
     if (!_initialized) return basePos;
 
-    float u = basePos[0] / _params.size;
-    float v = basePos[2] / _params.size;
+    float u = basePos[0] / _params.size + 0.5f;
+    float v = basePos[2] / _params.size + 0.5f;
+
+    if (!_params.repeat && (u < 0.0f || u > 1.0f || v < 0.0f || v > 1.0f)) {
+        return basePos;
+    }
 
     u = u - std::floor(u);
     v = v - std::floor(v);
@@ -269,8 +273,12 @@ GfVec3f HdGeminiOcean::GetDisplacedPosition(const GfVec3f& basePos) const {
 GfVec3f HdGeminiOcean::GetNormal(const GfVec3f& basePos) const {
     if (!_initialized) return GfVec3f(0, 1, 0);
 
-    float u = basePos[0] / _params.size;
-    float v = basePos[2] / _params.size;
+    float u = basePos[0] / _params.size + 0.5f;
+    float v = basePos[2] / _params.size + 0.5f;
+
+    if (!_params.repeat && (u < 0.0f || u > 1.0f || v < 0.0f || v > 1.0f)) {
+        return GfVec3f(0, 1, 0);
+    }
 
     u = u - std::floor(u);
     v = v - std::floor(v);

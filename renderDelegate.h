@@ -83,6 +83,7 @@ public:
     virtual const TfTokenVector &GetSupportedBprimTypes() const override;
     virtual TfTokenVector GetShaderSourceTypes() const override;
     virtual TfTokenVector GetMaterialRenderContexts() const override;
+    virtual TfToken GetMaterialBindingPurpose() const override;
 
     virtual HdResourceRegistrySharedPtr GetResourceRegistry() const override;
 

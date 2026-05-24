@@ -142,6 +142,12 @@ HdGeminiRenderDelegate::GetMaterialRenderContexts() const
     return {TfToken("mtlx"), TfToken()};
 }
 
+TfToken
+HdGeminiRenderDelegate::GetMaterialBindingPurpose() const
+{
+    return HdTokens->full;
+}
+
 HdResourceRegistrySharedPtr
 HdGeminiRenderDelegate::GetResourceRegistry() const
 {

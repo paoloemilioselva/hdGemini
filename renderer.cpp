@@ -946,7 +946,7 @@ bool HdGeminiRenderer::_IntersectTLAS(const GfVec3f& rayOrigin, const GfVec3f& r
                                     hit.thinWalled = false;
                                     hit.diffuseRoughness = 0.0f;
                                 } else {
-                                    hit.baseColor = GfVec3f(0.8f, 0.9f, 0.95f);
+                                    hit.baseColor = GfVec3f(0.05f, 0.15f, 0.25f);
                                     hit.metallic = 0.0f;
                                     hit.roughness = 0.02f;
                                     hit.specularColor = GfVec3f(1.0f);
@@ -970,16 +970,16 @@ bool HdGeminiRenderer::_IntersectTLAS(const GfVec3f& rayOrigin, const GfVec3f& r
                                     hit.coatColor = GfVec3f(1.0f);
                                     hit.coatRoughness = 0.0f;
                                     hit.coatIor = 1.5f;
-                                    hit.transmissionDepth = 10.0f;
+                                    hit.transmissionDepth = 50.0f;
                                     hit.transmissionScatter = GfVec3f(0.0f);
                                     hit.sheen = 0.0f;
                                     hit.sheenColor = GfVec3f(1.0f);
                                     hit.sheenRoughness = 0.2f;
-                                    hit.subsurface = 0.0f;
-                                    hit.subsurfaceColor = GfVec3f(1.0f);
-                                    hit.subsurfaceRadius = GfVec3f(1.0f);
+                                    hit.subsurface = 1.0f;
+                                    hit.subsurfaceColor = GfVec3f(0.02f, 0.15f, 0.25f);
+                                    hit.subsurfaceRadius = GfVec3f(10.0f);
                                     hit.subsurfaceScale = 1.0f;
-                                    hit.subsurfaceAnisotropy = 0.0f;
+                                    hit.subsurfaceAnisotropy = 0.8f;
                                     hit.thinWalled = false;
                                     hit.diffuseRoughness = 0.0f;
                                 }
@@ -1327,6 +1327,31 @@ GfVec3f HdGeminiRenderer::_GetSunTransmittance(const GfVec3f& sunDir) const {
     return GfVec3f(std::exp(-tau[0]), std::exp(-tau[1]), std::exp(-tau[2]));
 }
 
+bool HdGeminiRenderer::_IsPointInsideOcean(const GfVec3f& pos) const {
+    if (_oceanEnable && _globalOcean) {
+        if (!_oceanParams.repeat) {
+            float halfSize = _oceanParams.size * 0.5f;
+            if (pos[0] >= -halfSize && pos[0] <= halfSize && pos[2] >= -halfSize && pos[2] <= halfSize) {
+                if (pos[1] < _globalOcean->GetDisplacedPosition(pos)[1]) return true;
+            }
+        } else {
+            if (pos[1] < _globalOcean->GetDisplacedPosition(pos)[1]) return true;
+        }
+    }
+
+    for (const auto& inst : _instances) {
+        if (inst.type == SceneInstance::Type::Ocean && inst.mesh && inst.mesh->GetOceanSimulator()) {
+            GfVec3f localPos = inst.invTransform.Transform(pos);
+            if (!inst.mesh->GetOceanParams().repeat) {
+                float halfSize = inst.mesh->GetOceanParams().size * 0.5f;
+                if (localPos[0] < -halfSize || localPos[0] > halfSize || localPos[2] < -halfSize || localPos[2] > halfSize) continue;
+            }
+            if (localPos[1] < inst.mesh->GetOceanSimulator()->GetDisplacedPosition(localPos)[1]) return true;
+        }
+    }
+    return false;
+}
+
 static float PowerHeuristic(float f, float g) {
     float f2 = f * f;
     float g2 = g * g;
@@ -1353,7 +1378,7 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
     
     // Nested Dielectrics tracking stack
     std::vector<float> iorStack = { 1.0f };
-    if (_oceanEnable && currentRayOrigin[1] < _oceanWaterHeight) {
+    if (_IsPointInsideOcean(currentRayOrigin)) {
         iorStack.push_back(1.33f);
     }
 

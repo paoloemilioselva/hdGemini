@@ -55,7 +55,7 @@ void HdGeminiOcean::GenerateGridTopology(
     root.maxBound = GfVec2f(bounds.GetMax()[0], bounds.GetMax()[2]);
     root.depth = 0;
     
-    int maxDepth = 18;
+    int maxDepth = 24;
     float lodScale = 0.05f;
     
     SubdivideQuad(root, leaves, cameraPos, viewProj, maxDepth, lodScale);

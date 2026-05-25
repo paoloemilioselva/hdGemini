@@ -144,10 +144,17 @@ void HdGeminiOcean::GenerateGridTopology(
         outUvs.push_back(GfVec2f(p2[0] / macroSize, p2[2] / macroSize));
         outUvs.push_back(GfVec2f(p3[0] / macroSize, p3[2] / macroSize));
         
-        outColors.push_back(GfVec3f(GetFoam(p0)));
-        outColors.push_back(GfVec3f(GetFoam(p1)));
-        outColors.push_back(GfVec3f(GetFoam(p2)));
-        outColors.push_back(GfVec3f(GetFoam(p3)));
+        if (_params.disableShader) {
+            outColors.push_back(leaf.color);
+            outColors.push_back(leaf.color);
+            outColors.push_back(leaf.color);
+            outColors.push_back(leaf.color);
+        } else {
+            outColors.push_back(GfVec3f(GetFoam(p0)));
+            outColors.push_back(GfVec3f(GetFoam(p1)));
+            outColors.push_back(GfVec3f(GetFoam(p2)));
+            outColors.push_back(GfVec3f(GetFoam(p3)));
+        }
         
         outIndices.push_back(GfVec3i(baseIdx, baseIdx + 2, baseIdx + 1));
         outIndices.push_back(GfVec3i(baseIdx, baseIdx + 3, baseIdx + 2));

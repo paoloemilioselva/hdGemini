@@ -153,6 +153,7 @@ private:
     std::unique_ptr<HdGeminiOcean> _globalOcean;
     std::unique_ptr<BVH> _globalOceanBvh;
     std::vector<GfVec3f> _globalOceanBasePoints;
+    std::vector<int> _globalOceanVertexTypes;
     std::vector<GfVec3i> _globalOceanIndices;
     std::vector<GfVec2f> _globalOceanUvs;
     std::vector<GfVec3f> _globalOceanColors;

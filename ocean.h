@@ -67,10 +67,12 @@ public:
         std::vector<GfVec3f>& outBasePoints,
         std::vector<GfVec3i>& outIndices,
         std::vector<GfVec2f>& outUvs,
-        std::vector<GfVec3f>& outColors) const;
+        std::vector<GfVec3f>& outColors,
+        std::vector<int>& outTypes) const;
 
     void DisplaceGrid(
         const std::vector<GfVec3f>& basePoints,
+        const std::vector<int>& types,
         std::vector<GfVec3f>& outDisplaced,
         std::vector<GfVec3f>& outNormals) const;
 

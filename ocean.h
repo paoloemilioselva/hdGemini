@@ -18,6 +18,7 @@ struct HdGeminiOceanParams {
     float size[3] = { 100.0f, 10.0f, 1.0f };
     float amplitude[3] = { 0.0f, 0.0f, 0.0f };
     float choppiness[3] = { 1.2f, 1.2f, 1.2f };
+    float strength[3] = { 1.0f, 1.0f, 1.0f };
     float windSpeed = 0.0f;
     float waterHeight = 0.0f;
     GfVec2f windDirection = GfVec2f(1.0f, 1.0f);
@@ -32,6 +33,7 @@ struct HdGeminiOceanParams {
                size[0] == o.size[0] && size[1] == o.size[1] && size[2] == o.size[2] &&
                amplitude[0] == o.amplitude[0] && amplitude[1] == o.amplitude[1] && amplitude[2] == o.amplitude[2] &&
                choppiness[0] == o.choppiness[0] && choppiness[1] == o.choppiness[1] && choppiness[2] == o.choppiness[2] &&
+               strength[0] == o.strength[0] && strength[1] == o.strength[1] && strength[2] == o.strength[2] &&
                windSpeed == o.windSpeed && waterHeight == o.waterHeight && windDirection == o.windDirection &&
                foamVisibility == o.foamVisibility && disableShader == o.disableShader && repeat == o.repeat &&
                scatteringColor == o.scatteringColor && scatteringDepth == o.scatteringDepth;

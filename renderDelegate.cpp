@@ -578,6 +578,21 @@ HdGeminiRenderDelegate::GetRenderSettingDescriptors() const
         VtValue(1.2f)
     });
     list.push_back({
+        "Ocean Strength 1",
+        HdGeminiRenderSettingsTokens->oceanStrength1,
+        VtValue(1.0f)
+    });
+    list.push_back({
+        "Ocean Strength 2",
+        HdGeminiRenderSettingsTokens->oceanStrength2,
+        VtValue(1.0f)
+    });
+    list.push_back({
+        "Ocean Strength 3",
+        HdGeminiRenderSettingsTokens->oceanStrength3,
+        VtValue(1.0f)
+    });
+    list.push_back({
         "Ocean Foam Visibility",
         HdGeminiRenderSettingsTokens->oceanFoamVisibility,
         VtValue(1.0f)
@@ -722,6 +737,12 @@ HdGeminiRenderDelegate::GetRenderSetting(TfToken const& key) const
         return VtValue(1.2f);
     } else if (key == HdGeminiRenderSettingsTokens->oceanChoppiness3) {
         return VtValue(1.2f);
+    } else if (key == HdGeminiRenderSettingsTokens->oceanStrength1) {
+        return VtValue(1.0f);
+    } else if (key == HdGeminiRenderSettingsTokens->oceanStrength2) {
+        return VtValue(1.0f);
+    } else if (key == HdGeminiRenderSettingsTokens->oceanStrength3) {
+        return VtValue(1.0f);
     } else if (key == HdGeminiRenderSettingsTokens->oceanFoamVisibility) {
         return VtValue(1.0f);
     } else if (key == HdGeminiRenderSettingsTokens->oceanWindSpeed) {
@@ -899,6 +920,15 @@ HdGeminiRenderDelegate::SetRenderSetting(TfToken const& key, VtValue const& valu
         changed = true;
     } else if (key == HdGeminiRenderSettingsTokens->oceanChoppiness3) {
         _renderer.SetOceanChoppiness(2, getFloat(value, 1.2f));
+        changed = true;
+    } else if (key == HdGeminiRenderSettingsTokens->oceanStrength1) {
+        _renderer.SetOceanStrength(0, getFloat(value, 1.0f));
+        changed = true;
+    } else if (key == HdGeminiRenderSettingsTokens->oceanStrength2) {
+        _renderer.SetOceanStrength(1, getFloat(value, 1.0f));
+        changed = true;
+    } else if (key == HdGeminiRenderSettingsTokens->oceanStrength3) {
+        _renderer.SetOceanStrength(2, getFloat(value, 1.0f));
         changed = true;
     } else if (key == HdGeminiRenderSettingsTokens->oceanFoamVisibility) {
         _renderer.SetOceanFoamVisibility(getFloat(value, 1.0f));

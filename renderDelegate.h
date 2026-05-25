@@ -73,6 +73,9 @@ TF_DECLARE_PUBLIC_TOKENS(HdGeminiAovTokens, HD_GEMINI_AOV_TOKENS);
     (oceanChoppiness1)                   \
     (oceanChoppiness2)                   \
     (oceanChoppiness3)                   \
+    (oceanStrength1)                     \
+    (oceanStrength2)                     \
+    (oceanStrength3)                     \
     (oceanFoamVisibility)                \
     (oceanWindSpeed)                     \
     (oceanWindDirectionX)                \

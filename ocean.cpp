@@ -256,7 +256,7 @@ GfVec3f HdGeminiOcean::GetDisplacedPosition(const GfVec3f& basePos) const {
         GfVec3f d0 = d00 * (1.0f - fx) + d10 * fx;
         GfVec3f d1 = d01 * (1.0f - fx) + d11 * fx;
         
-        totalDisp += d0 * (1.0f - fz) + d1 * fz;
+        totalDisp += (d0 * (1.0f - fz) + d1 * fz) * _params.strength[c];
     }
 
     return basePos + totalDisp;

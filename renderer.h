@@ -96,6 +96,7 @@ public:
     void SetOceanSize(int cascade, float size) { if(cascade >= 0 && cascade < 3) _oceanParams.size[cascade] = size; }
     void SetOceanAmplitude(int cascade, float amp) { if(cascade >= 0 && cascade < 3) _oceanParams.amplitude[cascade] = amp; }
     void SetOceanChoppiness(int cascade, float chop) { if(cascade >= 0 && cascade < 3) _oceanParams.choppiness[cascade] = chop; }
+    void SetOceanStrength(int cascade, float str) { if(cascade >= 0 && cascade < 3) _oceanParams.strength[cascade] = str; }
     void SetOceanWindSpeed(float speed) { _oceanParams.windSpeed = speed; }
     void SetOceanWindDirection(float x, float y) { _oceanParams.windDirection = GfVec2f(x, y); }
     void SetOceanFoamVisibility(float vis) { _oceanParams.foamVisibility = vis; }

@@ -91,13 +91,14 @@ public:
 
     void SetOceanEnable(bool enable) { _oceanEnable = enable; }
     void SetOceanWaterHeight(float height) { _oceanWaterHeight = height; }
-    void SetOceanFFTResolution(int res) { _oceanParams.fftResolution = res; }
+    void SetOceanGridSize(int res) { _oceanParams.gridSize = res; }
     void SetOceanDicingScale(float scale) { _oceanParams.dicingScale = scale; }
-    void SetOceanSize(float size) { _oceanParams.size = size; }
-    void SetOceanAmplitude(float amp) { _oceanParams.amplitude = amp; }
-    void SetOceanAmplitudeFine(float amp) { _oceanParams.amplitudeFine = amp; }
-    void SetOceanChoppiness(float chop) { _oceanParams.choppiness = chop; }
+    void SetOceanSize(int cascade, float size) { if(cascade >= 0 && cascade < 3) _oceanParams.size[cascade] = size; }
+    void SetOceanAmplitude(int cascade, float amp) { if(cascade >= 0 && cascade < 3) _oceanParams.amplitude[cascade] = amp; }
+    void SetOceanChoppiness(int cascade, float chop) { if(cascade >= 0 && cascade < 3) _oceanParams.choppiness[cascade] = chop; }
     void SetOceanWindSpeed(float speed) { _oceanParams.windSpeed = speed; }
+    void SetOceanWindDirection(float x, float y) { _oceanParams.windDirection = GfVec2f(x, y); }
+    void SetOceanFoamVisibility(float vis) { _oceanParams.foamVisibility = vis; }
     void SetOceanWindDirection(const GfVec2f& dir) { _oceanParams.windDirection = dir; }
     void SetOceanDisableShader(bool disable) { _oceanParams.disableShader = disable; }
     void SetOceanTime(float time) { _time = time; }

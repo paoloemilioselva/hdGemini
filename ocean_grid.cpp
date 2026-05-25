@@ -137,15 +137,17 @@ void HdGeminiOcean::GenerateGridTopology(
         outBasePoints.push_back(p2);
         outBasePoints.push_back(p3);
         
-        outUvs.push_back(GfVec2f(p0[0] / _params.size, p0[2] / _params.size));
-        outUvs.push_back(GfVec2f(p1[0] / _params.size, p1[2] / _params.size));
-        outUvs.push_back(GfVec2f(p2[0] / _params.size, p2[2] / _params.size));
-        outUvs.push_back(GfVec2f(p3[0] / _params.size, p3[2] / _params.size));
+        // UVs are normalized to macro size
+        float macroSize = _params.size[0] > 1e-5f ? _params.size[0] : 10.0f;
+        outUvs.push_back(GfVec2f(p0[0] / macroSize, p0[2] / macroSize));
+        outUvs.push_back(GfVec2f(p1[0] / macroSize, p1[2] / macroSize));
+        outUvs.push_back(GfVec2f(p2[0] / macroSize, p2[2] / macroSize));
+        outUvs.push_back(GfVec2f(p3[0] / macroSize, p3[2] / macroSize));
         
-        outColors.push_back(leaf.color);
-        outColors.push_back(leaf.color);
-        outColors.push_back(leaf.color);
-        outColors.push_back(leaf.color);
+        outColors.push_back(GfVec3f(GetFoam(p0)));
+        outColors.push_back(GfVec3f(GetFoam(p1)));
+        outColors.push_back(GfVec3f(GetFoam(p2)));
+        outColors.push_back(GfVec3f(GetFoam(p3)));
         
         outIndices.push_back(GfVec3i(baseIdx, baseIdx + 2, baseIdx + 1));
         outIndices.push_back(GfVec3i(baseIdx, baseIdx + 3, baseIdx + 2));
@@ -154,13 +156,13 @@ void HdGeminiOcean::GenerateGridTopology(
 
 void HdGeminiOcean::DisplaceGrid(
     const std::vector<GfVec3f>& basePoints,
-    std::vector<GfVec3f>& outPoints,
+    std::vector<GfVec3f>& outDisplaced,
     std::vector<GfVec3f>& outNormals) const
 {
-    outPoints.resize(basePoints.size());
+    outDisplaced.resize(basePoints.size());
     outNormals.resize(basePoints.size());
     for (size_t i = 0; i < basePoints.size(); ++i) {
-        outPoints[i] = GetDisplacedPosition(basePoints[i]);
+        outDisplaced[i] = GetDisplacedPosition(basePoints[i]);
         outNormals[i] = GetNormal(basePoints[i]);
     }
 }

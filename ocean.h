@@ -13,26 +13,27 @@
 PXR_NAMESPACE_USING_DIRECTIVE
 
 struct HdGeminiOceanParams {
-    int fftResolution = 256;
+    int gridSize = 128;
     float dicingScale = 1.0f;
-    float size = 10.0f;
-    float amplitude = 0.0f;
-    float amplitudeFine = 0.0f;
-    float choppiness = 1.2f;
+    float size[3] = { 100.0f, 10.0f, 1.0f };
+    float amplitude[3] = { 0.0f, 0.0f, 0.0f };
+    float choppiness[3] = { 1.2f, 1.2f, 1.2f };
     float windSpeed = 0.0f;
     float waterHeight = 0.0f;
     GfVec2f windDirection = GfVec2f(1.0f, 1.0f);
+    float foamVisibility = 1.0f;
     bool disableShader = false;
     bool repeat = true;
     GfVec3f scatteringColor = GfVec3f(0.02f, 0.15f, 0.25f);
     float scatteringDepth = 10.0f;
     
     bool operator==(const HdGeminiOceanParams& o) const {
-        return fftResolution == o.fftResolution && dicingScale == o.dicingScale && size == o.size && amplitude == o.amplitude &&
-               amplitudeFine == o.amplitudeFine &&
-               choppiness == o.choppiness && windSpeed == o.windSpeed && 
-               waterHeight == o.waterHeight && windDirection == o.windDirection &&
-               disableShader == o.disableShader && repeat == o.repeat &&
+        return gridSize == o.gridSize && dicingScale == o.dicingScale &&
+               size[0] == o.size[0] && size[1] == o.size[1] && size[2] == o.size[2] &&
+               amplitude[0] == o.amplitude[0] && amplitude[1] == o.amplitude[1] && amplitude[2] == o.amplitude[2] &&
+               choppiness[0] == o.choppiness[0] && choppiness[1] == o.choppiness[1] && choppiness[2] == o.choppiness[2] &&
+               windSpeed == o.windSpeed && waterHeight == o.waterHeight && windDirection == o.windDirection &&
+               foamVisibility == o.foamVisibility && disableShader == o.disableShader && repeat == o.repeat &&
                scatteringColor == o.scatteringColor && scatteringDepth == o.scatteringDepth;
     }
     bool operator!=(const HdGeminiOceanParams& o) const { return !(*this == o); }
@@ -50,6 +51,7 @@ public:
     // Assumes water surface is essentially on the XZ plane.
     GfVec3f GetDisplacedPosition(const GfVec3f& basePos) const;
     GfVec3f GetNormal(const GfVec3f& basePos) const;
+    float GetFoam(const GfVec3f& basePos) const;
 
     const HdGeminiOceanParams& GetParams() const { return _params; }
     bool IsInitialized() const { return _initialized; }
@@ -67,11 +69,11 @@ public:
 
     void DisplaceGrid(
         const std::vector<GfVec3f>& basePoints,
-        std::vector<GfVec3f>& outPoints,
+        std::vector<GfVec3f>& outDisplaced,
         std::vector<GfVec3f>& outNormals) const;
 
 private:
-    float Phillips(float kx, float kz) const;
+    float Phillips(float kx, float kz, float amplitude) const;
     void ComputeH0();
     void PerformFFT2D(std::vector<std::complex<float>>& data) const;
 
@@ -79,16 +81,15 @@ private:
     bool _initialized = false;
     float _lastTime = -1.0f;
 
-    std::vector<std::complex<float>> _h0;
-    std::vector<std::complex<float>> _h0_minus;
+    std::vector<std::complex<float>> _h0[3];
+    std::vector<std::complex<float>> _h0_minus[3];
     
     std::vector<std::complex<float>> _h_kt_dz;
     std::vector<std::complex<float>> _h_kt_dx;
     std::vector<std::complex<float>> _h_kt_dy;
     
     // Spatial domain results
-    std::vector<GfVec3f> _displacementMap;
-    std::vector<GfVec3f> _normalMap;
+    std::vector<GfVec3f> _displacementMap[3];
 
     std::vector<int> _bitReversedIndices;
 };

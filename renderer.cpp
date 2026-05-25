@@ -528,7 +528,7 @@ HdGeminiRenderer::_PrepareScene(HdRenderThread *renderThread, HdGeminiRenderDele
             GfVec3f camPos(GfVec3f(_viewMatrix.GetInverse().ExtractTranslation()));
             GfRange3f worldBounds(-GfVec3f(100000.0f), GfVec3f(100000.0f));
             if (!_oceanParams.repeat) {
-                float halfSize = _oceanParams.size * 0.5f;
+                float halfSize = _oceanParams.size[0] * 0.5f;
                 worldBounds = GfRange3f(GfVec3f(-halfSize, -10000.0f, -halfSize), GfVec3f(halfSize, 10000.0f, halfSize));
             }
             
@@ -949,14 +949,18 @@ bool HdGeminiRenderer::_IntersectTLAS(const GfVec3f& rayOrigin, const GfVec3f& r
                                     hit.thinWalled = false;
                                     hit.diffuseRoughness = 0.0f;
                                 } else {
+                                    float foamVis = inst.mesh ? inst.mesh->GetOceanParams().foamVisibility : _oceanParams.foamVisibility;
+                                    float foam = std::clamp(instSmoothColor[0] * foamVis, 0.0f, 1.0f);
+
                                     hit.baseColor = GfVec3f(0.05f, 0.15f, 0.25f);
+                                    hit.baseColor = hit.baseColor * (1.0f - foam) + GfVec3f(1.0f) * foam;
                                     hit.metallic = 0.0f;
-                                    hit.roughness = 0.02f;
+                                    hit.roughness = 0.02f * (1.0f - foam) + 0.8f * foam;
                                     hit.specularColor = GfVec3f(1.0f);
                                     hit.specular = 1.0f;
                                     hit.opacity = 1.0f;
                                     hit.ior = 1.33f;
-                                    hit.transmission = 1.0f;
+                                    hit.transmission = 1.0f - foam * 0.8f;
                                     hit.transmissionColor = GfVec3f(0.8f, 0.9f, 0.95f);
                                     hit.emission = GfVec3f(0.0f);
                                     hit.diffuseTexture = SdfAssetPath();
@@ -1333,7 +1337,7 @@ GfVec3f HdGeminiRenderer::_GetSunTransmittance(const GfVec3f& sunDir) const {
 bool HdGeminiRenderer::_IsPointInsideOcean(const GfVec3f& pos) const {
     if (_oceanEnable && _globalOcean) {
         if (!_oceanParams.repeat) {
-            float halfSize = _oceanParams.size * 0.5f;
+            float halfSize = _oceanParams.size[0] * 0.5f;
             if (pos[0] >= -halfSize && pos[0] <= halfSize && pos[2] >= -halfSize && pos[2] <= halfSize) {
                 if (pos[1] < _globalOcean->GetDisplacedPosition(pos)[1]) return true;
             }
@@ -1346,7 +1350,7 @@ bool HdGeminiRenderer::_IsPointInsideOcean(const GfVec3f& pos) const {
         if (inst.type == SceneInstance::Type::Ocean && inst.mesh && inst.mesh->GetOceanSimulator()) {
             GfVec3f localPos = inst.invTransform.Transform(pos);
             if (!inst.mesh->GetOceanParams().repeat) {
-                float halfSize = inst.mesh->GetOceanParams().size * 0.5f;
+                float halfSize = inst.mesh->GetOceanParams().size[0] * 0.5f;
                 if (localPos[0] < -halfSize || localPos[0] > halfSize || localPos[2] < -halfSize || localPos[2] > halfSize) continue;
             }
             if (localPos[1] < inst.mesh->GetOceanSimulator()->GetDisplacedPosition(localPos)[1]) return true;
@@ -1466,10 +1470,11 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
         float ior = 1.0f;
         GfVec3f scatterColor = GfVec3f(0.0f);
         float depth = 0.0f;
+        GfVec3f transmissionColor = GfVec3f(1.0f);
     };
     
     // Nested Dielectrics tracking stack
-    std::vector<MediumState> mediumStack = { MediumState{1.0f, GfVec3f(0.0f), 0.0f} };
+    std::vector<MediumState> mediumStack = { MediumState{1.0f, GfVec3f(0.0f), 0.0f, GfVec3f(1.0f)} };
     
     // Perform a BVH-accurate test to see if the camera is underwater
     if (_oceanEnable) {
@@ -1484,7 +1489,7 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
             if (hit.isOcean) {
                 // If we hit the ocean from below (smoothNormal points roughly up +Y, rd is up +Y -> dot > 0)
                 if (GfDot(hit.smoothNormal, rd) > 0.0f) {
-                    mediumStack.push_back(MediumState{hit.ior, hit.transmissionScatter, hit.transmissionDepth});
+                    mediumStack.push_back(MediumState{hit.ior, hit.transmissionScatter, hit.transmissionDepth, hit.transmissionColor});
                 }
                 break; // First ocean hit determines if we are above or below
             }
@@ -1636,8 +1641,22 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
         if (currentMedium.depth > 0.0f) {
             GfVec3f d_mfp = GfVec3f(currentMedium.depth);
             
-            GfVec3f sigma_t_rgb(1.0f / d_mfp[0], 1.0f / d_mfp[1], 1.0f / d_mfp[2]);
-            GfVec3f sigma_s_rgb = GfCompMult(currentMedium.scatterColor, sigma_t_rgb);
+            GfVec3f sigma_a_rgb(
+                -std::log(std::max(currentMedium.transmissionColor[0], 1e-4f)) / d_mfp[0],
+                -std::log(std::max(currentMedium.transmissionColor[1], 1e-4f)) / d_mfp[1],
+                -std::log(std::max(currentMedium.transmissionColor[2], 1e-4f)) / d_mfp[2]
+            );
+            
+            GfVec3f sigma_s_rgb = currentMedium.scatterColor; // scatterColor is already sigma_s or we can divide by depth
+            // If scatterColor is meant to be albedo, then sigma_s = albedo * sigma_t
+            // But we'll define scatterColor as direct sigma_s multiplier for simplicity, or just use it as scattering coefficient:
+            sigma_s_rgb = GfVec3f(
+                currentMedium.scatterColor[0] / d_mfp[0],
+                currentMedium.scatterColor[1] / d_mfp[1],
+                currentMedium.scatterColor[2] / d_mfp[2]
+            );
+            
+            GfVec3f sigma_t_rgb = sigma_a_rgb + sigma_s_rgb;
             
             SampledSpectrum sigma_t = RGBToSpectrum(sigma_t_rgb, lambda);
             SampledSpectrum sigma_s = RGBToSpectrum(sigma_s_rgb, lambda);
@@ -2227,7 +2246,7 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
                         if (isInside) {
                             if (mediumStack.size() > 1) mediumStack.pop_back();
                         } else {
-                            mediumStack.push_back(MediumState{hit.ior, hit.transmissionScatter, hit.transmissionDepth});
+                            mediumStack.push_back(MediumState{hit.ior, hit.transmissionScatter, hit.transmissionDepth, hit.transmissionColor});
                         }
                         
                         if (remainingProb >= sssProb) {

@@ -241,11 +241,11 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
             else if (height.IsHolding<double>()) _oceanParams.waterHeight = (float)height.Get<double>();
         }
 
-        VtValue res = sceneDelegate->Get(id, TfToken("primvars:gemini:oceanFFTResolution"));
-        if (res.IsHolding<int>()) _oceanParams.fftResolution = res.Get<int>();
+        VtValue res = sceneDelegate->Get(id, TfToken("primvars:gemini:oceanGridSize"));
+        if (res.IsHolding<int>()) _oceanParams.gridSize = res.Get<int>();
         else {
-            res = sceneDelegate->Get(id, TfToken("gemini:oceanFFTResolution"));
-            if (res.IsHolding<int>()) _oceanParams.fftResolution = res.Get<int>();
+            res = sceneDelegate->Get(id, TfToken("gemini:oceanGridSize"));
+            if (res.IsHolding<int>()) _oceanParams.gridSize = res.Get<int>();
         }
 
         VtValue dScale = sceneDelegate->Get(id, TfToken("primvars:gemini:oceanDicingScale"));
@@ -257,40 +257,49 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
             else if (dScale.IsHolding<double>()) _oceanParams.dicingScale = (float)dScale.Get<double>();
         }
 
-        VtValue size = sceneDelegate->Get(id, TfToken("primvars:gemini:oceanSize"));
-        if (size.IsHolding<float>()) _oceanParams.size = size.Get<float>();
-        else if (size.IsHolding<double>()) _oceanParams.size = (float)size.Get<double>();
-        else {
-            size = sceneDelegate->Get(id, TfToken("gemini:oceanSize"));
-            if (size.IsHolding<float>()) _oceanParams.size = size.Get<float>();
-            else if (size.IsHolding<double>()) _oceanParams.size = (float)size.Get<double>();
-        }
+        const char* cascadeTokens[3] = {"1", "2", "3"};
+        for (int c = 0; c < 3; ++c) {
+            std::string primvarSize = std::string("primvars:gemini:oceanSize") + cascadeTokens[c];
+            std::string geomSize = std::string("gemini:oceanSize") + cascadeTokens[c];
+            VtValue size = sceneDelegate->Get(id, TfToken(primvarSize));
+            if (size.IsHolding<float>()) _oceanParams.size[c] = size.Get<float>();
+            else if (size.IsHolding<double>()) _oceanParams.size[c] = (float)size.Get<double>();
+            else {
+                size = sceneDelegate->Get(id, TfToken(geomSize));
+                if (size.IsHolding<float>()) _oceanParams.size[c] = size.Get<float>();
+                else if (size.IsHolding<double>()) _oceanParams.size[c] = (float)size.Get<double>();
+            }
 
-        VtValue amp = sceneDelegate->Get(id, TfToken("primvars:gemini:oceanAmplitude"));
-        if (amp.IsHolding<float>()) _oceanParams.amplitude = amp.Get<float>();
-        else if (amp.IsHolding<double>()) _oceanParams.amplitude = (float)amp.Get<double>();
-        else {
-            amp = sceneDelegate->Get(id, TfToken("gemini:oceanAmplitude"));
-            if (amp.IsHolding<float>()) _oceanParams.amplitude = amp.Get<float>();
-            else if (amp.IsHolding<double>()) _oceanParams.amplitude = (float)amp.Get<double>();
-        }
+            std::string primvarAmp = std::string("primvars:gemini:oceanAmplitude") + cascadeTokens[c];
+            std::string geomAmp = std::string("gemini:oceanAmplitude") + cascadeTokens[c];
+            VtValue amp = sceneDelegate->Get(id, TfToken(primvarAmp));
+            if (amp.IsHolding<float>()) _oceanParams.amplitude[c] = amp.Get<float>();
+            else if (amp.IsHolding<double>()) _oceanParams.amplitude[c] = (float)amp.Get<double>();
+            else {
+                amp = sceneDelegate->Get(id, TfToken(geomAmp));
+                if (amp.IsHolding<float>()) _oceanParams.amplitude[c] = amp.Get<float>();
+                else if (amp.IsHolding<double>()) _oceanParams.amplitude[c] = (float)amp.Get<double>();
+            }
 
-        VtValue ampFine = sceneDelegate->Get(id, TfToken("primvars:gemini:oceanAmplitudeFine"));
-        if (ampFine.IsHolding<float>()) _oceanParams.amplitudeFine = ampFine.Get<float>();
-        else if (ampFine.IsHolding<double>()) _oceanParams.amplitudeFine = (float)ampFine.Get<double>();
-        else {
-            ampFine = sceneDelegate->Get(id, TfToken("gemini:oceanAmplitudeFine"));
-            if (ampFine.IsHolding<float>()) _oceanParams.amplitudeFine = ampFine.Get<float>();
-            else if (ampFine.IsHolding<double>()) _oceanParams.amplitudeFine = (float)ampFine.Get<double>();
+            std::string primvarChop = std::string("primvars:gemini:oceanChoppiness") + cascadeTokens[c];
+            std::string geomChop = std::string("gemini:oceanChoppiness") + cascadeTokens[c];
+            VtValue chop = sceneDelegate->Get(id, TfToken(primvarChop));
+            if (chop.IsHolding<float>()) _oceanParams.choppiness[c] = chop.Get<float>();
+            else if (chop.IsHolding<double>()) _oceanParams.choppiness[c] = (float)chop.Get<double>();
+            else {
+                chop = sceneDelegate->Get(id, TfToken(geomChop));
+                if (chop.IsHolding<float>()) _oceanParams.choppiness[c] = chop.Get<float>();
+                else if (chop.IsHolding<double>()) _oceanParams.choppiness[c] = (float)chop.Get<double>();
+            }
         }
-
-        VtValue chop = sceneDelegate->Get(id, TfToken("primvars:gemini:oceanChoppiness"));
-        if (chop.IsHolding<float>()) _oceanParams.choppiness = chop.Get<float>();
-        else if (chop.IsHolding<double>()) _oceanParams.choppiness = (float)chop.Get<double>();
+        
+        VtValue foamVis = sceneDelegate->Get(id, TfToken("primvars:gemini:oceanFoamVisibility"));
+        if (foamVis.IsHolding<float>()) _oceanParams.foamVisibility = foamVis.Get<float>();
+        else if (foamVis.IsHolding<double>()) _oceanParams.foamVisibility = (float)foamVis.Get<double>();
         else {
-            chop = sceneDelegate->Get(id, TfToken("gemini:oceanChoppiness"));
-            if (chop.IsHolding<float>()) _oceanParams.choppiness = chop.Get<float>();
-            else if (chop.IsHolding<double>()) _oceanParams.choppiness = (float)chop.Get<double>();
+            foamVis = sceneDelegate->Get(id, TfToken("gemini:oceanFoamVisibility"));
+            if (foamVis.IsHolding<float>()) _oceanParams.foamVisibility = foamVis.Get<float>();
+            else if (foamVis.IsHolding<double>()) _oceanParams.foamVisibility = (float)foamVis.Get<double>();
         }
 
         VtValue wdx = sceneDelegate->Get(id, TfToken("primvars:gemini:oceanWindDirectionX"));

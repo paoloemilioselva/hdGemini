@@ -133,15 +133,15 @@ def create_mesh_data(Dx, Dy, Dz, length):
     """
     N = Dx.shape[0]
     
-    # Generate the base grid
+    # Generate the base grid for the XZ plane
     x = np.linspace(0, length, N, endpoint=False)
-    y = np.linspace(0, length, N, endpoint=False)
-    X, Y = np.meshgrid(x, y) # X varies along columns, Y varies along rows
+    z = np.linspace(0, length, N, endpoint=False)
+    X, Z = np.meshgrid(x, z) # X varies along columns, Z varies along rows
     
-    # Calculate final positions by adding displacements to the base grid
+    # Calculate final positions: Y is up, horizontal displacements are on X and Z
     P_x = X + Dx
-    P_y = Y + Dy
-    P_z = Dz
+    P_y = Dz
+    P_z = Z + Dy
     
     # Stack into points array: (N*N, 3)
     points = np.stack([P_x.ravel(), P_y.ravel(), P_z.ravel()], axis=1)

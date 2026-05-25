@@ -117,6 +117,57 @@ def generate_ocean_cascades(grid_size, length, time, cascades, seed=None):
         
     return Dx_total, Dy_total, Dz_total
 
+def create_mesh_data(Dx, Dy, Dz, length):
+    """
+    Creates mesh data (points, indices, polycounts) from displacement maps.
+    This applies the displacements to a flat base grid so the output forms a proper 3D surface.
+    
+    Args:
+        Dx, Dy, Dz: 2D numpy arrays of shape (N, N)
+        length: Physical length of the grid
+        
+    Returns:
+        points: (N*N, 3) numpy array of 3D coordinates (X+Dx, Y+Dy, Dz)
+        indices: 1D numpy array of vertex indices forming quads
+        polycounts: 1D numpy array of vertex counts per polygon (all 4s for quads)
+    """
+    N = Dx.shape[0]
+    
+    # Generate the base grid
+    x = np.linspace(0, length, N, endpoint=False)
+    y = np.linspace(0, length, N, endpoint=False)
+    X, Y = np.meshgrid(x, y) # X varies along columns, Y varies along rows
+    
+    # Calculate final positions by adding displacements to the base grid
+    P_x = X + Dx
+    P_y = Y + Dy
+    P_z = Dz
+    
+    # Stack into points array: (N*N, 3)
+    points = np.stack([P_x.ravel(), P_y.ravel(), P_z.ravel()], axis=1)
+    
+    # Generate quad indices
+    # For a grid of size N x N, there are (N-1) x (N-1) quads
+    i = np.arange(N - 1)
+    j = np.arange(N - 1)
+    I, J = np.meshgrid(i, j, indexing='ij')
+    
+    # Quad vertices layout (counter-clockwise or clockwise depending on axes):
+    # v0 = i*N + j,       v1 = i*N + (j+1)
+    # v3 = (i+1)*N + j,   v2 = (i+1)*N + (j+1)
+    v0 = I * N + J
+    v1 = I * N + (J + 1)
+    v2 = (I + 1) * N + (J + 1)
+    v3 = (I + 1) * N + J
+    
+    # Stack and flatten
+    indices = np.stack([v0, v1, v2, v3], axis=-1).ravel()
+    
+    num_quads = (N - 1) * (N - 1)
+    polycounts = np.full(num_quads, 4, dtype=int)
+    
+    return points, indices, polycounts
+
 if __name__ == "__main__":
     # Example usage / Demo
     grid_size = 256
@@ -159,8 +210,18 @@ if __name__ == "__main__":
         seed=42
     )
     
+    # Generate the actual mesh data (this fixes the "cloud" issue by applying displacements to a grid)
+    points, indices, polycounts = create_mesh_data(Dx, Dy, Dz, physical_length)
+    
     print(f"Generated ocean waves with {len(cascades_config)} cascades.")
     print(f"Displacement ranges:")
     print(f"X: {Dx.min():.2f} to {Dx.max():.2f}")
     print(f"Y: {Dy.min():.2f} to {Dy.max():.2f}")
     print(f"Z: {Dz.min():.2f} to {Dz.max():.2f}")
+    print(f"\nMesh Data:")
+    print(f"Points shape: {points.shape}")
+    print(f"Indices shape: {indices.shape}")
+    print(f"Polycounts shape: {polycounts.shape}")
+    print(f"First quad indices: {indices[:4]}")
+    print(f"First quad polycount: {polycounts[0]}")
+    print(f"First point coords: {points[0]}")

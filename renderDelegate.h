@@ -76,9 +76,21 @@ TF_DECLARE_PUBLIC_TOKENS(HdGeminiAovTokens, HD_GEMINI_AOV_TOKENS);
     (oceanStrength2)                     \
     (oceanStrength3)                     \
     (oceanFoamVisibility)                \
-    (oceanWindSpeed)                     \
-    (oceanWindDirectionX)                \
-    (oceanWindDirectionY)                \
+    (oceanWindSpeed1)                    \
+    (oceanWindSpeed2)                    \
+    (oceanWindSpeed3)                    \
+    (oceanWindDirectionX1)               \
+    (oceanWindDirectionX2)               \
+    (oceanWindDirectionX3)               \
+    (oceanWindDirectionY1)               \
+    (oceanWindDirectionY2)               \
+    (oceanWindDirectionY3)               \
+    (oceanMinK1)                         \
+    (oceanMinK2)                         \
+    (oceanMinK3)                         \
+    (oceanMaxK1)                         \
+    (oceanMaxK2)                         \
+    (oceanMaxK3)                         \
     (oceanDisableShader)                 \
     (oceanTime)                          \
     (oceanRepeat)                        \

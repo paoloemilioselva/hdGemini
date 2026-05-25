@@ -283,6 +283,61 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
                 if (chop.IsHolding<float>()) _oceanParams.choppiness[c] = chop.Get<float>();
                 else if (chop.IsHolding<double>()) _oceanParams.choppiness[c] = (float)chop.Get<double>();
             }
+
+            std::string primvarWindSpeed = std::string("primvars:gemini:oceanWindSpeed") + cascadeTokens[c];
+            std::string geomWindSpeed = std::string("gemini:oceanWindSpeed") + cascadeTokens[c];
+            VtValue speed = sceneDelegate->Get(id, TfToken(primvarWindSpeed));
+            if (speed.IsHolding<float>()) _oceanParams.windSpeed[c] = speed.Get<float>();
+            else if (speed.IsHolding<double>()) _oceanParams.windSpeed[c] = (float)speed.Get<double>();
+            else {
+                speed = sceneDelegate->Get(id, TfToken(geomWindSpeed));
+                if (speed.IsHolding<float>()) _oceanParams.windSpeed[c] = speed.Get<float>();
+                else if (speed.IsHolding<double>()) _oceanParams.windSpeed[c] = (float)speed.Get<double>();
+            }
+
+            std::string primvarWindDirX = std::string("primvars:gemini:oceanWindDirectionX") + cascadeTokens[c];
+            std::string geomWindDirX = std::string("gemini:oceanWindDirectionX") + cascadeTokens[c];
+            VtValue wdx = sceneDelegate->Get(id, TfToken(primvarWindDirX));
+            if (wdx.IsHolding<float>()) _oceanParams.windDirection[c][0] = wdx.Get<float>();
+            else if (wdx.IsHolding<double>()) _oceanParams.windDirection[c][0] = (float)wdx.Get<double>();
+            else {
+                wdx = sceneDelegate->Get(id, TfToken(geomWindDirX));
+                if (wdx.IsHolding<float>()) _oceanParams.windDirection[c][0] = wdx.Get<float>();
+                else if (wdx.IsHolding<double>()) _oceanParams.windDirection[c][0] = (float)wdx.Get<double>();
+            }
+
+            std::string primvarWindDirY = std::string("primvars:gemini:oceanWindDirectionY") + cascadeTokens[c];
+            std::string geomWindDirY = std::string("gemini:oceanWindDirectionY") + cascadeTokens[c];
+            VtValue wdy = sceneDelegate->Get(id, TfToken(primvarWindDirY));
+            if (wdy.IsHolding<float>()) _oceanParams.windDirection[c][1] = wdy.Get<float>();
+            else if (wdy.IsHolding<double>()) _oceanParams.windDirection[c][1] = (float)wdy.Get<double>();
+            else {
+                wdy = sceneDelegate->Get(id, TfToken(geomWindDirY));
+                if (wdy.IsHolding<float>()) _oceanParams.windDirection[c][1] = wdy.Get<float>();
+                else if (wdy.IsHolding<double>()) _oceanParams.windDirection[c][1] = (float)wdy.Get<double>();
+            }
+
+            std::string primvarMinK = std::string("primvars:gemini:oceanMinK") + cascadeTokens[c];
+            std::string geomMinK = std::string("gemini:oceanMinK") + cascadeTokens[c];
+            VtValue mink = sceneDelegate->Get(id, TfToken(primvarMinK));
+            if (mink.IsHolding<float>()) _oceanParams.minK[c] = mink.Get<float>();
+            else if (mink.IsHolding<double>()) _oceanParams.minK[c] = (float)mink.Get<double>();
+            else {
+                mink = sceneDelegate->Get(id, TfToken(geomMinK));
+                if (mink.IsHolding<float>()) _oceanParams.minK[c] = mink.Get<float>();
+                else if (mink.IsHolding<double>()) _oceanParams.minK[c] = (float)mink.Get<double>();
+            }
+
+            std::string primvarMaxK = std::string("primvars:gemini:oceanMaxK") + cascadeTokens[c];
+            std::string geomMaxK = std::string("gemini:oceanMaxK") + cascadeTokens[c];
+            VtValue maxk = sceneDelegate->Get(id, TfToken(primvarMaxK));
+            if (maxk.IsHolding<float>()) _oceanParams.maxK[c] = maxk.Get<float>();
+            else if (maxk.IsHolding<double>()) _oceanParams.maxK[c] = (float)maxk.Get<double>();
+            else {
+                maxk = sceneDelegate->Get(id, TfToken(geomMaxK));
+                if (maxk.IsHolding<float>()) _oceanParams.maxK[c] = maxk.Get<float>();
+                else if (maxk.IsHolding<double>()) _oceanParams.maxK[c] = (float)maxk.Get<double>();
+            }
         }
         
         VtValue foamVis = sceneDelegate->Get(id, TfToken("primvars:gemini:oceanFoamVisibility"));
@@ -292,33 +347,6 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
             foamVis = sceneDelegate->Get(id, TfToken("gemini:oceanFoamVisibility"));
             if (foamVis.IsHolding<float>()) _oceanParams.foamVisibility = foamVis.Get<float>();
             else if (foamVis.IsHolding<double>()) _oceanParams.foamVisibility = (float)foamVis.Get<double>();
-        }
-
-        VtValue wdx = sceneDelegate->Get(id, TfToken("primvars:gemini:oceanWindDirectionX"));
-        if (wdx.IsHolding<float>()) _oceanParams.windDirection[0] = wdx.Get<float>();
-        else if (wdx.IsHolding<double>()) _oceanParams.windDirection[0] = (float)wdx.Get<double>();
-        else {
-            wdx = sceneDelegate->Get(id, TfToken("gemini:oceanWindDirectionX"));
-            if (wdx.IsHolding<float>()) _oceanParams.windDirection[0] = wdx.Get<float>();
-            else if (wdx.IsHolding<double>()) _oceanParams.windDirection[0] = (float)wdx.Get<double>();
-        }
-        
-        VtValue wdy = sceneDelegate->Get(id, TfToken("primvars:gemini:oceanWindDirectionY"));
-        if (wdy.IsHolding<float>()) _oceanParams.windDirection[1] = wdy.Get<float>();
-        else if (wdy.IsHolding<double>()) _oceanParams.windDirection[1] = (float)wdy.Get<double>();
-        else {
-            wdy = sceneDelegate->Get(id, TfToken("gemini:oceanWindDirectionY"));
-            if (wdy.IsHolding<float>()) _oceanParams.windDirection[1] = wdy.Get<float>();
-            else if (wdy.IsHolding<double>()) _oceanParams.windDirection[1] = (float)wdy.Get<double>();
-        }
-
-        VtValue speed = sceneDelegate->Get(id, TfToken("primvars:gemini:oceanWindSpeed"));
-        if (speed.IsHolding<float>()) _oceanParams.windSpeed = speed.Get<float>();
-        else if (speed.IsHolding<double>()) _oceanParams.windSpeed = (float)speed.Get<double>();
-        else {
-            speed = sceneDelegate->Get(id, TfToken("gemini:oceanWindSpeed"));
-            if (speed.IsHolding<float>()) _oceanParams.windSpeed = speed.Get<float>();
-            else if (speed.IsHolding<double>()) _oceanParams.windSpeed = (float)speed.Get<double>();
         }
         
         VtValue disableShader = sceneDelegate->Get(id, TfToken("primvars:gemini:oceanDisableShader"));

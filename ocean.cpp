@@ -12,25 +12,31 @@
 HdGeminiOcean::HdGeminiOcean() {}
 HdGeminiOcean::~HdGeminiOcean() {}
 
-float HdGeminiOcean::Phillips(float kx, float kz, float amplitude) const {
+float HdGeminiOcean::Phillips(float kx, float kz, float amplitude, float windSpeed, const GfVec2f& windDirection) const {
     float k_length2 = kx * kx + kz * kz;
-    if (k_length2 < 1e-6f) return 0.0f;
+    if (k_length2 < 1e-8f) return 0.0f;
 
     float k_length = std::sqrt(k_length2);
     float k_length4 = k_length2 * k_length2;
 
-    GfVec2f windDir = _params.windDirection.GetLength() > 1e-5f ? _params.windDirection.GetNormalized() : GfVec2f(1.0f, 0.0f);
+    float ws = windSpeed;
+    GfVec2f windDir = windDirection;
+    if (ws < 1e-5f) {
+        ws = 0.001f;
+        windDir = GfVec2f(1.0f, 0.0f);
+    } else {
+        windDir.Normalize();
+    }
+
     GfVec2f k_hat(kx / k_length, kz / k_length);
     float k_dot_w = k_hat[0] * windDir[0] + k_hat[1] * windDir[1];
+    if (k_dot_w < 0.0f) k_dot_w = 0.0f; // Waves move mostly in the wind direction
     float k_dot_w2 = k_dot_w * k_dot_w;
 
-    float L = (_params.windSpeed * _params.windSpeed) / 9.81f;
+    float L = (ws * ws) / 9.81f;
     float L2 = L * L;
 
-    float damping = 0.001f;
-    float l2 = L2 * damping * damping;
-
-    return amplitude * std::exp(-1.0f / (k_length2 * L2)) / k_length4 * k_dot_w2 * std::exp(-k_length2 * l2);
+    return amplitude * std::exp(-1.0f / (k_length2 * L2)) / k_length4 * k_dot_w2;
 }
 
 void HdGeminiOcean::ComputeH0() {
@@ -45,26 +51,45 @@ void HdGeminiOcean::ComputeH0() {
     for (int c = 0; c < 3; ++c) {
         float currentSize = _params.size[c];
         float currentAmp = _params.amplitude[c];
+        float currentWindSpeed = _params.windSpeed[c];
+        GfVec2f currentWindDir = _params.windDirection[c];
+        float currentMinK = _params.minK[c];
+        float currentMaxK = _params.maxK[c];
         
+        float dk = std::pow(2.0f * M_PI / currentSize, 2.0f);
+
         for (int z = 0; z < N; ++z) {
             for (int x = 0; x < N; ++x) {
-                float nx = x - N / 2.0f;
-                float nz = z - N / 2.0f;
+                float nx = (x < N / 2) ? (float)x : (float)(x - N);
+                float nz = (z < N / 2) ? (float)z : (float)(z - N);
                 
                 float kx = (2.0f * M_PI * nx) / currentSize;
                 float kz = (2.0f * M_PI * nz) / currentSize;
 
-                float P = Phillips(kx, kz, currentAmp);
-                float sqrt_P = std::sqrt(P / 2.0f);
+                float k_length = std::sqrt(kx * kx + kz * kz);
 
-                float p_minus = Phillips(-kx, -kz, currentAmp);
-                float sqrt_P_minus = std::sqrt(p_minus / 2.0f);
+                float P = 0.0f;
+                if (k_length >= currentMinK && k_length <= currentMaxK) {
+                    P = Phillips(kx, kz, currentAmp, currentWindSpeed, currentWindDir);
+                    if (x == 0 && z == 0) P = 0.0f;
+                }
+                
+                P *= dk;
+                float sqrt_P = std::sqrt(P);
 
-                std::complex<float> h0(dist(gen) * sqrt_P, dist(gen) * sqrt_P);
-                std::complex<float> h0_minus(dist(gen) * sqrt_P_minus, dist(gen) * sqrt_P_minus);
+                std::complex<float> h0((1.0f / std::sqrt(2.0f)) * dist(gen) * sqrt_P, 
+                                       (1.0f / std::sqrt(2.0f)) * dist(gen) * sqrt_P);
 
                 _h0[c][z * N + x] = h0;
-                _h0_minus[c][z * N + x] = std::conj(h0_minus);
+            }
+        }
+
+        // Generate h0_minus by looking up the negated frequencies
+        for (int z = 0; z < N; ++z) {
+            for (int x = 0; x < N; ++x) {
+                int minus_x = (N - x) % N;
+                int minus_z = (N - z) % N;
+                _h0_minus[c][z * N + x] = _h0[c][minus_z * N + minus_x];
             }
         }
     }
@@ -166,8 +191,8 @@ void HdGeminiOcean::Update(float time) {
         tbb::parallel_for(tbb::blocked_range2d<int>(0, N, 0, N), [&](const tbb::blocked_range2d<int>& r) {
             for (int z = r.rows().begin(); z != r.rows().end(); ++z) {
                 for (int x = r.cols().begin(); x != r.cols().end(); ++x) {
-                    float nx = x - N / 2.0f;
-                    float nz = z - N / 2.0f;
+                    float nx = (x < N / 2) ? (float)x : (float)(x - N);
+                    float nz = (z < N / 2) ? (float)z : (float)(z - N);
                     float kx = (2.0f * M_PI * nx) / currentSize;
                     float kz = (2.0f * M_PI * nz) / currentSize;
 
@@ -182,7 +207,7 @@ void HdGeminiOcean::Update(float time) {
                     std::complex<float> exp_iwt(std::cos(phase), std::sin(phase));
                     std::complex<float> exp_minus_iwt(std::cos(-phase), std::sin(-phase));
 
-                    std::complex<float> h_kt = h0 * exp_iwt + h0_minus * exp_minus_iwt;
+                    std::complex<float> h_kt = h0 * exp_iwt + std::conj(h0_minus) * exp_minus_iwt;
 
                     float kx_norm = (k_length > 1e-6f) ? kx / k_length : 0.0f;
                     float kz_norm = (k_length > 1e-6f) ? kz / k_length : 0.0f;
@@ -198,17 +223,20 @@ void HdGeminiOcean::Update(float time) {
         PerformFFT2D(_h_kt_dx);
         PerformFFT2D(_h_kt_dy);
 
-        float sign_flip[2] = { 1.0f, -1.0f };
+        // The Python script multiplies by chop, and FFT inherently doesn't divide by N^2.
+        // Because FFT(H) computes sum(H e^{-ikx}), its real part is exactly N^2 * IFFT(H).real().
+        // In python we scaled by N^2, so taking the real part here directly provides the proper amplitude.
         
+        // However, fftfreq uses alternating signs if we don't shift.
+        // We evaluate at x, z directly, so no sign flipping is needed since the frequencies are in unshifted order.
         tbb::parallel_for(tbb::blocked_range2d<int>(0, N, 0, N), [&](const tbb::blocked_range2d<int>& r) {
             for (int z = r.rows().begin(); z != r.rows().end(); ++z) {
                 for (int x = r.cols().begin(); x != r.cols().end(); ++x) {
                     int idx = z * N + x;
-                    float sign = sign_flip[(x + z) & 1];
                     
-                    float dx = _h_kt_dx[idx].real() * sign * currentChoppy;
-                    float dy = _h_kt_dz[idx].real() * sign;
-                    float dz = _h_kt_dy[idx].real() * sign * currentChoppy;
+                    float dx = _h_kt_dx[idx].real() * currentChoppy;
+                    float dy = _h_kt_dz[idx].real();
+                    float dz = _h_kt_dy[idx].real() * currentChoppy;
 
                     _displacementMap[c][idx] = GfVec3f(dx, dy, dz);
                 }

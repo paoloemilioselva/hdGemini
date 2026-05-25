@@ -18,9 +18,11 @@ struct HdGeminiOceanParams {
     float amplitude[3] = { 0.0f, 0.0f, 0.0f };
     float choppiness[3] = { 1.2f, 1.2f, 1.2f };
     float strength[3] = { 1.0f, 1.0f, 1.0f };
-    float windSpeed = 0.0f;
+    float windSpeed[3] = { 0.0f, 0.0f, 0.0f };
+    GfVec2f windDirection[3] = { GfVec2f(1.0f, 1.0f), GfVec2f(1.0f, 1.0f), GfVec2f(1.0f, 1.0f) };
+    float minK[3] = { 0.0f, 0.0f, 0.0f };
+    float maxK[3] = { 1000000.0f, 1000000.0f, 1000000.0f };
     float waterHeight = 0.0f;
-    GfVec2f windDirection = GfVec2f(1.0f, 1.0f);
     float foamVisibility = 1.0f;
     bool disableShader = false;
     bool repeat = true;
@@ -33,7 +35,11 @@ struct HdGeminiOceanParams {
                amplitude[0] == o.amplitude[0] && amplitude[1] == o.amplitude[1] && amplitude[2] == o.amplitude[2] &&
                choppiness[0] == o.choppiness[0] && choppiness[1] == o.choppiness[1] && choppiness[2] == o.choppiness[2] &&
                strength[0] == o.strength[0] && strength[1] == o.strength[1] && strength[2] == o.strength[2] &&
-               windSpeed == o.windSpeed && waterHeight == o.waterHeight && windDirection == o.windDirection &&
+               windSpeed[0] == o.windSpeed[0] && windSpeed[1] == o.windSpeed[1] && windSpeed[2] == o.windSpeed[2] &&
+               windDirection[0] == o.windDirection[0] && windDirection[1] == o.windDirection[1] && windDirection[2] == o.windDirection[2] &&
+               minK[0] == o.minK[0] && minK[1] == o.minK[1] && minK[2] == o.minK[2] &&
+               maxK[0] == o.maxK[0] && maxK[1] == o.maxK[1] && maxK[2] == o.maxK[2] &&
+               waterHeight == o.waterHeight &&
                foamVisibility == o.foamVisibility && disableShader == o.disableShader && repeat == o.repeat &&
                scatteringColor == o.scatteringColor && scatteringDepth == o.scatteringDepth;
     }
@@ -69,7 +75,7 @@ public:
         std::vector<GfVec3f>& outNormals) const;
 
 private:
-    float Phillips(float kx, float kz, float amplitude) const;
+    float Phillips(float kx, float kz, float amplitude, float windSpeed, const GfVec2f& windDirection) const;
     void ComputeH0();
     void PerformFFT2D(std::vector<std::complex<float>>& data) const;
 

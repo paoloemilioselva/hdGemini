@@ -96,10 +96,11 @@ public:
     void SetOceanAmplitude(int cascade, float amp) { if(cascade >= 0 && cascade < 3) _oceanParams.amplitude[cascade] = amp; }
     void SetOceanChoppiness(int cascade, float chop) { if(cascade >= 0 && cascade < 3) _oceanParams.choppiness[cascade] = chop; }
     void SetOceanStrength(int cascade, float str) { if(cascade >= 0 && cascade < 3) _oceanParams.strength[cascade] = str; }
-    void SetOceanWindSpeed(float speed) { _oceanParams.windSpeed = speed; }
-    void SetOceanWindDirection(float x, float y) { _oceanParams.windDirection = GfVec2f(x, y); }
+    void SetOceanWindSpeed(int cascade, float speed) { if(cascade >= 0 && cascade < 3) _oceanParams.windSpeed[cascade] = speed; }
+    void SetOceanWindDirection(int cascade, float x, float y) { if(cascade >= 0 && cascade < 3) _oceanParams.windDirection[cascade] = GfVec2f(x, y); }
+    void SetOceanMinK(int cascade, float minK) { if(cascade >= 0 && cascade < 3) _oceanParams.minK[cascade] = minK; }
+    void SetOceanMaxK(int cascade, float maxK) { if(cascade >= 0 && cascade < 3) _oceanParams.maxK[cascade] = maxK; }
     void SetOceanFoamVisibility(float vis) { _oceanParams.foamVisibility = vis; }
-    void SetOceanWindDirection(const GfVec2f& dir) { _oceanParams.windDirection = dir; }
     void SetOceanDisableShader(bool disable) { _oceanParams.disableShader = disable; }
     void SetOceanTime(float time) { _time = time; }
     void SetOceanRepeat(bool repeat) { _oceanParams.repeat = repeat; }

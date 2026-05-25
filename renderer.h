@@ -541,6 +541,8 @@ private:
     bool _enablePathGuiding = true;
     
     std::chrono::time_point<std::chrono::high_resolution_clock> _lastStatsUpdateTime;
+    std::chrono::time_point<std::chrono::high_resolution_clock> _renderStartTime;
+    std::chrono::time_point<std::chrono::high_resolution_clock> _renderEndTime;
 
     std::vector<TLASNode> _tlasNodes;
     std::vector<int> _tlasInstanceIndices;

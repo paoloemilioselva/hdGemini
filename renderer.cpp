@@ -284,6 +284,9 @@ HdGeminiRenderer::Render(HdRenderThread *renderThread, HdGeminiRenderDelegate* d
             if (_enableLensFlare || _chromaticAberration > 0.0f) {
                 _ApplyPostProcess();
             }
+            if (!_isConverged) {
+                _renderEndTime = std::chrono::high_resolution_clock::now();
+            }
             _isConverged = true;
             for (auto const& binding : _aovBindings) {
                 if (binding.renderBuffer) {
@@ -530,7 +533,6 @@ HdGeminiRenderer::_PrepareScene(HdRenderThread *renderThread, HdGeminiRenderDele
             _globalOceanColors.clear();
             _globalOceanVertexTypes.clear();
             _globalOcean->GenerateGridTopology(_globalOceanBasePoints, _globalOceanIndices, _globalOceanUvs, _globalOceanColors, _globalOceanVertexTypes);
-            _globalOceanLastParams = currentParams;
         }
 
         std::vector<GfVec3f> points, normals;
@@ -2933,6 +2935,7 @@ HdGeminiRenderer::Clear()
     _resolutionLevel = 2;
     _frameCount = 0;
     _isConverged = false;
+    _renderStartTime = std::chrono::high_resolution_clock::now();
     
     unsigned int width = _dataWindow.GetWidth();
     unsigned int height = _dataWindow.GetHeight();
@@ -3305,6 +3308,16 @@ void HdGeminiRenderer::_DrawStats()
     float mrps = _raysPerSecond / 1000000.0f;
     snprintf(line2, sizeof(line2), "Rays: %.2f M/s | Progression: %.1f ms", mrps, _lastProgressionTimeMs);
 
+    float totalSeconds = 0.0f;
+    if (!_isConverged) {
+        totalSeconds = std::chrono::duration<float>(std::chrono::high_resolution_clock::now() - _renderStartTime).count();
+    } else {
+        totalSeconds = std::chrono::duration<float>(_renderEndTime - _renderStartTime).count();
+    }
+    
+    char line3[256];
+    snprintf(line3, sizeof(line3), "Total Time: %.2f s", totalSeconds);
+
     GfVec4f color(1.0f, 1.0f, 0.0f, 1.0f); // Yellow
     int scale = 1;
     int lineHeight = 10 * scale;
@@ -3320,4 +3333,5 @@ void HdGeminiRenderer::_DrawStats()
 
     drawText(line1, 10, 10);
     drawText(line2, 10, 10 + lineHeight);
+    drawText(line3, 10, 10 + lineHeight * 2);
 }

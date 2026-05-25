@@ -45,7 +45,7 @@
   - **Post-Processing**: Integrated Chromatic Aberration and HDR Lens Flare (bloom) applied cleanly after the AI denoising pass.
   - **Interactive Post-Process Optimization**: Tweaking post-processing settings (Denoiser, Lens Flare, Chromatic Aberration) reinstates the pristine, accumulated HDR data from a background buffer instead of clearing the path-tracing samples, enabling real-time interactive optical adjustments.
   - All camera effects and rendering toggles (like hiding the IBL background) are dynamically exposed and adjustable in real-time within `usdview`'s Render Settings panel.
-  - **On-Screen Statistics**: Optional heads-up display overlaying current progression frame, target samples, active resolution, SYCL acceleration status, raw rays per second (Millions/s), and duration of the latest frame progression.
+  - **On-Screen Statistics**: Optional heads-up display overlaying current progression frame, target samples, active resolution, SYCL acceleration status, raw rays per second (Millions/s), duration of the latest frame progression, and **total accumulated render time**.
 - **Advanced Geometry Handling**:
   - Robust **GeomSubset** splitting: Multi-material meshes are physically partitioned into isolated sub-meshes under the hood, ensuring perfect sub-mesh material assignments even with complex n-gon encodings.
   - **Face-Varying Primvars**: Accurate slicing and interpolation of UVs, normals, and vertex colors for all mesh subsets.
@@ -54,10 +54,11 @@
   - Support for animated meshes via ExtComputations (e.g., skinning).
   - **Procedural FFT Oceans**: Dynamically generated, animated ocean waves utilizing Fast Fourier Transforms (FFT) directly within the render delegate.
     - **Global & Per-Prim Modes**: Can be enabled globally (generating an infinite ocean plane) or applied directly to user-authored mesh prims.
+    - **3-Cascade Spectral Simulation**: The ocean displacement is evaluated as a sum of 3 separate FFT cascades (Long, Medium, and Detailed/Crisp waves), evaluated over a physical Phillips spectrum. Each cascade independently controls its amplitude, choppiness, physical size, minimum/maximum frequency bands (`minK`, `maxK`), and wind parameters.
+    - **Watertight Volumetric Geometry**: The ocean topology is procedurally extruded into a fully closed, watertight 3D volume (with vertical skirts and a bottom cap). This perfectly supports robust physical path tracing, preventing infinite-distance errors during Subsurface Scattering random walks and volumetric color absorption (Beer's Law).
     - **Adaptive Subdivision**: Per-prim authored ocean geometry seamlessly integrates with OpenSubdiv, allowing low-poly base meshes to be cleanly subdivided and refined before dynamic FFT displacement is applied.
     - **Adaptive Dicing LOD**: Uses screen-space NDC projections for dynamic, REYES-style pixel-level dicing to adaptively scale ocean mesh tessellation based on camera distance via a dynamically configurable `dicingScale` multiplier.
-    - **Dual-Amplitude FFT**: Implements dual amplitude control (`oceanAmplitude` for large/coarse dominant waves and `oceanAmplitudeFine` for small/fine high-frequency waves) over the Phillips spectrum for advanced wave shaping.
-    - Fully configurable parameters available dynamically via Render Settings: Size, Amplitude, Fine Amplitude, Choppiness, Wind Speed, Direction, and Dicing Scale.
+    - Fully configurable parameters available dynamically via USD Render Settings and Primvars: Per-cascade Wind Speed/Direction, Size, Amplitude, Choppiness, and frequency bands.
     - Supports an `oceanRepeat` toggle to seamlessly repeat the simulated wave patch infinitely or cleanly constrain it to a single localized tile.
     - Includes a built-in diagnostic mode: disabling the shader on the ocean dynamically visualizes the raw per-micropolygon dicing density via random solid colors for rapid LOD tuning.
 - **Lighting**:

@@ -524,19 +524,11 @@ HdGeminiRenderer::_PrepareScene(HdRenderThread *renderThread, HdGeminiRenderDele
         _globalOcean->Update(_time);
         
         if (rebuildTopology || _globalOceanBasePoints.empty()) {
-            GfMatrix4f viewProj(GfMatrix4f(_viewMatrix) * GfMatrix4f(_projMatrix));
-            GfVec3f camPos(GfVec3f(_viewMatrix.GetInverse().ExtractTranslation()));
-            GfRange3f worldBounds(-GfVec3f(100000.0f), GfVec3f(100000.0f));
-            if (!_oceanParams.repeat) {
-                float halfSize = _oceanParams.size[0] * 0.5f;
-                worldBounds = GfRange3f(GfVec3f(-halfSize, -10000.0f, -halfSize), GfVec3f(halfSize, 10000.0f, halfSize));
-            }
-            
             _globalOceanBasePoints.clear();
             _globalOceanIndices.clear();
             _globalOceanUvs.clear();
             _globalOceanColors.clear();
-            _globalOcean->GenerateGridTopology(viewProj, camPos, worldBounds, _lastWidth, _lastHeight, _globalOceanBasePoints, _globalOceanIndices, _globalOceanUvs, _globalOceanColors);
+            _globalOcean->GenerateGridTopology(_globalOceanBasePoints, _globalOceanIndices, _globalOceanUvs, _globalOceanColors);
         }
         
         std::vector<GfVec3f> points, normals;

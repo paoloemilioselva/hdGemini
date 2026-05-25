@@ -248,14 +248,6 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
             if (res.IsHolding<int>()) _oceanParams.gridSize = res.Get<int>();
         }
 
-        VtValue dScale = sceneDelegate->Get(id, TfToken("primvars:gemini:oceanDicingScale"));
-        if (dScale.IsHolding<float>()) _oceanParams.dicingScale = dScale.Get<float>();
-        else if (dScale.IsHolding<double>()) _oceanParams.dicingScale = (float)dScale.Get<double>();
-        else {
-            dScale = sceneDelegate->Get(id, TfToken("gemini:oceanDicingScale"));
-            if (dScale.IsHolding<float>()) _oceanParams.dicingScale = dScale.Get<float>();
-            else if (dScale.IsHolding<double>()) _oceanParams.dicingScale = (float)dScale.Get<double>();
-        }
 
         const char* cascadeTokens[3] = {"1", "2", "3"};
         for (int c = 0; c < 3; ++c) {

@@ -14,7 +14,6 @@ PXR_NAMESPACE_USING_DIRECTIVE
 
 struct HdGeminiOceanParams {
     int gridSize = 128;
-    float dicingScale = 1.0f;
     float size[3] = { 100.0f, 10.0f, 1.0f };
     float amplitude[3] = { 0.0f, 0.0f, 0.0f };
     float choppiness[3] = { 1.2f, 1.2f, 1.2f };
@@ -29,7 +28,7 @@ struct HdGeminiOceanParams {
     float scatteringDepth = 10.0f;
     
     bool operator==(const HdGeminiOceanParams& o) const {
-        return gridSize == o.gridSize && dicingScale == o.dicingScale &&
+        return gridSize == o.gridSize &&
                size[0] == o.size[0] && size[1] == o.size[1] && size[2] == o.size[2] &&
                amplitude[0] == o.amplitude[0] && amplitude[1] == o.amplitude[1] && amplitude[2] == o.amplitude[2] &&
                choppiness[0] == o.choppiness[0] && choppiness[1] == o.choppiness[1] && choppiness[2] == o.choppiness[2] &&
@@ -59,11 +58,6 @@ public:
     bool IsInitialized() const { return _initialized; }
 
     void GenerateGridTopology(
-        const GfMatrix4f& viewProj, 
-        const GfVec3f& cameraPos,
-        const GfRange3f& bounds,
-        int screenWidth,
-        int screenHeight,
         std::vector<GfVec3f>& outBasePoints,
         std::vector<GfVec3i>& outIndices,
         std::vector<GfVec2f>& outUvs,

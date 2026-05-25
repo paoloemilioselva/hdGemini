@@ -528,11 +528,6 @@ HdGeminiRenderDelegate::GetRenderSettingDescriptors() const
         VtValue(0.0f)
     });
     list.push_back({
-        "Ocean Dicing Scale",
-        HdGeminiRenderSettingsTokens->oceanDicingScale,
-        VtValue(1.0f)
-    });
-    list.push_back({
         "Ocean Size 1",
         HdGeminiRenderSettingsTokens->oceanSize1,
         VtValue(100.0f)
@@ -717,8 +712,6 @@ HdGeminiRenderDelegate::GetRenderSetting(TfToken const& key) const
         return VtValue(0.0f);
     } else if (key == HdGeminiRenderSettingsTokens->oceanGridSize) {
         return VtValue(128);
-    } else if (key == HdGeminiRenderSettingsTokens->oceanDicingScale) {
-        return VtValue(1.0f);
     } else if (key == HdGeminiRenderSettingsTokens->oceanSize1) {
         return VtValue(100.0f);
     } else if (key == HdGeminiRenderSettingsTokens->oceanSize2) {
@@ -890,9 +883,6 @@ HdGeminiRenderDelegate::SetRenderSetting(TfToken const& key, VtValue const& valu
         changed = true;
     } else if (key == HdGeminiRenderSettingsTokens->oceanGridSize) {
         _renderer.SetOceanGridSize(getInt(value, 128));
-        changed = true;
-    } else if (key == HdGeminiRenderSettingsTokens->oceanDicingScale) {
-        _renderer.SetOceanDicingScale(getFloat(value, 1.0f));
         changed = true;
     } else if (key == HdGeminiRenderSettingsTokens->oceanSize1) {
         _renderer.SetOceanSize(0, getFloat(value, 100.0f));

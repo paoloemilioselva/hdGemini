@@ -91,8 +91,7 @@ public:
 
     void SetOceanEnable(bool enable) { _oceanEnable = enable; }
     void SetOceanWaterHeight(float height) { _oceanWaterHeight = height; }
-    void SetOceanGridSize(int res) { _oceanParams.gridSize = res; }
-    void SetOceanDicingScale(float scale) { _oceanParams.dicingScale = scale; }
+    void SetOceanGridSize(int size) { _oceanParams.gridSize = size; }
     void SetOceanSize(int cascade, float size) { if(cascade >= 0 && cascade < 3) _oceanParams.size[cascade] = size; }
     void SetOceanAmplitude(int cascade, float amp) { if(cascade >= 0 && cascade < 3) _oceanParams.amplitude[cascade] = amp; }
     void SetOceanChoppiness(int cascade, float chop) { if(cascade >= 0 && cascade < 3) _oceanParams.choppiness[cascade] = chop; }

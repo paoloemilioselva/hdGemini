@@ -127,7 +127,7 @@ if __name__ == "__main__":
     cascades_config = [
         {
             "name": "Long Waves",
-            "amplitude": 5.0, 
+            "amplitude": 1e-4, 
             "wind_vel": (15.0, 5.0),
             "choppiness": 1.2,
             "min_k": 0.0,
@@ -135,7 +135,7 @@ if __name__ == "__main__":
         },
         {
             "name": "Medium Waves",
-            "amplitude": 1.0,
+            "amplitude": 5e-5,
             "wind_vel": (10.0, 2.0),
             "choppiness": 1.5,
             "min_k": 0.5,
@@ -143,7 +143,7 @@ if __name__ == "__main__":
         },
         {
             "name": "Crispy Details",
-            "amplitude": 0.2,
+            "amplitude": 1e-5,
             "wind_vel": (5.0, 1.0),
             "choppiness": 2.0,
             "min_k": 2.0,

@@ -49,7 +49,7 @@ void HdGeminiOcean::ComputeH0() {
     std::normal_distribution<float> dist(0.0f, 1.0f);
 
     for (int c = 0; c < 3; ++c) {
-        float currentSize = _params.size[c];
+        float currentSize = _params.size;
         float currentAmp = _params.amplitude[c];
         float currentWindSpeed = _params.windSpeed[c];
         GfVec2f currentWindDir = _params.windDirection[c];
@@ -185,7 +185,7 @@ void HdGeminiOcean::Update(float time) {
     int N = _params.gridSize;
 
     for (int c = 0; c < 3; ++c) {
-        float currentSize = _params.size[c];
+        float currentSize = _params.size;
         float currentChoppy = _params.choppiness[c];
 
         tbb::parallel_for(tbb::blocked_range2d<int>(0, N, 0, N), [&](const tbb::blocked_range2d<int>& r) {
@@ -252,7 +252,7 @@ GfVec3f HdGeminiOcean::GetDisplacedPosition(const GfVec3f& basePos) const {
     int N = _params.gridSize;
 
     for (int c = 0; c < 3; ++c) {
-        float size = _params.size[c];
+        float size = _params.size;
         if (size <= 1e-5f) continue;
         
         float u = basePos[0] / size + 0.5f;

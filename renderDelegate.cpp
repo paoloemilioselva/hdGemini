@@ -528,19 +528,14 @@ HdGeminiRenderDelegate::GetRenderSettingDescriptors() const
         VtValue(0.0f)
     });
     list.push_back({
-        "Ocean Size 1",
-        HdGeminiRenderSettingsTokens->oceanSize1,
+        "Ocean Size",
+        HdGeminiRenderSettingsTokens->oceanSize,
         VtValue(100.0f)
     });
     list.push_back({
-        "Ocean Size 2",
-        HdGeminiRenderSettingsTokens->oceanSize2,
-        VtValue(10.0f)
-    });
-    list.push_back({
-        "Ocean Size 3",
-        HdGeminiRenderSettingsTokens->oceanSize3,
-        VtValue(1.0f)
+        "Ocean Extrusion",
+        HdGeminiRenderSettingsTokens->oceanExtrusion,
+        VtValue(1000.0f)
     });
     list.push_back({
         "Ocean Amplitude 1",
@@ -732,12 +727,10 @@ HdGeminiRenderDelegate::GetRenderSetting(TfToken const& key) const
         return VtValue(0.0f);
     } else if (key == HdGeminiRenderSettingsTokens->oceanGridSize) {
         return VtValue(128);
-    } else if (key == HdGeminiRenderSettingsTokens->oceanSize1) {
-        return VtValue(100.0f);
-    } else if (key == HdGeminiRenderSettingsTokens->oceanSize2) {
-        return VtValue(10.0f);
-    } else if (key == HdGeminiRenderSettingsTokens->oceanSize3) {
-        return VtValue(1.0f);
+    } else if (key == HdGeminiRenderSettingsTokens->oceanSize) {
+        return VtValue(_renderer.GetOceanParams().size);
+    } else if (key == HdGeminiRenderSettingsTokens->oceanExtrusion) {
+        return VtValue(_renderer.GetOceanParams().extrusion);
     } else if (key == HdGeminiRenderSettingsTokens->oceanAmplitude1) {
         return VtValue(0.0f);
     } else if (key == HdGeminiRenderSettingsTokens->oceanAmplitude2) {
@@ -916,14 +909,11 @@ HdGeminiRenderDelegate::SetRenderSetting(TfToken const& key, VtValue const& valu
     } else if (key == HdGeminiRenderSettingsTokens->oceanGridSize) {
         _renderer.SetOceanGridSize(getInt(value, 128));
         changed = true;
-    } else if (key == HdGeminiRenderSettingsTokens->oceanSize1) {
-        _renderer.SetOceanSize(0, getFloat(value, 100.0f));
+    } else if (key == HdGeminiRenderSettingsTokens->oceanSize) {
+        _renderer.SetOceanSize(getFloat(value, 100.0f));
         changed = true;
-    } else if (key == HdGeminiRenderSettingsTokens->oceanSize2) {
-        _renderer.SetOceanSize(1, getFloat(value, 10.0f));
-        changed = true;
-    } else if (key == HdGeminiRenderSettingsTokens->oceanSize3) {
-        _renderer.SetOceanSize(2, getFloat(value, 1.0f));
+    } else if (key == HdGeminiRenderSettingsTokens->oceanExtrusion) {
+        _renderer.SetOceanExtrusion(getFloat(value, 1000.0f));
         changed = true;
     } else if (key == HdGeminiRenderSettingsTokens->oceanAmplitude1) {
         _renderer.SetOceanAmplitude(0, getFloat(value, 0.0f));

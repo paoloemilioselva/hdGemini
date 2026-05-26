@@ -63,9 +63,8 @@ TF_DECLARE_PUBLIC_TOKENS(HdGeminiAovTokens, HD_GEMINI_AOV_TOKENS);
     (oceanEnable)                        \
     (oceanWaterHeight)                   \
     (oceanGridSize)                      \
-    (oceanSize1)                         \
-    (oceanSize2)                         \
-    (oceanSize3)                         \
+    (oceanSize)                          \
+    (oceanExtrusion)                     \
     (oceanAmplitude1)                    \
     (oceanAmplitude2)                    \
     (oceanAmplitude3)                    \

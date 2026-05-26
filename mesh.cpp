@@ -259,18 +259,26 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
         }
 
 
+        VtValue sizeVal = sceneDelegate->Get(id, TfToken("primvars:gemini:oceanSize"));
+        if (sizeVal.IsHolding<float>()) _oceanParams.size = sizeVal.Get<float>();
+        else if (sizeVal.IsHolding<double>()) _oceanParams.size = (float)sizeVal.Get<double>();
+        else {
+            sizeVal = sceneDelegate->Get(id, TfToken("gemini:oceanSize"));
+            if (sizeVal.IsHolding<float>()) _oceanParams.size = sizeVal.Get<float>();
+            else if (sizeVal.IsHolding<double>()) _oceanParams.size = (float)sizeVal.Get<double>();
+        }
+
+        VtValue extVal = sceneDelegate->Get(id, TfToken("primvars:gemini:oceanExtrusion"));
+        if (extVal.IsHolding<float>()) _oceanParams.extrusion = extVal.Get<float>();
+        else if (extVal.IsHolding<double>()) _oceanParams.extrusion = (float)extVal.Get<double>();
+        else {
+            extVal = sceneDelegate->Get(id, TfToken("gemini:oceanExtrusion"));
+            if (extVal.IsHolding<float>()) _oceanParams.extrusion = extVal.Get<float>();
+            else if (extVal.IsHolding<double>()) _oceanParams.extrusion = (float)extVal.Get<double>();
+        }
+
         const char* cascadeTokens[3] = {"1", "2", "3"};
         for (int c = 0; c < 3; ++c) {
-            std::string primvarSize = std::string("primvars:gemini:oceanSize") + cascadeTokens[c];
-            std::string geomSize = std::string("gemini:oceanSize") + cascadeTokens[c];
-            VtValue size = sceneDelegate->Get(id, TfToken(primvarSize));
-            if (size.IsHolding<float>()) _oceanParams.size[c] = size.Get<float>();
-            else if (size.IsHolding<double>()) _oceanParams.size[c] = (float)size.Get<double>();
-            else {
-                size = sceneDelegate->Get(id, TfToken(geomSize));
-                if (size.IsHolding<float>()) _oceanParams.size[c] = size.Get<float>();
-                else if (size.IsHolding<double>()) _oceanParams.size[c] = (float)size.Get<double>();
-            }
 
             std::string primvarAmp = std::string("primvars:gemini:oceanAmplitude") + cascadeTokens[c];
             std::string geomAmp = std::string("gemini:oceanAmplitude") + cascadeTokens[c];

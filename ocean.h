@@ -14,7 +14,7 @@ PXR_NAMESPACE_USING_DIRECTIVE
 
 struct HdGeminiOceanParams {
     int gridSize = 128;
-    float size[3] = { 100.0f, 10.0f, 1.0f };
+    float size = 100.0f;
     float amplitude[3] = { 0.0f, 0.0f, 0.0f };
     float choppiness[3] = { 1.2f, 1.2f, 1.2f };
     float strength[3] = { 1.0f, 1.0f, 1.0f };
@@ -23,6 +23,7 @@ struct HdGeminiOceanParams {
     float minK[3] = { 0.0f, 0.0f, 0.0f };
     float maxK[3] = { 1000000.0f, 1000000.0f, 1000000.0f };
     float waterHeight = 0.0f;
+    float extrusion = 1000.0f;
     float foamVisibility = 1.0f;
     bool disableShader = false;
     bool repeat = true;
@@ -32,7 +33,8 @@ struct HdGeminiOceanParams {
     
     bool operator==(const HdGeminiOceanParams& o) const {
         return gridSize == o.gridSize &&
-               size[0] == o.size[0] && size[1] == o.size[1] && size[2] == o.size[2] &&
+               size == o.size &&
+               extrusion == o.extrusion &&
                amplitude[0] == o.amplitude[0] && amplitude[1] == o.amplitude[1] && amplitude[2] == o.amplitude[2] &&
                choppiness[0] == o.choppiness[0] && choppiness[1] == o.choppiness[1] && choppiness[2] == o.choppiness[2] &&
                strength[0] == o.strength[0] && strength[1] == o.strength[1] && strength[2] == o.strength[2] &&

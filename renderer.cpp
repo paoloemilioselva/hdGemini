@@ -1347,7 +1347,7 @@ bool HdGeminiRenderer::_IsPointInsideOcean(const GfVec3f& pos) const {
         GfVec3f queryPos = pos;
         queryPos[1] = _oceanWaterHeight;
         if (!_oceanParams.repeat) {
-            float halfSize = _oceanParams.size[0] * 0.5f;
+            float halfSize = _oceanParams.size * 0.5f;
             if (pos[0] >= -halfSize && pos[0] <= halfSize && pos[2] >= -halfSize && pos[2] <= halfSize) {
                 if (pos[1] < _globalOcean->GetDisplacedPosition(queryPos)[1]) return true;
             }
@@ -1362,7 +1362,7 @@ bool HdGeminiRenderer::_IsPointInsideOcean(const GfVec3f& pos) const {
             GfVec3f queryPos = localPos;
             queryPos[1] = inst.mesh->GetOceanParams().waterHeight;
             if (!inst.mesh->GetOceanParams().repeat) {
-                float halfSize = inst.mesh->GetOceanParams().size[0] * 0.5f;
+                float halfSize = inst.mesh->GetOceanParams().size * 0.5f;
                 if (localPos[0] < -halfSize || localPos[0] > halfSize || localPos[2] < -halfSize || localPos[2] > halfSize) continue;
             }
             if (localPos[1] < inst.mesh->GetOceanSimulator()->GetDisplacedPosition(queryPos)[1]) return true;

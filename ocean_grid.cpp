@@ -11,7 +11,7 @@ void HdGeminiOcean::GenerateGridTopology(
     std::vector<int>& outTypes) const
 {
     int N = _params.gridSize;
-    float size = _params.size[0] > 1e-5f ? _params.size[0] : 100.0f;
+    float size = _params.size > 1e-5f ? _params.size : 100.0f;
     float halfSize = size * 0.5f;
     float step = size / (float)N;
     
@@ -81,7 +81,7 @@ void HdGeminiOcean::GenerateGridTopology(
     }
 
     // Add skirts and bottom
-    float bottomY = _params.waterHeight - 100.0f;
+    float bottomY = _params.waterHeight - _params.extrusion;
     GfVec3f rc = _params.disableShader ? randColor() : GfVec3f(0.0f);
 
     auto addQuad = [&](const GfVec3f& p0, const GfVec3f& p1, const GfVec3f& p2, const GfVec3f& p3, int typeTop, int typeBottom) {

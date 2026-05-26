@@ -641,7 +641,7 @@ HdGeminiRenderDelegate::GetRenderSettingDescriptors() const
     list.push_back({
         "Camera Waterline Meniscus Tint",
         HdGeminiRenderSettingsTokens->meniscusTint,
-        VtValue(GfVec3f(0.1f, 0.4f, 0.3f))
+        VtValue(GfVec3f(0.02f, 0.05f, 0.04f))
     });
     return list;
 }

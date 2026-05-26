@@ -210,6 +210,16 @@ HdGeminiRenderer::SetCamera(const GfMatrix4d& viewMatrix, const GfMatrix4d& proj
     _projMatrix = projMatrix;
     _inverseViewMatrix = viewMatrix.GetInverse();
     _inverseProjMatrix = projMatrix.GetInverse();
+    _frameCount = 0;
+    _isConverged = false;
+}
+
+void HdGeminiRenderer::SetHydraCameraParams(float fStop, float focalLength, float focusDistance, float iso, float shutterSpeed) {
+    _hydraFStop = fStop;
+    _hydraFocalLength = focalLength;
+    _hydraFocusDistance = focusDistance;
+    _hydraIso = iso;
+    _hydraShutterSpeed = shutterSpeed;
 }
 
 void
@@ -1222,7 +1232,7 @@ GfVec3f HdGeminiRenderer::_SamplePhysicalSky(const GfVec3f& rayDir, const GfVec3
 
     GfVec3f betaR(5.5e-6f, 13.0e-6f, 22.4e-6f);
     float betaM = 21e-6f;
-    float hR = 7994.0f;
+    float hR = 8000.0f;
     float hM = 1200.0f;
 
     float currentT = tMin;
@@ -1281,7 +1291,7 @@ GfVec3f HdGeminiRenderer::_SamplePhysicalSky(const GfVec3f& rayDir, const GfVec3
         currentT += stepSize;
     }
 
-    GfVec3f sunIntensity(20.0f * std::exp2(_physicalSkySunExposure));
+    GfVec3f sunIntensity(120000.0f * std::exp2(_physicalSkySunExposure));
     GfVec3f color = GfCompMult(GfCompMult(totalR, betaR) * phaseR + totalM * betaM * phaseM, sunIntensity);
     color = color * std::exp2(_physicalSkySkyExposure);
 
@@ -1313,7 +1323,7 @@ GfVec3f HdGeminiRenderer::_GetSunTransmittance(const GfVec3f& sunDir) const {
     float sunOpticalDepthR = 0.0f;
     float sunOpticalDepthM = 0.0f;
 
-    float hR = 7994.0f;
+    float hR = 8000.0f;
     float hM = 1200.0f;
     GfVec3f betaR(5.5e-6f, 13.0e-6f, 22.4e-6f);
     float betaM = 21e-6f;
@@ -2037,7 +2047,7 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
 
         // --- Physical Sun Direct Lighting ---
         if (_enablePhysicalSky && physicalSunDir[1] > -0.05f) {
-            GfVec3f sunIntensity(20.0f * std::exp2(_physicalSkySunExposure));
+            GfVec3f sunIntensity(120000.0f * std::exp2(_physicalSkySunExposure));
             GfVec3f sunColor = GfCompMult(_GetSunTransmittance(physicalSunDir), sunIntensity); // Sun intensity multiplier
             if (sunColor[0] > 0 || sunColor[1] > 0 || sunColor[2] > 0) {
                 float nDotL = std::max(0.0f, GfDot(shadingNormal, physicalSunDir));
@@ -2738,6 +2748,12 @@ HdGeminiRenderer::_RenderTiles(HdRenderThread *renderThread, HdGeminiRenderDeleg
     
     GfVec3f cameraPosWorld(_inverseViewMatrix.Transform(GfVec3f(0, 0, 0)));
     
+    float activeFocalLength = _enablePhysicalCamera ? _focalLength : _hydraFocalLength;
+    float activeFStop = _enablePhysicalCamera ? _fStop : _hydraFStop;
+    float activeFocusDistance = _enablePhysicalCamera ? _focusDistance : _hydraFocusDistance;
+    float activeIso = _enablePhysicalCamera ? _iso : _hydraIso;
+    float activeShutterSpeed = _enablePhysicalCamera ? _shutterSpeed : _hydraShutterSpeed;
+    
     float lensWaveHeight = -1e30f;
     if (_oceanEnable && _globalOcean) {
         GfVec3f nearPlaneCenterCam = GfVec3f(_inverseProjMatrix.Transform(GfVec3d(0, 0, -1.0)));
@@ -2892,7 +2908,7 @@ HdGeminiRenderer::_RenderTiles(HdRenderThread *renderThread, HdGeminiRenderDeleg
                         GfVec3f nearPlanePointCam = GfVec3f(_inverseProjMatrix.Transform(GfVec3d(ndcX, ndcY, -1.0)));
                         
                         if (_enableDoF) {
-                            float apertureRadius = (_focalLength * 0.001f / _metersPerUnit) / (2.0f * _fStop);
+                            float apertureRadius = (activeFocalLength * 0.001f / _metersPerUnit) / (2.0f * activeFStop);
                             float lensU, lensV;
                             
                             float d1 = qmc::SampleDimension(sampleIdx, qmcDim++, rng);
@@ -2914,7 +2930,7 @@ HdGeminiRenderer::_RenderTiles(HdRenderThread *renderThread, HdGeminiRenderDeleg
                             lensU *= apertureRadius; lensV *= apertureRadius;
 
                             GfVec3f lensPointCam(lensU, lensV, 0.0f);
-                            GfVec3f focalPointCam = nearPlanePointCam * _focusDistance;
+                            GfVec3f focalPointCam = nearPlanePointCam * activeFocusDistance;
                             
                             GfVec3f lensPointWorld = GfVec3f(_inverseViewMatrix.Transform(GfVec3d(lensPointCam)));
                             GfVec3f focalPointWorld = GfVec3f(_inverseViewMatrix.Transform(GfVec3d(focalPointCam)));
@@ -2934,10 +2950,7 @@ HdGeminiRenderer::_RenderTiles(HdRenderThread *renderThread, HdGeminiRenderDeleg
                         float u_lambda = qmc::SampleDimension(sampleIdx, qmcDim++, rng);
                         lambda = SampledWavelengths::SampleUniform(u_lambda);
                         
-                        exposureMultiplier = 1.0f;
-                        if (_enablePhysicalCamera) {
-                            exposureMultiplier = (_iso / 100.0f) * _shutterSpeed / (_fStop * _fStop) * 100.0f;
-                        }
+                        exposureMultiplier = (activeIso / 100.0f) * activeShutterSpeed / (activeFStop * activeFStop) * 100.0f;
                         
                         if (lensWaveHeight > -1e29f) {
                             float distToWater = rayOriginWorld[1] - lensWaveHeight;
@@ -3153,13 +3166,12 @@ void HdGeminiRenderer::_RenderTilesSYCL(HdRenderThread *renderThread, HdGeminiRe
     float invHeight = 1.0f / height;
     float lensDistortion = _lensDistortion;
     bool enableDoF = _enableDoF;
-    float focalLength = _focalLength;
-    float fStop = _fStop;
-    float focusDist = _focusDistance;
+    float focalLength = _enablePhysicalCamera ? _focalLength : _hydraFocalLength;
+    float fStop = _enablePhysicalCamera ? _fStop : _hydraFStop;
+    float focusDist = _enablePhysicalCamera ? _focusDistance : _hydraFocusDistance;
     int bokehBlades = _bokehBlades;
-    bool enablePhysicalCamera = _enablePhysicalCamera;
-    float iso = _iso;
-    float shutterSpeed = _shutterSpeed;
+    float iso = _enablePhysicalCamera ? _iso : _hydraIso;
+    float shutterSpeed = _enablePhysicalCamera ? _shutterSpeed : _hydraShutterSpeed;
     
     float meniscusSize = _meniscusSize;
     float meniscusBend = _meniscusBend;
@@ -3307,10 +3319,7 @@ void HdGeminiRenderer::_RenderTilesSYCL(HdRenderThread *renderThread, HdGeminiRe
             rayBuf[idx].x = x; rayBuf[idx].y = y;
             rayBuf[idx].active = true;
 
-            float exposure = 1.0f;
-            if (enablePhysicalCamera) {
-                exposure = (iso / 100.0f) * shutterSpeed / (fStop * fStop) * 100.0f;
-            }
+            float exposure = (iso / 100.0f) * shutterSpeed / (fStop * fStop) * 100.0f;
             rayBuf[idx].exposureMultiplier = exposure;
             
             for(int i=0; i<4; ++i) {

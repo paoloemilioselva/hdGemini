@@ -38,6 +38,7 @@ public:
     ~HdGeminiRenderer();
 
     void SetCamera(const GfMatrix4d& viewMatrix, const GfMatrix4d& projMatrix);
+    void SetHydraCameraParams(float fStop, float focalLength, float focusDistance, float iso, float shutterSpeed);
     void SetDataWindow(const GfRect2i& dataWindow);
     void SetAovBindings(const HdRenderPassAovBindingVector& aovBindings);
     const HdRenderPassAovBindingVector& GetAovBindings() const { return _aovBindings; }
@@ -136,6 +137,13 @@ private:
     bool _enablePhysicalCamera = false;
     float _iso = 100.0f;
     float _shutterSpeed = 0.02f;
+    
+    // Hydra camera state (when override is disabled)
+    float _hydraFocalLength = 50.0f;
+    float _hydraFStop = 5.6f;
+    float _hydraFocusDistance = 10.0f;
+    float _hydraIso = 100.0f;
+    float _hydraShutterSpeed = 0.02f;
     bool _enableLensFlare = false;
     bool _renderIblBackground = true;
     float _lensDistortion = 0.0f;

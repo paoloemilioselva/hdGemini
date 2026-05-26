@@ -423,7 +423,7 @@ HdGeminiRenderDelegate::GetRenderSettingDescriptors() const
         VtValue(0)
     });
     list.push_back({
-        "Enable Physical Camera Exposure",
+        "Override Physical Camera Parameters",
         HdGeminiRenderSettingsTokens->enablePhysicalCamera,
         VtValue(false)
     });

@@ -1,6 +1,7 @@
 #include "renderPass.h"
 #include "renderer.h"
 #include <pxr/imaging/hd/renderPassState.h>
+#include <pxr/imaging/hd/camera.h>
 #include <pxr/imaging/hd/tokens.h>
 #include <pxr/base/gf/vec3i.h>
 #include <pxr/base/gf/vec4f.h>
@@ -72,6 +73,23 @@ HdGeminiRenderPass::_Execute(HdRenderPassStateSharedPtr const& renderPassState,
 
     const GfMatrix4d view = renderPassState->GetWorldToViewMatrix();
     const GfMatrix4d proj = renderPassState->GetProjectionMatrix();
+    
+    // Sync Hydra camera parameters
+    const HdCamera* camera = renderPassState->GetCamera();
+    if (camera) {
+        float fStop = camera->GetFStop();
+        float focalLength = camera->GetFocalLength();
+        float focusDistance = camera->GetFocusDistance();
+        float exposure = camera->GetExposure();
+        float iso = 100.0f * std::exp2(exposure);
+        double shutterOpen = camera->GetShutterOpen();
+        double shutterClose = camera->GetShutterClose();
+        float shutterSpeed = (float)(shutterClose - shutterOpen);
+        if (shutterSpeed <= 0.0f) shutterSpeed = 0.02f; // Fallback
+        
+        _renderer->SetHydraCameraParams(fStop, focalLength, focusDistance, iso, shutterSpeed);
+    }
+    
     if (_viewMatrix != view || _projMatrix != proj) {
         _viewMatrix = view;
         _projMatrix = proj;

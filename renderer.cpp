@@ -2729,6 +2729,14 @@ HdGeminiRenderer::_RenderTiles(HdRenderThread *renderThread, HdGeminiRenderDeleg
     if (width == 0 || height == 0 || !_colorBuffer) return;
     
     GfVec3f cameraPosWorld(_inverseViewMatrix.Transform(GfVec3f(0, 0, 0)));
+    
+    float lensWaveHeight = -1e30f;
+    if (_oceanEnable && _globalOcean) {
+        GfVec3f nearPlaneCenterCam = GfVec3f(_inverseProjMatrix.Transform(GfVec3d(0, 0, -1.0)));
+        GfVec3f nearPlaneCenterWorld = GfVec3f(_inverseViewMatrix.Transform(GfVec3d(nearPlaneCenterCam)));
+        lensWaveHeight = _globalOcean->GetDisplacedPosition(nearPlaneCenterWorld)[1];
+    }
+    
     std::lock_guard<std::recursive_mutex> lock(delegate->GetSceneLock());
     int res = _resolutionLevel;
     bool isInteractive = (res > 1);
@@ -2920,6 +2928,19 @@ HdGeminiRenderer::_RenderTiles(HdRenderThread *renderThread, HdGeminiRenderDeleg
                         if (_enablePhysicalCamera) {
                             exposureMultiplier = (_iso / 100.0f) * _shutterSpeed / (_fStop * _fStop) * 100.0f;
                         }
+                        
+                        if (lensWaveHeight > -1e29f) {
+                            float distToWater = rayOriginWorld[1] - lensWaveHeight;
+                            if (distToWater > 0.0f && distToWater < _meniscusSize) {
+                                float factor = 1.0f - (distToWater / _meniscusSize);
+                                rayDirWorld[1] -= factor * _meniscusBend;
+                                rayDirWorld.Normalize();
+                            } else if (distToWater <= 0.0f && distToWater > -_meniscusSize) {
+                                float factor = 1.0f - (std::abs(distToWater) / _meniscusSize);
+                                rayDirWorld[1] += factor * _meniscusBend;
+                                rayDirWorld.Normalize();
+                            }
+                        }
                     }
                     
                     GfVec3f albedo(0.0f), normal(0.0f);
@@ -2930,6 +2951,19 @@ HdGeminiRenderer::_RenderTiles(HdRenderThread *renderThread, HdGeminiRenderDeleg
                     }
 
                     SampledSpectrum hitSpectrum = _TraceRay(rayOriginWorld, rayDirWorld, 0, isInteractive, renderThread, sampleIdx, qmcDim, rng, lambda, &albedo, &normal, exposureMultiplier, pixelReservoir);
+                    
+                    if (lensWaveHeight > -1e29f) {
+                        float distToWater = rayOriginWorld[1] - lensWaveHeight;
+                        if (distToWater > 0.0f && distToWater < _meniscusSize) {
+                            float factor = 1.0f - (distToWater / _meniscusSize);
+                            SampledSpectrum tintSpec = RGBToSpectrum(GfVec3f(1.0f) - factor * (GfVec3f(1.0f) - _meniscusTint), lambda);
+                            hitSpectrum = hitSpectrum * tintSpec;
+                        } else if (distToWater <= 0.0f && distToWater > -_meniscusSize) {
+                            float factor = 1.0f - (std::abs(distToWater) / _meniscusSize);
+                            SampledSpectrum tintSpec = RGBToSpectrum(GfVec3f(1.0f) - factor * (GfVec3f(1.0f) - _meniscusTint), lambda);
+                            hitSpectrum = hitSpectrum * tintSpec;
+                        }
+                    }
                     
                     SampledSpectrum heroSpec;
                     for(int i=0; i<SPECTRUM_SAMPLES; ++i) heroSpec[i] = hitSpectrum[0];
@@ -3092,6 +3126,14 @@ void HdGeminiRenderer::_RenderTilesSYCL(HdRenderThread *renderThread, HdGeminiRe
     if (width == 0 || height == 0 || !_colorBuffer) return;
     
     GfVec3f cameraPosWorld(_inverseViewMatrix.Transform(GfVec3f(0, 0, 0)));
+    
+    float lensWaveHeight = -1e30f;
+    if (_oceanEnable && _globalOcean) {
+        GfVec3f nearPlaneCenterCam = GfVec3f(_inverseProjMatrix.Transform(GfVec3d(0, 0, -1.0)));
+        GfVec3f nearPlaneCenterWorld = GfVec3f(_inverseViewMatrix.Transform(GfVec3d(nearPlaneCenterCam)));
+        lensWaveHeight = _globalOcean->GetDisplacedPosition(nearPlaneCenterWorld)[1];
+    }
+    
     std::lock_guard<std::recursive_mutex> lock(delegate->GetSceneLock());
     
     // --- GPU Ray Generation Phase ---
@@ -3099,13 +3141,17 @@ void HdGeminiRenderer::_RenderTilesSYCL(HdRenderThread *renderThread, HdGeminiRe
     float invHeight = 1.0f / height;
     float lensDistortion = _lensDistortion;
     bool enableDoF = _enableDoF;
-    int bokehBlades = _bokehBlades;
-    float apertureRadius = (_focalLength / 10.0f) / (2.0f * _fStop);
+    float focalLength = _focalLength;
+    float fStop = _fStop;
     float focusDist = _focusDistance;
+    int bokehBlades = _bokehBlades;
     bool enablePhysicalCamera = _enablePhysicalCamera;
     float iso = _iso;
     float shutterSpeed = _shutterSpeed;
-    float fStop = _fStop;
+    
+    float meniscusSize = _meniscusSize;
+    float meniscusBend = _meniscusBend;
+    float meniscusTint[3] = {_meniscusTint[0], _meniscusTint[1], _meniscusTint[2]};
     int antiAliasingFilter = _antiAliasingFilter;
     uint32_t frameCount = _frameCount;
     
@@ -3175,7 +3221,7 @@ void HdGeminiRenderer::_RenderTilesSYCL(HdRenderThread *renderThread, HdGeminiRe
                     float d = sycl::cos(sectorAngle / 2.0f) / sycl::cos(sectorAngle / 2.0f - angleInSector);
                     lensU = r * d * sycl::cos(theta); lensV = r * d * sycl::sin(theta);
                 }
-                lensU *= apertureRadius; lensV *= apertureRadius;
+                lensU *= (focalLength / 10.0f) / (2.0f * fStop); lensV *= (focalLength / 10.0f) / (2.0f * fStop);
 
                 float lensCam[4] = {lensU, lensV, 0.0f, 1.0f};
                 float focalCam[4] = {nearPlanePointCam[0]*focusDist, nearPlanePointCam[1]*focusDist, nearPlanePointCam[2]*focusDist, 1.0f};
@@ -3207,20 +3253,45 @@ void HdGeminiRenderer::_RenderTilesSYCL(HdRenderThread *renderThread, HdGeminiRe
                 rayOrigin[0] = nearWorld[0]; rayOrigin[1] = nearWorld[1]; rayOrigin[2] = nearWorld[2];
             }
 
+            float u_lambda = randFloat();
+            float lambda0 = 360.0f + u_lambda * (830.0f - 360.0f);
+            for(int i=0; i<4; ++i) {
+                float l = lambda0 + (i * (830.0f - 360.0f) / 4.0f);
+                if (l > 830.0f) l -= (830.0f - 360.0f);
+                rayBuf[idx].lambda.lambda[i] = l;
+            }
+            
+            float tint[4] = {1.0f, 1.0f, 1.0f, 1.0f};
+            if (lensWaveHeight > -1e29f) {
+                float distToWater = rayOrigin[1] - lensWaveHeight;
+                if (distToWater > 0.0f && distToWater < meniscusSize) {
+                    float factor = 1.0f - (distToWater / meniscusSize);
+                    rayDir[1] -= factor * meniscusBend;
+                    float len = sycl::sqrt(rayDir[0]*rayDir[0] + rayDir[1]*rayDir[1] + rayDir[2]*rayDir[2]);
+                    rayDir[0] /= len; rayDir[1] /= len; rayDir[2] /= len;
+                    for(int i=0; i<4; ++i) {
+                        float l = rayBuf[idx].lambda.lambda[i];
+                        float tC = (l < 500) ? meniscusTint[2] : ((l < 600) ? meniscusTint[1] : meniscusTint[0]);
+                        tint[i] = 1.0f - factor * (1.0f - tC);
+                    }
+                } else if (distToWater <= 0.0f && distToWater > -meniscusSize) {
+                    float factor = 1.0f - (sycl::fabs(distToWater) / meniscusSize);
+                    rayDir[1] += factor * meniscusBend;
+                    float len = sycl::sqrt(rayDir[0]*rayDir[0] + rayDir[1]*rayDir[1] + rayDir[2]*rayDir[2]);
+                    rayDir[0] /= len; rayDir[1] /= len; rayDir[2] /= len;
+                    for(int i=0; i<4; ++i) {
+                        float l = rayBuf[idx].lambda.lambda[i];
+                        float tC = (l < 500) ? meniscusTint[2] : ((l < 600) ? meniscusTint[1] : meniscusTint[0]);
+                        tint[i] = 1.0f - factor * (1.0f - tC);
+                    }
+                }
+            }
+
             rayBuf[idx].origin[0] = rayOrigin[0]; rayBuf[idx].origin[1] = rayOrigin[1]; rayBuf[idx].origin[2] = rayOrigin[2];
             rayBuf[idx].dir[0] = rayDir[0]; rayBuf[idx].dir[1] = rayDir[1]; rayBuf[idx].dir[2] = rayDir[2];
             rayBuf[idx].rng = rng;
             rayBuf[idx].x = x; rayBuf[idx].y = y;
             rayBuf[idx].active = true;
-
-            float u_lambda = randFloat();
-            float lambda0 = 360.0f + u_lambda * (830.0f - 360.0f);
-            rayBuf[idx].lambda.lambda[0] = lambda0;
-            for (int i = 1; i < 4; ++i) {
-                float l = lambda0 + (i * (830.0f - 360.0f) / 4.0f);
-                if (l > 830.0f) l -= (830.0f - 360.0f);
-                rayBuf[idx].lambda.lambda[i] = l;
-            }
 
             float exposure = 1.0f;
             if (enablePhysicalCamera) {
@@ -3229,7 +3300,7 @@ void HdGeminiRenderer::_RenderTilesSYCL(HdRenderThread *renderThread, HdGeminiRe
             rayBuf[idx].exposureMultiplier = exposure;
             
             for(int i=0; i<4; ++i) {
-                rayBuf[idx].throughput[i] = exposure;
+                rayBuf[idx].throughput[i] = exposure * tint[i];
                 rayBuf[idx].totalRadiance[i] = 0.0f;
             }
             rayBuf[idx].bounce = 0;

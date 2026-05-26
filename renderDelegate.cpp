@@ -628,6 +628,21 @@ HdGeminiRenderDelegate::GetRenderSettingDescriptors() const
         HdGeminiRenderSettingsTokens->oceanScatteringDepth,
         VtValue(10.0f)
     });
+    list.push_back({
+        "Camera Waterline Meniscus Size",
+        HdGeminiRenderSettingsTokens->meniscusSize,
+        VtValue(0.015f)
+    });
+    list.push_back({
+        "Camera Waterline Meniscus Bend",
+        HdGeminiRenderSettingsTokens->meniscusBend,
+        VtValue(0.2f)
+    });
+    list.push_back({
+        "Camera Waterline Meniscus Tint",
+        HdGeminiRenderSettingsTokens->meniscusTint,
+        VtValue(GfVec3f(0.1f, 0.4f, 0.3f))
+    });
     return list;
 }
 
@@ -758,6 +773,12 @@ HdGeminiRenderDelegate::GetRenderSetting(TfToken const& key) const
         return VtValue(GfVec3f(0.02f, 0.15f, 0.25f));
     } else if (key == HdGeminiRenderSettingsTokens->oceanScatteringDepth) {
         return VtValue(10.0f);
+    } else if (key == HdGeminiRenderSettingsTokens->meniscusSize) {
+        return VtValue(0.015f);
+    } else if (key == HdGeminiRenderSettingsTokens->meniscusBend) {
+        return VtValue(0.2f);
+    } else if (key == HdGeminiRenderSettingsTokens->meniscusTint) {
+        return VtValue(GfVec3f(0.1f, 0.4f, 0.3f));
     }
     
     return VtValue();
@@ -996,6 +1017,23 @@ HdGeminiRenderDelegate::SetRenderSetting(TfToken const& key, VtValue const& valu
             it->second->SetTransmissionDepth(d);
         }
         changed = true;
+    } else if (key == HdGeminiRenderSettingsTokens->meniscusSize) {
+        float f = 0.015f;
+        if (value.IsHolding<float>()) f = value.Get<float>();
+        else if (value.IsHolding<double>()) f = (float)value.Get<double>();
+        _renderer.SetMeniscusSize(f);
+        changed = true;
+    } else if (key == HdGeminiRenderSettingsTokens->meniscusBend) {
+        float f = 0.2f;
+        if (value.IsHolding<float>()) f = value.Get<float>();
+        else if (value.IsHolding<double>()) f = (float)value.Get<double>();
+        _renderer.SetMeniscusBend(f);
+        changed = true;
+    } else if (key == HdGeminiRenderSettingsTokens->meniscusTint) {
+        if (value.IsHolding<GfVec3f>()) {
+            _renderer.SetMeniscusTint(value.Get<GfVec3f>());
+            changed = true;
+        }
     }
 
     if (changed || postProcessChanged) {

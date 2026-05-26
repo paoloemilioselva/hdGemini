@@ -95,7 +95,10 @@ TF_DECLARE_PUBLIC_TOKENS(HdGeminiAovTokens, HD_GEMINI_AOV_TOKENS);
     (oceanTime)                          \
     (oceanRepeat)                        \
     (oceanScatteringColor)               \
-    (oceanScatteringDepth)
+    (oceanScatteringDepth)               \
+    (meniscusSize)                       \
+    (meniscusBend)                       \
+    (meniscusTint)
 
 TF_DECLARE_PUBLIC_TOKENS(HdGeminiRenderSettingsTokens, HD_GEMINI_RENDER_SETTINGS_TOKENS);
 

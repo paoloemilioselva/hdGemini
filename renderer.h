@@ -107,6 +107,10 @@ public:
     void SetOceanScatteringColor(const GfVec3f& color) { _oceanParams.scatteringColor = color; }
     void SetOceanScatteringDepth(float depth) { _oceanParams.scatteringDepth = depth; }
     
+    void SetMeniscusSize(float size) { _meniscusSize = size; }
+    void SetMeniscusBend(float bend) { _meniscusBend = bend; }
+    void SetMeniscusTint(const GfVec3f& tint) { _meniscusTint = tint; }
+    
     const HdGeminiOceanParams& GetOceanParams() const { return _oceanParams; }
 
 private:
@@ -149,6 +153,9 @@ private:
     
     bool _oceanEnable = false;
     float _oceanWaterHeight = 0.0f;
+    float _meniscusSize = 0.015f;
+    float _meniscusBend = 0.2f;
+    GfVec3f _meniscusTint = GfVec3f(0.1f, 0.4f, 0.3f);
     HdGeminiOceanParams _oceanParams;
     std::unique_ptr<HdGeminiOcean> _globalOcean;
     std::unique_ptr<BVH> _globalOceanBvh;

@@ -783,7 +783,9 @@ HdGeminiRenderDelegate::GetRenderSetting(TfToken const& key) const
     } else if (key == HdGeminiRenderSettingsTokens->meniscusBend) {
         return VtValue(0.2f);
     } else if (key == HdGeminiRenderSettingsTokens->meniscusTint) {
-        return VtValue(GfVec3f(0.1f, 0.4f, 0.3f));
+        return VtValue(GfVec3f(0.02f, 0.05f, 0.04f));
+    } else if (key == HdGeminiRenderSettingsTokens->metersPerUnit) {
+        return VtValue(0.01f);
     }
     
     return VtValue();

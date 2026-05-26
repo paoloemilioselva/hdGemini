@@ -1332,24 +1332,28 @@ GfVec3f HdGeminiRenderer::_GetSunTransmittance(const GfVec3f& sunDir) const {
 
 bool HdGeminiRenderer::_IsPointInsideOcean(const GfVec3f& pos) const {
     if (_oceanEnable && _globalOcean) {
+        GfVec3f queryPos = pos;
+        queryPos[1] = _oceanWaterHeight;
         if (!_oceanParams.repeat) {
             float halfSize = _oceanParams.size[0] * 0.5f;
             if (pos[0] >= -halfSize && pos[0] <= halfSize && pos[2] >= -halfSize && pos[2] <= halfSize) {
-                if (pos[1] < _globalOcean->GetDisplacedPosition(pos)[1]) return true;
+                if (pos[1] < _globalOcean->GetDisplacedPosition(queryPos)[1]) return true;
             }
         } else {
-            if (pos[1] < _globalOcean->GetDisplacedPosition(pos)[1]) return true;
+            if (pos[1] < _globalOcean->GetDisplacedPosition(queryPos)[1]) return true;
         }
     }
 
     for (const auto& inst : _instances) {
         if (inst.type == SceneInstance::Type::Ocean && inst.mesh && inst.mesh->GetOceanSimulator()) {
             GfVec3f localPos = inst.invTransform.Transform(pos);
+            GfVec3f queryPos = localPos;
+            queryPos[1] = inst.mesh->GetOceanParams().waterHeight;
             if (!inst.mesh->GetOceanParams().repeat) {
                 float halfSize = inst.mesh->GetOceanParams().size[0] * 0.5f;
                 if (localPos[0] < -halfSize || localPos[0] > halfSize || localPos[2] < -halfSize || localPos[2] > halfSize) continue;
             }
-            if (localPos[1] < inst.mesh->GetOceanSimulator()->GetDisplacedPosition(localPos)[1]) return true;
+            if (localPos[1] < inst.mesh->GetOceanSimulator()->GetDisplacedPosition(queryPos)[1]) return true;
         }
     }
     return false;
@@ -2734,7 +2738,9 @@ HdGeminiRenderer::_RenderTiles(HdRenderThread *renderThread, HdGeminiRenderDeleg
     if (_oceanEnable && _globalOcean) {
         GfVec3f nearPlaneCenterCam = GfVec3f(_inverseProjMatrix.Transform(GfVec3d(0, 0, -1.0)));
         GfVec3f nearPlaneCenterWorld = GfVec3f(_inverseViewMatrix.Transform(GfVec3d(nearPlaneCenterCam)));
-        lensWaveHeight = _globalOcean->GetDisplacedPosition(nearPlaneCenterWorld)[1];
+        GfVec3f queryPos = nearPlaneCenterWorld;
+        queryPos[1] = _oceanWaterHeight;
+        lensWaveHeight = _globalOcean->GetDisplacedPosition(queryPos)[1];
     }
     
     std::lock_guard<std::recursive_mutex> lock(delegate->GetSceneLock());
@@ -3131,7 +3137,9 @@ void HdGeminiRenderer::_RenderTilesSYCL(HdRenderThread *renderThread, HdGeminiRe
     if (_oceanEnable && _globalOcean) {
         GfVec3f nearPlaneCenterCam = GfVec3f(_inverseProjMatrix.Transform(GfVec3d(0, 0, -1.0)));
         GfVec3f nearPlaneCenterWorld = GfVec3f(_inverseViewMatrix.Transform(GfVec3d(nearPlaneCenterCam)));
-        lensWaveHeight = _globalOcean->GetDisplacedPosition(nearPlaneCenterWorld)[1];
+        GfVec3f queryPos = nearPlaneCenterWorld;
+        queryPos[1] = _oceanWaterHeight;
+        lensWaveHeight = _globalOcean->GetDisplacedPosition(queryPos)[1];
     }
     
     std::lock_guard<std::recursive_mutex> lock(delegate->GetSceneLock());

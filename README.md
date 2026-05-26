@@ -2,15 +2,6 @@
 
 **hdGemini** is a custom Hydra Render Delegate for Pixar's Universal Scene Description (USD). It implements a CPU-based, physically-based Monte Carlo path tracer designed to seamlessly integrate into Hydra-based viewports like `usdview`.
 
-<p align="center">
-  <img src="images/preview5.png" width="48%" />
-  <img src="images/preview4.png" width="48%" />
-</p>
-<p align="center">
-  <img src="images/preview1.png" width="48%" />
-  <img src="images/preview2.png" width="48%" />
-</p>
-
 ## Features
 
 - **Spectral Monte Carlo Path Tracing**: Full global illumination via stochastic path tracing operating natively in the spectral domain.
@@ -103,3 +94,30 @@ hdGemini intercepts the Hydra synchronization phase to extract standard `HdMesh`
 - During `Sync`, meshes with multiple materials via `GeomSubsets` are actively split, and their face-varying primvars (like UVs) are meticulously separated and stored into contiguous arrays.
 - The `HdGeminiRenderer` uses `WorkParallelForN` to dispatch screen buckets to multiple threads.
 - `_TraceRay` leverages an iterative, stack-based TLAS traversal to rapidly identify bounding box intersections before delegating to individual BVHs, maintaining O(1) direct light lookups and deep recursion paths.
+
+## Gallery
+
+<p align="center">
+  <img src="images/preview12.png" width="48%" />
+  <img src="images/preview11.png" width="48%" />
+</p>
+<p align="center">
+  <img src="images/preview10.png" width="48%" />
+  <img src="images/preview9.png" width="48%" />
+</p>
+<p align="center">
+  <img src="images/preview8.png" width="48%" />
+  <img src="images/preview7.png" width="48%" />
+</p>
+<p align="center">
+  <img src="images/preview6.png" width="48%" />
+  <img src="images/preview5.png" width="48%" />
+</p>
+<p align="center">
+  <img src="images/preview4.png" width="48%" />
+  <img src="images/preview3.png" width="48%" />
+</p>
+<p align="center">
+  <img src="images/preview2.png" width="48%" />
+  <img src="images/preview1.png" width="48%" />
+</p>

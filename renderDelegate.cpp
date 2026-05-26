@@ -1042,10 +1042,11 @@ HdGeminiRenderDelegate::SetRenderSetting(TfToken const& key, VtValue const& valu
             changed = true;
         }
     } else if (key == HdGeminiRenderSettingsTokens->metersPerUnit) {
-        if (value.IsHolding<float>()) {
-            _renderer.SetMetersPerUnit(value.Get<float>());
-            changed = true;
-        }
+        float m = 0.01f;
+        if (value.IsHolding<float>()) m = value.Get<float>();
+        else if (value.IsHolding<double>()) m = (float)value.Get<double>();
+        _renderer.SetMetersPerUnit(m);
+        changed = true;
     }
 
     if (changed || postProcessChanged) {

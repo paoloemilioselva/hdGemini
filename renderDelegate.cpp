@@ -643,6 +643,11 @@ HdGeminiRenderDelegate::GetRenderSettingDescriptors() const
         HdGeminiRenderSettingsTokens->meniscusTint,
         VtValue(GfVec3f(0.02f, 0.05f, 0.04f))
     });
+    list.push_back({
+        "System Meters Per Unit",
+        HdGeminiRenderSettingsTokens->metersPerUnit,
+        VtValue(0.01f)
+    });
     return list;
 }
 
@@ -1032,6 +1037,11 @@ HdGeminiRenderDelegate::SetRenderSetting(TfToken const& key, VtValue const& valu
     } else if (key == HdGeminiRenderSettingsTokens->meniscusTint) {
         if (value.IsHolding<GfVec3f>()) {
             _renderer.SetMeniscusTint(value.Get<GfVec3f>());
+            changed = true;
+        }
+    } else if (key == HdGeminiRenderSettingsTokens->metersPerUnit) {
+        if (value.IsHolding<float>()) {
+            _renderer.SetMetersPerUnit(value.Get<float>());
             changed = true;
         }
     }

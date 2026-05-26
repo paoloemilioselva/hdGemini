@@ -516,10 +516,12 @@ HdGeminiRenderer::_PrepareScene(HdRenderThread *renderThread, HdGeminiRenderDele
         if (!_globalOcean) {
             _globalOcean = std::make_unique<HdGeminiOcean>();
             _oceanParams.waterHeight = _oceanWaterHeight;
+            _oceanParams.metersPerUnit = _metersPerUnit;
             _globalOcean->Init(_oceanParams);
             rebuildTopology = true;
-        } else if (_globalOcean->GetParams() != _oceanParams || _oceanParams.waterHeight != _oceanWaterHeight) {
+        } else if (_globalOcean->GetParams() != _oceanParams || _oceanParams.waterHeight != _oceanWaterHeight || _oceanParams.metersPerUnit != _metersPerUnit) {
             _oceanParams.waterHeight = _oceanWaterHeight;
+            _oceanParams.metersPerUnit = _metersPerUnit;
             _globalOcean->Init(_oceanParams);
             rebuildTopology = true;
         }
@@ -1386,7 +1388,8 @@ SampledSpectrum HdGeminiRenderer::_TraceShadowRay(const GfVec3f& rayOrigin, cons
             SampledSpectrum transSpec = RGBToSpectrum(sHit.transmissionColor, lambda);
             SampledSpectrum sigma_a;
             for(int i=0; i<SPECTRUM_SAMPLES; ++i) {
-                sigma_a[i] = -std::log(std::max(transSpec[i], 1e-4f)) / sHit.transmissionDepth;
+                float scaledDepth = sHit.transmissionDepth / _metersPerUnit;
+                sigma_a[i] = -std::log(std::max(transSpec[i], 1e-4f)) / scaledDepth;
                 transmittance[i] *= std::exp(-sigma_a[i] * sHit.t);
             }
         }
@@ -1684,7 +1687,7 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
         // --- Medium Volumetric Scattering ---
         const MediumState& currentMedium = mediumStack.back();
         if (currentMedium.depth > 0.0f) {
-            GfVec3f d_mfp = GfVec3f(currentMedium.depth);
+            GfVec3f d_mfp = GfVec3f(currentMedium.depth / _metersPerUnit);
             
             GfVec3f sigma_a_rgb(
                 -std::log(std::max(currentMedium.transmissionColor[0], 1e-4f)) / d_mfp[0],
@@ -1779,7 +1782,8 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
             SampledSpectrum transSpec = RGBToSpectrum(hit.transmissionColor, lambda);
             SampledSpectrum sigma_a;
             for(int i=0; i<SPECTRUM_SAMPLES; ++i) {
-                sigma_a[i] = -std::log(std::max(transSpec[i], 1e-4f)) / hit.transmissionDepth;
+                float scaledDepth = hit.transmissionDepth / _metersPerUnit;
+                sigma_a[i] = -std::log(std::max(transSpec[i], 1e-4f)) / scaledDepth;
                 throughput[i] *= std::exp(-sigma_a[i] * hit.t);
             }
         }
@@ -2888,7 +2892,7 @@ HdGeminiRenderer::_RenderTiles(HdRenderThread *renderThread, HdGeminiRenderDeleg
                         GfVec3f nearPlanePointCam = GfVec3f(_inverseProjMatrix.Transform(GfVec3d(ndcX, ndcY, -1.0)));
                         
                         if (_enableDoF) {
-                            float apertureRadius = (_focalLength / 10.0f) / (2.0f * _fStop);
+                            float apertureRadius = (_focalLength * 0.001f / _metersPerUnit) / (2.0f * _fStop);
                             float lensU, lensV;
                             
                             float d1 = qmc::SampleDimension(sampleIdx, qmcDim++, rng);
@@ -3159,6 +3163,7 @@ void HdGeminiRenderer::_RenderTilesSYCL(HdRenderThread *renderThread, HdGeminiRe
     
     float meniscusSize = _meniscusSize;
     float meniscusBend = _meniscusBend;
+    float metersPerUnit = _metersPerUnit;
     float meniscusTint[3] = {_meniscusTint[0], _meniscusTint[1], _meniscusTint[2]};
     int antiAliasingFilter = _antiAliasingFilter;
     uint32_t frameCount = _frameCount;
@@ -3229,7 +3234,8 @@ void HdGeminiRenderer::_RenderTilesSYCL(HdRenderThread *renderThread, HdGeminiRe
                     float d = sycl::cos(sectorAngle / 2.0f) / sycl::cos(sectorAngle / 2.0f - angleInSector);
                     lensU = r * d * sycl::cos(theta); lensV = r * d * sycl::sin(theta);
                 }
-                lensU *= (focalLength / 10.0f) / (2.0f * fStop); lensV *= (focalLength / 10.0f) / (2.0f * fStop);
+                float scaledFocalLength = focalLength * 0.001f / metersPerUnit;
+                lensU *= scaledFocalLength / (2.0f * fStop); lensV *= scaledFocalLength / (2.0f * fStop);
 
                 float lensCam[4] = {lensU, lensV, 0.0f, 1.0f};
                 float focalCam[4] = {nearPlanePointCam[0]*focusDist, nearPlanePointCam[1]*focusDist, nearPlanePointCam[2]*focusDist, 1.0f};

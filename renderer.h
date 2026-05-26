@@ -109,8 +109,9 @@ public:
     
     void SetMeniscusSize(float size) { _meniscusSize = size; }
     void SetMeniscusBend(float bend) { _meniscusBend = bend; }
-    void SetMeniscusTint(const GfVec3f& tint) { _meniscusTint = tint; }
-    
+    void SetMeniscusTint(const GfVec3f& v) { _meniscusTint = v; }
+    void SetMetersPerUnit(float v) { _metersPerUnit = v; }
+
     const HdGeminiOceanParams& GetOceanParams() const { return _oceanParams; }
 
 private:
@@ -155,7 +156,8 @@ private:
     float _oceanWaterHeight = 0.0f;
     float _meniscusSize = 0.015f;
     float _meniscusBend = 0.2f;
-    GfVec3f _meniscusTint = GfVec3f(0.1f, 0.4f, 0.3f);
+    GfVec3f _meniscusTint = GfVec3f(0.02f, 0.05f, 0.04f);
+    float _metersPerUnit = 0.01f;
     HdGeminiOceanParams _oceanParams;
     std::unique_ptr<HdGeminiOcean> _globalOcean;
     std::unique_ptr<BVH> _globalOceanBvh;

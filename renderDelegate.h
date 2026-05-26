@@ -98,7 +98,8 @@ TF_DECLARE_PUBLIC_TOKENS(HdGeminiAovTokens, HD_GEMINI_AOV_TOKENS);
     (oceanScatteringDepth)               \
     (meniscusSize)                       \
     (meniscusBend)                       \
-    (meniscusTint)
+    (meniscusTint)                       \
+    (metersPerUnit)
 
 TF_DECLARE_PUBLIC_TOKENS(HdGeminiRenderSettingsTokens, HD_GEMINI_RENDER_SETTINGS_TOKENS);
 

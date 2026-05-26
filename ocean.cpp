@@ -33,7 +33,7 @@ float HdGeminiOcean::Phillips(float kx, float kz, float amplitude, float windSpe
     if (k_dot_w < 0.0f) k_dot_w = 0.0f; // Waves move mostly in the wind direction
     float k_dot_w2 = k_dot_w * k_dot_w;
 
-    float L = (ws * ws) / 9.81f;
+    float L = (ws * ws) / (9.81f * _params.metersPerUnit);
     float L2 = L * L;
 
     return amplitude * std::exp(-1.0f / (k_length2 * L2)) / k_length4 * k_dot_w2;
@@ -197,7 +197,7 @@ void HdGeminiOcean::Update(float time) {
                     float kz = (2.0f * M_PI * nz) / currentSize;
 
                     float k_length = std::sqrt(kx * kx + kz * kz);
-                    float omega = std::sqrt(9.81f * k_length);
+                    float omega = std::sqrt((9.81f * _params.metersPerUnit) * k_length);
                     
                     int idx = z * N + x;
                     std::complex<float> h0 = _h0[c][idx];

@@ -28,6 +28,7 @@ struct HdGeminiOceanParams {
     bool repeat = true;
     GfVec3f scatteringColor = GfVec3f(0.02f, 0.15f, 0.25f);
     float scatteringDepth = 10.0f;
+    float metersPerUnit = 0.01f;
     
     bool operator==(const HdGeminiOceanParams& o) const {
         return gridSize == o.gridSize &&
@@ -40,8 +41,12 @@ struct HdGeminiOceanParams {
                minK[0] == o.minK[0] && minK[1] == o.minK[1] && minK[2] == o.minK[2] &&
                maxK[0] == o.maxK[0] && maxK[1] == o.maxK[1] && maxK[2] == o.maxK[2] &&
                waterHeight == o.waterHeight &&
-               foamVisibility == o.foamVisibility && disableShader == o.disableShader && repeat == o.repeat &&
-               scatteringColor == o.scatteringColor && scatteringDepth == o.scatteringDepth;
+               foamVisibility == o.foamVisibility &&
+               disableShader == o.disableShader &&
+               repeat == o.repeat &&
+               scatteringColor == o.scatteringColor &&
+               scatteringDepth == o.scatteringDepth &&
+               metersPerUnit == o.metersPerUnit;
     }
     bool operator!=(const HdGeminiOceanParams& o) const { return !(*this == o); }
 };

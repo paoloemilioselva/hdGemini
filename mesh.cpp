@@ -242,6 +242,15 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
             else if (height.IsHolding<double>()) _oceanParams.waterHeight = (float)height.Get<double>();
         }
 
+        VtValue mpu = sceneDelegate->Get(id, TfToken("primvars:gemini:metersPerUnit"));
+        if (mpu.IsHolding<float>()) _oceanParams.metersPerUnit = mpu.Get<float>();
+        else if (mpu.IsHolding<double>()) _oceanParams.metersPerUnit = (float)mpu.Get<double>();
+        else {
+            mpu = sceneDelegate->Get(id, TfToken("gemini:metersPerUnit"));
+            if (mpu.IsHolding<float>()) _oceanParams.metersPerUnit = mpu.Get<float>();
+            else if (mpu.IsHolding<double>()) _oceanParams.metersPerUnit = (float)mpu.Get<double>();
+        }
+
         VtValue res = sceneDelegate->Get(id, TfToken("primvars:gemini:oceanGridSize"));
         if (res.IsHolding<int>()) _oceanParams.gridSize = res.Get<int>();
         else {

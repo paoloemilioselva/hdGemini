@@ -2873,8 +2873,6 @@ HdGeminiRenderer::_RenderTiles(HdRenderThread *renderThread, HdGeminiRenderDeleg
 
                         GfVec3f nearPlanePointCam = GfVec3f(_inverseProjMatrix.Transform(GfVec3d(ndcX, ndcY, -1.0)));
                         
-                        rayOriginWorld = cameraPosWorld;
-
                         if (_enableDoF) {
                             float apertureRadius = (_focalLength / 10.0f) / (2.0f * _fStop);
                             float lensU, lensV;
@@ -2903,11 +2901,16 @@ HdGeminiRenderer::_RenderTiles(HdRenderThread *renderThread, HdGeminiRenderDeleg
                             GfVec3f lensPointWorld = GfVec3f(_inverseViewMatrix.Transform(GfVec3d(lensPointCam)));
                             GfVec3f focalPointWorld = GfVec3f(_inverseViewMatrix.Transform(GfVec3d(focalPointCam)));
                             
-                            rayOriginWorld = lensPointWorld;
                             rayDirWorld = (focalPointWorld - lensPointWorld).GetNormalized();
+                            
+                            GfVec3f rayDirCam = (focalPointCam - lensPointCam).GetNormalized();
+                            float t_near = nearPlanePointCam[2] / rayDirCam[2];
+                            GfVec3f nearIntersectCam = lensPointCam + rayDirCam * t_near;
+                            rayOriginWorld = GfVec3f(_inverseViewMatrix.Transform(GfVec3d(nearIntersectCam)));
                         } else {
                             GfVec3f nearPlanePointWorld = GfVec3f(_inverseViewMatrix.Transform(GfVec3d(nearPlanePointCam)));
                             rayDirWorld = (nearPlanePointWorld - cameraPosWorld).GetNormalized();
+                            rayOriginWorld = nearPlanePointWorld;
                         }
                         
                         float u_lambda = qmc::SampleDimension(sampleIdx, qmcDim++, rng);
@@ -3179,10 +3182,21 @@ void HdGeminiRenderer::_RenderTilesSYCL(HdRenderThread *renderThread, HdGeminiRe
                 float lensWorld[4] = {0,0,0,0}; float focalWorld[4] = {0,0,0,0};
                 for(int i=0; i<4; ++i) { for(int j=0; j<4; ++j) { lensWorld[i] += lensCam[j] * invView[j*4 + i]; focalWorld[i] += focalCam[j] * invView[j*4 + i]; } }
                 
-                rayOrigin[0] = lensWorld[0]; rayOrigin[1] = lensWorld[1]; rayOrigin[2] = lensWorld[2];
                 float dx = focalWorld[0] - lensWorld[0]; float dy = focalWorld[1] - lensWorld[1]; float dz = focalWorld[2] - lensWorld[2];
                 float len = sycl::sqrt(dx*dx + dy*dy + dz*dz);
                 rayDir[0] = dx/len; rayDir[1] = dy/len; rayDir[2] = dz/len;
+                
+                float dxCam = focalCam[0] - lensCam[0]; float dyCam = focalCam[1] - lensCam[1]; float dzCam = focalCam[2] - lensCam[2];
+                float lenCam = sycl::sqrt(dxCam*dxCam + dyCam*dyCam + dzCam*dzCam);
+                dxCam /= lenCam; dyCam /= lenCam; dzCam /= lenCam;
+                
+                float t_near = nearPlanePointCam[2] / dzCam;
+                float nearIntersectCam[4] = {lensCam[0] + dxCam * t_near, lensCam[1] + dyCam * t_near, lensCam[2] + dzCam * t_near, 1.0f};
+                
+                float nearIntersectWorld[4] = {0,0,0,0};
+                for(int i=0; i<4; ++i) { for(int j=0; j<4; ++j) { nearIntersectWorld[i] += nearIntersectCam[j] * invView[j*4 + i]; } }
+                
+                rayOrigin[0] = nearIntersectWorld[0]; rayOrigin[1] = nearIntersectWorld[1]; rayOrigin[2] = nearIntersectWorld[2];
             } else {
                 float nearCam4[4] = {nearPlanePointCam[0], nearPlanePointCam[1], nearPlanePointCam[2], 1.0f};
                 float nearWorld[4] = {0,0,0,0};
@@ -3190,6 +3204,7 @@ void HdGeminiRenderer::_RenderTilesSYCL(HdRenderThread *renderThread, HdGeminiRe
                 float dx = nearWorld[0] - camPos[0]; float dy = nearWorld[1] - camPos[1]; float dz = nearWorld[2] - camPos[2];
                 float len = sycl::sqrt(dx*dx + dy*dy + dz*dz);
                 rayDir[0] = dx/len; rayDir[1] = dy/len; rayDir[2] = dz/len;
+                rayOrigin[0] = nearWorld[0]; rayOrigin[1] = nearWorld[1]; rayOrigin[2] = nearWorld[2];
             }
 
             rayBuf[idx].origin[0] = rayOrigin[0]; rayBuf[idx].origin[1] = rayOrigin[1]; rayBuf[idx].origin[2] = rayOrigin[2];

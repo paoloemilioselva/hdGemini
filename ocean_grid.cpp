@@ -22,7 +22,7 @@ void HdGeminiOcean::GenerateGridTopology(
     outBasePoints.reserve(N * N * 4 + N * 4 * 4 + 4);
     outUvs.reserve(N * N * 4 + N * 4 * 4 + 4);
     outColors.reserve(N * N * 4 + N * 4 * 4 + 4);
-    outTypes.reserve(N * N * 4 + N * 4 * 4 + 4);
+
     outIndices.reserve(N * N * 2 + N * 4 * 2 + 2);
 
     auto randColor = []() {

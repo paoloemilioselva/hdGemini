@@ -73,7 +73,11 @@ void BVH::Build(const VtVec3fArray& points, const VtVec3iArray& indices, const V
         tri.v2 = points[triIdx[2]];
 
         if (!uvs.empty()) {
-            if (uvs.size() == indices.size() * 3) {
+            if (uvs.size() == 1) {
+                tri.uv0 = tri.uv1 = tri.uv2 = uvs[0];
+            } else if (uvs.size() == indices.size()) {
+                tri.uv0 = tri.uv1 = tri.uv2 = uvs[i];
+            } else if (uvs.size() == indices.size() * 3) {
                 tri.uv0 = uvs[i * 3 + 0];
                 tri.uv1 = uvs[i * 3 + 1];
                 tri.uv2 = uvs[i * 3 + 2];
@@ -87,7 +91,11 @@ void BVH::Build(const VtVec3fArray& points, const VtVec3iArray& indices, const V
         }
 
         if (!normals.empty()) {
-            if (normals.size() == indices.size() * 3) {
+            if (normals.size() == 1) {
+                tri.n0 = tri.n1 = tri.n2 = normals[0];
+            } else if (normals.size() == indices.size()) {
+                tri.n0 = tri.n1 = tri.n2 = normals[i];
+            } else if (normals.size() == indices.size() * 3) {
                 tri.n0 = normals[i * 3 + 0];
                 tri.n1 = normals[i * 3 + 1];
                 tri.n2 = normals[i * 3 + 2];
@@ -101,7 +109,11 @@ void BVH::Build(const VtVec3fArray& points, const VtVec3iArray& indices, const V
         }
 
         if (!colors.empty()) {
-            if (colors.size() == indices.size() * 3) {
+            if (colors.size() == 1) {
+                tri.c0 = tri.c1 = tri.c2 = colors[0];
+            } else if (colors.size() == indices.size()) {
+                tri.c0 = tri.c1 = tri.c2 = colors[i];
+            } else if (colors.size() == indices.size() * 3) {
                 tri.c0 = colors[i * 3 + 0];
                 tri.c1 = colors[i * 3 + 1];
                 tri.c2 = colors[i * 3 + 2];

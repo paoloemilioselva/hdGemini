@@ -44,6 +44,8 @@
 
 PXR_NAMESPACE_USING_DIRECTIVE
 
+#define RAY_EPSILON(p) (std::max(1e-4f, std::max({std::abs((p)[0]), std::abs((p)[1]), std::abs((p)[2])}) * 2e-5f))
+
 static bool
 IntersectAABB(const GfVec3f& rayOrigin, const GfVec3f& rayDir, const GfRange3f& range, float& tMinHit)
 {
@@ -1448,7 +1450,7 @@ SampledSpectrum HdGeminiRenderer::_TraceShadowRay(const GfVec3f& rayOrigin, cons
         SampledSpectrum hitTrans = RGBToSpectrum(sHit.baseColor * sHit.transmission + sHit.subsurfaceColor * sHit.subsurface, lambda);
         for(int i=0; i<SPECTRUM_SAMPLES; ++i) transmittance[i] *= hitTrans[i];
 
-        p = p + rayDir * sHit.t + rayDir * 1e-4f;
+        p = p + rayDir * sHit.t + rayDir * RAY_EPSILON(p);
         distRemaining -= sHit.t;
         
         if (!sHit.thinWalled) {
@@ -1596,7 +1598,7 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
                 }
                 break; // First ocean hit determines if we are above or below
             }
-            ro = ro + rd * (hit.t + 1e-4f);
+            ro = ro + rd * (hit.t + RAY_EPSILON(ro));
         }
         
         if (mediumStack.size() == 1 && currentRayOrigin[1] < _oceanWaterHeight) {
@@ -1751,7 +1753,7 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
 
         // Handle transparency/opacity
         if (hit.opacity < 0.999f && qmc::SampleDimension(sampleIdx, qmcDim++, rng) > hit.opacity) {
-            currentRayOrigin = hitPos + currentRayDir * 1e-4f;
+            currentRayOrigin = hitPos + currentRayDir * RAY_EPSILON(hitPos);
             bounce--; // Don't count as a bounce
             continue;
         }
@@ -1816,7 +1818,7 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
                     EvaluateLight(ls, currentRayOrigin, lDir, lightDist, lColor, lightPdf);
                     
                     if (lightDist > 0.0f && lightPdf > 0.0f && (lColor[0]>0 || lColor[1]>0 || lColor[2]>0)) {
-                        SampledSpectrum shadowTransmittance = _TraceShadowRay(currentRayOrigin, lDir, lightDist - 1e-4f, shadowCurrentlyInside, shadowTransDepth, shadowTransColor, shadowTransScatter, renderThread, sampleIdx, qmcDim, rng, lambda);
+                        SampledSpectrum shadowTransmittance = _TraceShadowRay(currentRayOrigin, lDir, lightDist - RAY_EPSILON(currentRayOrigin), shadowCurrentlyInside, shadowTransDepth, shadowTransColor, shadowTransScatter, renderThread, sampleIdx, qmcDim, rng, lambda);
                         
                         bool hasTransmittance = false;
                         for(int i=0; i<SPECTRUM_SAMPLES; ++i) if (shadowTransmittance[i] > 0.0f) hasTransmittance = true;
@@ -2034,7 +2036,7 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
             if (light && lightDist > 0 && (lColor[0] > 0 || lColor[1] > 0 || lColor[2] > 0)) {
                 float nDotL = std::max(0.0f, GfDot(shadingNormal, lDir));
                 if (nDotL > 0) {
-                    GfVec3f shadowOrigin = hitPos + shadingNormal * 1e-4f;
+                    GfVec3f shadowOrigin = hitPos + shadingNormal * RAY_EPSILON(hitPos);
                     SampledSpectrum shadowTransmittance = _TraceShadowRay(shadowOrigin, lDir, lightDist - 1e-3f, shadowCurrentlyInside, shadowTransDepth, shadowTransColor, shadowTransScatter, renderThread, sampleIdx, qmcDim, rng, lambda);
                     
                     bool hasTransmittance = false;
@@ -2124,7 +2126,7 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
             if (sunColor[0] > 0 || sunColor[1] > 0 || sunColor[2] > 0) {
                 float nDotL = std::max(0.0f, GfDot(shadingNormal, physicalSunDir));
                 if (nDotL > 0) {
-                    GfVec3f shadowOrigin = hitPos + shadingNormal * 1e-4f;
+                    GfVec3f shadowOrigin = hitPos + shadingNormal * RAY_EPSILON(hitPos);
                     SampledSpectrum shadowTransmittance = _TraceShadowRay(shadowOrigin, physicalSunDir, 1e30f, shadowCurrentlyInside, shadowTransDepth, shadowTransColor, shadowTransScatter, renderThread, sampleIdx, qmcDim, rng, lambda);
                     
                     bool hasTransmittance = false;
@@ -2189,7 +2191,7 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
                     reflectDir = (currentRayDir - 2.0f * GfDot(currentRayDir, shadingNormal) * shadingNormal).GetNormalized();
                 }
                 currentRayDir = reflectDir;
-                currentRayOrigin = hitPos + shadingNormal * 1e-4f;
+                currentRayOrigin = hitPos + shadingNormal * RAY_EPSILON(hitPos);
                 throughput = throughput * RGBToSpectrum(hit.coatColor, lambda);
                 lastBsdfPdf = 0.0f;
                 continue;
@@ -2218,7 +2220,7 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
                     reflectDir = (currentRayDir - 2.0f * GfDot(currentRayDir, shadingNormal) * shadingNormal).GetNormalized();
                 }
                 currentRayDir = reflectDir;
-                currentRayOrigin = hitPos + shadingNormal * 1e-4f;
+                currentRayOrigin = hitPos + shadingNormal * RAY_EPSILON(hitPos);
                 throughput = throughput * RGBToSpectrum(hit.sheenColor, lambda);
                 lastBsdfPdf = 0.0f;
                 continue;
@@ -2313,7 +2315,7 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
                 lastBsdfPdf = 0.0f;
             }
             currentRayDir = reflectDir;
-            currentRayOrigin = hitPos + shadingNormal * 1e-4f;
+            currentRayOrigin = hitPos + shadingNormal * RAY_EPSILON(hitPos);
             
             GfVec3f reflTint = hit.specularColor * (1.0f - hit.metallic) + hit.baseColor * hit.metallic;
             throughput = throughput * RGBToSpectrum(reflTint, lambda) * ggxWeight;
@@ -2367,7 +2369,7 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
                     
                     if (transmitted) {
                         currentRayDir = refractDir;
-                        currentRayOrigin = hitPos - n * 1e-4f;
+                        currentRayOrigin = hitPos - n * RAY_EPSILON(hitPos);
                         if (isInside) {
                             if (mediumStack.size() > 1) mediumStack.pop_back();
                         } else {
@@ -2381,7 +2383,7 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
                     } else {
                         // TIR on microfacet
                         currentRayDir = refractDir;
-                        currentRayOrigin = hitPos + n * 1e-4f;
+                        currentRayOrigin = hitPos + n * RAY_EPSILON(hitPos);
                         // iorStack remains unchanged
                     }
                     
@@ -2392,7 +2394,7 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
                     reflectionBounces++;
                     GfVec3f reflectDir = (currentRayDir - 2.0f * cosThetaI * n).GetNormalized();
                     currentRayDir = reflectDir;
-                    currentRayOrigin = hitPos + n * 1e-4f;
+                    currentRayOrigin = hitPos + n * RAY_EPSILON(hitPos);
                     lastBsdfPdf = 0.0f;
                 }
             } else {
@@ -2450,7 +2452,7 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
                     throughput = throughput * RGBToSpectrum(diffuseBase, lambda) * (float)M_PI;
                     currentRayDir = diffuseDir;
                 }
-                currentRayOrigin = hitPos + shadingNormal * 1e-4f;
+                currentRayOrigin = hitPos + shadingNormal * RAY_EPSILON(hitPos);
             }
         }
 
@@ -2583,7 +2585,7 @@ void HdGeminiRenderer::_TracePhoton(class HdRenderThread* renderThread, uint32_t
         if (uBounce < fresnel) {
             dir = dir - 2.0f * GfDot(dir, shadingNormal) * shadingNormal;
             dir = dir.GetNormalized();
-            origin = hitPos + shadingNormal * 1e-4f;
+            origin = hitPos + shadingNormal * RAY_EPSILON(hitPos);
             power = power * RGBToSpectrum(hit.baseColor, lambda);
             hasSpecularBounce = true;
         } else if (hit.transmission > 0.0f) {
@@ -2594,7 +2596,7 @@ void HdGeminiRenderer::_TracePhoton(class HdRenderThread* renderThread, uint32_t
             float cosThetaT = std::sqrt(1.0f - sin2ThetaT);
             dir = eta * dir + (eta * cosThetaI - cosThetaT) * shadingNormal;
             dir = dir.GetNormalized();
-            origin = hitPos - shadingNormal * 1e-4f;
+            origin = hitPos - shadingNormal * RAY_EPSILON(hitPos);
             power = power * RGBToSpectrum(hit.transmissionColor, lambda);
             hasSpecularBounce = true;
         } else {

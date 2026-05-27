@@ -39,24 +39,27 @@ void HdGeminiOcean::GenerateGridTopology(
 
     auto ShouldSubdivide = [&](const QuadNode& node) -> bool {
         float hs = node.size * 0.5f;
-        GfVec3f corners[8] = {
-            GfVec3f(node.x - hs, _params.waterHeight - maxAmp, node.z - hs),
-            GfVec3f(node.x + hs, _params.waterHeight - maxAmp, node.z - hs),
-            GfVec3f(node.x - hs, _params.waterHeight - maxAmp, node.z + hs),
-            GfVec3f(node.x + hs, _params.waterHeight - maxAmp, node.z + hs),
-            GfVec3f(node.x - hs, _params.waterHeight + maxAmp, node.z - hs),
-            GfVec3f(node.x + hs, _params.waterHeight + maxAmp, node.z - hs),
-            GfVec3f(node.x - hs, _params.waterHeight + maxAmp, node.z + hs),
-            GfVec3f(node.x + hs, _params.waterHeight + maxAmp, node.z + hs)
+        float height = _params.amplitude[0] + _params.amplitude[1] + _params.amplitude[2];
+        float corners[8][3] = {
+            {node.x - hs, _params.waterHeight - height, node.z - hs},
+            {node.x + hs, _params.waterHeight - height, node.z - hs},
+            {node.x - hs, _params.waterHeight - height, node.z + hs},
+            {node.x + hs, _params.waterHeight - height, node.z + hs},
+            {node.x - hs, _params.waterHeight + height, node.z - hs},
+            {node.x + hs, _params.waterHeight + height, node.z - hs},
+            {node.x - hs, _params.waterHeight + height, node.z + hs},
+            {node.x + hs, _params.waterHeight + height, node.z + hs}
         };
         
         float minX = 1e30f, maxX = -1e30f;
         float minY = 1e30f, maxY = -1e30f;
         bool allBehind = true;
+        bool allInFront = true;
         
         for (int i=0; i<8; ++i) {
             GfVec4d p = GfVec4d(corners[i][0], corners[i][1], corners[i][2], 1.0) * viewMatrix;
             if (p[2] <= 0.0) allBehind = false;
+            if (p[2] > 0.0) allInFront = false;
             
             GfVec4d clip = p * projMatrix;
             if (clip[3] != 0.0) {
@@ -73,6 +76,11 @@ void HdGeminiOcean::GenerateGridTopology(
         }
         
         if (allBehind) return false;
+        if (allInFront) {
+            if (maxX < 0 || minX > viewportWidth || maxY < 0 || minY > viewportHeight) {
+                return false;
+            }
+        }
         
         float edgeLen = std::max(maxX - minX, maxY - minY);
         return edgeLen > _params.dicingScale;
@@ -80,20 +88,22 @@ void HdGeminiOcean::GenerateGridTopology(
 
     int head = 0;
     while (head < tree.size()) {
-        QuadNode& node = tree[head];
-        if (node.depth < MAX_DEPTH && ShouldSubdivide(node)) {
-            node.isLeaf = false;
-            float qs = node.size * 0.25f;
-            float ns = node.size * 0.5f;
+        if (tree[head].depth < MAX_DEPTH && ShouldSubdivide(tree[head])) {
+            tree[head].isLeaf = false;
+            float qs = tree[head].size * 0.25f;
+            float ns = tree[head].size * 0.5f;
+            float nx = tree[head].x;
+            float nz = tree[head].z;
+            int d = tree[head].depth;
             int c0 = tree.size();
-            tree.push_back({node.x - qs, node.z - qs, ns, node.depth + 1, {-1,-1,-1,-1}, true, false});
-            tree.push_back({node.x + qs, node.z - qs, ns, node.depth + 1, {-1,-1,-1,-1}, true, false});
-            tree.push_back({node.x - qs, node.z + qs, ns, node.depth + 1, {-1,-1,-1,-1}, true, false});
-            tree.push_back({node.x + qs, node.z + qs, ns, node.depth + 1, {-1,-1,-1,-1}, true, false});
-            node.children[0] = c0;
-            node.children[1] = c0+1;
-            node.children[2] = c0+2;
-            node.children[3] = c0+3;
+            tree.push_back({nx - qs, nz - qs, ns, d + 1, {-1,-1,-1,-1}, true, false});
+            tree.push_back({nx + qs, nz - qs, ns, d + 1, {-1,-1,-1,-1}, true, false});
+            tree.push_back({nx - qs, nz + qs, ns, d + 1, {-1,-1,-1,-1}, true, false});
+            tree.push_back({nx + qs, nz + qs, ns, d + 1, {-1,-1,-1,-1}, true, false});
+            tree[head].children[0] = c0;
+            tree[head].children[1] = c0+1;
+            tree[head].children[2] = c0+2;
+            tree[head].children[3] = c0+3;
         }
         head++;
     }
@@ -116,31 +126,33 @@ void HdGeminiOcean::GenerateGridTopology(
         changed = false;
         int nNodes = tree.size();
         for (int i=0; i<nNodes; ++i) {
-            QuadNode& node = tree[i];
-            if (!node.isLeaf) continue;
+            if (!tree[i].isLeaf) continue;
             
-            float hs = node.size * 0.5f;
+            float hs = tree[i].size * 0.5f;
             float eps = _params.size * 1e-4f;
+            float nx = tree[i].x;
+            float nz = tree[i].z;
             
-            int top = getDepthAt(node.x, node.z - hs - eps);
-            int bot = getDepthAt(node.x, node.z + hs + eps);
-            int left = getDepthAt(node.x - hs - eps, node.z);
-            int right = getDepthAt(node.x + hs + eps, node.z);
+            int top = getDepthAt(nx, nz - hs - eps);
+            int bot = getDepthAt(nx, nz + hs + eps);
+            int left = getDepthAt(nx - hs - eps, nz);
+            int right = getDepthAt(nx + hs + eps, nz);
             
             int maxNeighborDepth = std::max({top, bot, left, right});
-            if (maxNeighborDepth > node.depth + 1 && node.depth < MAX_DEPTH) {
-                node.isLeaf = false;
-                float qs = node.size * 0.25f;
-                float ns = node.size * 0.5f;
+            if (maxNeighborDepth > tree[i].depth + 1 && tree[i].depth < MAX_DEPTH) {
+                tree[i].isLeaf = false;
+                float qs = tree[i].size * 0.25f;
+                float ns = tree[i].size * 0.5f;
+                int d = tree[i].depth;
                 int c0 = tree.size();
-                tree.push_back({node.x - qs, node.z - qs, ns, node.depth + 1, {-1,-1,-1,-1}, true, false});
-                tree.push_back({node.x + qs, node.z - qs, ns, node.depth + 1, {-1,-1,-1,-1}, true, false});
-                tree.push_back({node.x - qs, node.z + qs, ns, node.depth + 1, {-1,-1,-1,-1}, true, false});
-                tree.push_back({node.x + qs, node.z + qs, ns, node.depth + 1, {-1,-1,-1,-1}, true, false});
-                node.children[0] = c0;
-                node.children[1] = c0+1;
-                node.children[2] = c0+2;
-                node.children[3] = c0+3;
+                tree.push_back({nx - qs, nz - qs, ns, d + 1, {-1,-1,-1,-1}, true, false});
+                tree.push_back({nx + qs, nz - qs, ns, d + 1, {-1,-1,-1,-1}, true, false});
+                tree.push_back({nx - qs, nz + qs, ns, d + 1, {-1,-1,-1,-1}, true, false});
+                tree.push_back({nx + qs, nz + qs, ns, d + 1, {-1,-1,-1,-1}, true, false});
+                tree[i].children[0] = c0;
+                tree[i].children[1] = c0+1;
+                tree[i].children[2] = c0+2;
+                tree[i].children[3] = c0+3;
                 changed = true;
             }
         }

@@ -1404,18 +1404,26 @@ SampledSpectrum HdGeminiRenderer::_TraceShadowRay(const GfVec3f& rayOrigin, cons
         if (!_IntersectTLAS(p, rayDir, sHit, renderThread, sampleIdx, qmcDim, rng)) {
             if (currentlyInside && transDepth > 0.0f) {
                 float distToExit = distRemaining;
-                if (_oceanEnable && p[1] < _oceanWaterHeight && rayDir[1] > 0.0f) {
-                    float tToSurface = (_oceanWaterHeight - p[1]) / rayDir[1];
-                    distToExit = std::min(distRemaining, tToSurface);
+                if (_oceanEnable && rayDir[1] > 0.0f) {
+                    if (p[1] < _oceanWaterHeight) {
+                        float tToSurface = (_oceanWaterHeight - p[1]) / rayDir[1];
+                        distToExit = std::min(distRemaining, tToSurface);
+                    } else {
+                        // Already above the mathematical water height.
+                        // Prevent infinite attenuation in the sky.
+                        distToExit = 0.0f;
+                    }
                 }
                 
-                SampledSpectrum transSpec = RGBToSpectrum(transColor, lambda);
-                for(int i=0; i<SPECTRUM_SAMPLES; ++i) {
-                    float scaledDepth = transDepth / _metersPerUnit;
-                    float sigma_a = -std::log(std::max(transSpec[i], 1e-4f)) / scaledDepth;
-                    float sigma_s = transScatter[i] / scaledDepth;
-                    float sigma_t = sigma_a + sigma_s;
-                    transmittance[i] *= std::exp(-sigma_t * distToExit);
+                if (distToExit > 0.0f) {
+                    SampledSpectrum transSpec = RGBToSpectrum(transColor, lambda);
+                    for(int i=0; i<SPECTRUM_SAMPLES; ++i) {
+                        float scaledDepth = transDepth / _metersPerUnit;
+                        float sigma_a = -std::log(std::max(transSpec[i], 1e-4f)) / scaledDepth;
+                        float sigma_s = transScatter[i] / scaledDepth;
+                        float sigma_t = sigma_a + sigma_s;
+                        transmittance[i] *= std::exp(-sigma_t * distToExit);
+                    }
                 }
             }
             break; 
@@ -1444,10 +1452,15 @@ SampledSpectrum HdGeminiRenderer::_TraceShadowRay(const GfVec3f& rayOrigin, cons
         distRemaining -= sHit.t;
         
         if (!sHit.thinWalled) {
-            currentlyInside = !currentlyInside;
-            if (currentlyInside) {
+            if (GfDot(rayDir, sHit.smoothNormal) < 0.0f) {
+                // Entering the object
+                currentlyInside = true;
                 transDepth = sHit.transmissionDepth;
                 transColor = sHit.transmissionColor;
+                transScatter = sHit.transmissionScatter;
+            } else {
+                // Exiting the object
+                currentlyInside = false;
             }
         }
     }

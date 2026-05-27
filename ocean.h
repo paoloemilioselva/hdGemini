@@ -23,7 +23,6 @@ struct HdGeminiOceanParams {
     float minK[3] = { 0.0f, 0.0f, 0.0f };
     float maxK[3] = { 1000000.0f, 1000000.0f, 1000000.0f };
     float waterHeight = 0.0f;
-    float extrusion = 1000.0f;
     float foamVisibility = 1.0f;
     bool disableShader = false;
     bool repeat = true;
@@ -34,7 +33,6 @@ struct HdGeminiOceanParams {
     bool operator==(const HdGeminiOceanParams& o) const {
         return gridSize == o.gridSize &&
                size == o.size &&
-               extrusion == o.extrusion &&
                amplitude[0] == o.amplitude[0] && amplitude[1] == o.amplitude[1] && amplitude[2] == o.amplitude[2] &&
                choppiness[0] == o.choppiness[0] && choppiness[1] == o.choppiness[1] && choppiness[2] == o.choppiness[2] &&
                strength[0] == o.strength[0] && strength[1] == o.strength[1] && strength[2] == o.strength[2] &&
@@ -74,12 +72,10 @@ public:
         std::vector<GfVec3f>& outBasePoints,
         std::vector<GfVec3i>& outIndices,
         std::vector<GfVec2f>& outUvs,
-        std::vector<GfVec3f>& outColors,
-        std::vector<int>& outTypes) const;
+        std::vector<GfVec3f>& outColors) const;
 
     void DisplaceGrid(
         const std::vector<GfVec3f>& basePoints,
-        const std::vector<int>& types,
         const GfVec3f& cameraPos,
         std::vector<GfVec3f>& outDisplaced,
         std::vector<GfVec3f>& outNormals,

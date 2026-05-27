@@ -533,11 +533,6 @@ HdGeminiRenderDelegate::GetRenderSettingDescriptors() const
         VtValue(100.0f)
     });
     list.push_back({
-        "Ocean Extrusion",
-        HdGeminiRenderSettingsTokens->oceanExtrusion,
-        VtValue(1000.0f)
-    });
-    list.push_back({
         "Ocean Amplitude 1",
         HdGeminiRenderSettingsTokens->oceanAmplitude1,
         VtValue(0.0f)
@@ -729,8 +724,6 @@ HdGeminiRenderDelegate::GetRenderSetting(TfToken const& key) const
         return VtValue(128);
     } else if (key == HdGeminiRenderSettingsTokens->oceanSize) {
         return VtValue(_renderer.GetOceanParams().size);
-    } else if (key == HdGeminiRenderSettingsTokens->oceanExtrusion) {
-        return VtValue(_renderer.GetOceanParams().extrusion);
     } else if (key == HdGeminiRenderSettingsTokens->oceanAmplitude1) {
         return VtValue(0.0f);
     } else if (key == HdGeminiRenderSettingsTokens->oceanAmplitude2) {
@@ -911,9 +904,6 @@ HdGeminiRenderDelegate::SetRenderSetting(TfToken const& key, VtValue const& valu
         changed = true;
     } else if (key == HdGeminiRenderSettingsTokens->oceanSize) {
         _renderer.SetOceanSize(getFloat(value, 100.0f));
-        changed = true;
-    } else if (key == HdGeminiRenderSettingsTokens->oceanExtrusion) {
-        _renderer.SetOceanExtrusion(getFloat(value, 1000.0f));
         changed = true;
     } else if (key == HdGeminiRenderSettingsTokens->oceanAmplitude1) {
         _renderer.SetOceanAmplitude(0, getFloat(value, 0.0f));

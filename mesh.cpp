@@ -78,8 +78,7 @@ void HdGeminiMesh::UpdateOcean(const GfMatrix4f& viewProj, const GfVec3f& camera
     }
 
     std::vector<GfVec3f> displacedScaledPoints, displacedScaledNormals, displacedColors;
-    std::vector<int> oceanTypes(scaledPoints.size(), 0);
-    _oceanSimulator->DisplaceGrid(scaledPoints, oceanTypes, GfVec3f(0.0f), displacedScaledPoints, displacedScaledNormals, displacedColors);
+    _oceanSimulator->DisplaceGrid(scaledPoints, GfVec3f(0.0f), displacedScaledPoints, displacedScaledNormals, displacedColors);
     
     std::vector<GfVec3f> displacedPoints(_points.size());
     std::vector<GfVec3f> displacedNormals(_points.size());
@@ -267,15 +266,6 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
             sizeVal = sceneDelegate->Get(id, TfToken("gemini:oceanSize"));
             if (sizeVal.IsHolding<float>()) _oceanParams.size = sizeVal.Get<float>();
             else if (sizeVal.IsHolding<double>()) _oceanParams.size = (float)sizeVal.Get<double>();
-        }
-
-        VtValue extVal = sceneDelegate->Get(id, TfToken("primvars:gemini:oceanExtrusion"));
-        if (extVal.IsHolding<float>()) _oceanParams.extrusion = extVal.Get<float>();
-        else if (extVal.IsHolding<double>()) _oceanParams.extrusion = (float)extVal.Get<double>();
-        else {
-            extVal = sceneDelegate->Get(id, TfToken("gemini:oceanExtrusion"));
-            if (extVal.IsHolding<float>()) _oceanParams.extrusion = extVal.Get<float>();
-            else if (extVal.IsHolding<double>()) _oceanParams.extrusion = (float)extVal.Get<double>();
         }
 
         const char* cascadeTokens[3] = {"1", "2", "3"};

@@ -94,7 +94,6 @@ public:
     void SetOceanWaterHeight(float height) { _oceanWaterHeight = height; }
     void SetOceanGridSize(int size) { _oceanParams.gridSize = size; }
     void SetOceanSize(float size) { _oceanParams.size = size; }
-    void SetOceanExtrusion(float extrusion) { _oceanParams.extrusion = extrusion; }
     void SetOceanAmplitude(int cascade, float amp) { if(cascade >= 0 && cascade < 3) _oceanParams.amplitude[cascade] = amp; }
     void SetOceanChoppiness(int cascade, float chop) { if(cascade >= 0 && cascade < 3) _oceanParams.choppiness[cascade] = chop; }
     void SetOceanStrength(int cascade, float str) { if(cascade >= 0 && cascade < 3) _oceanParams.strength[cascade] = str; }
@@ -171,7 +170,6 @@ private:
     std::unique_ptr<HdGeminiOcean> _globalOcean;
     std::unique_ptr<BVH> _globalOceanBvh;
     std::vector<GfVec3f> _globalOceanBasePoints;
-    std::vector<int> _globalOceanVertexTypes;
     std::vector<GfVec3i> _globalOceanIndices;
     std::vector<GfVec2f> _globalOceanUvs;
     std::vector<GfVec3f> _globalOceanColors;

@@ -542,14 +542,12 @@ HdGeminiRenderer::_PrepareScene(HdRenderThread *renderThread, HdGeminiRenderDele
             _globalOceanBasePoints.clear();
             _globalOceanIndices.clear();
             _globalOceanUvs.clear();
-            _globalOceanColors.clear();
-            _globalOceanVertexTypes.clear();
-            _globalOcean->GenerateGridTopology(_globalOceanBasePoints, _globalOceanIndices, _globalOceanUvs, _globalOceanColors, _globalOceanVertexTypes);
+            _globalOcean->GenerateGridTopology(_globalOceanBasePoints, _globalOceanIndices, _globalOceanUvs, _globalOceanColors);
         }
 
         std::vector<GfVec3f> points, normals, colors;
         GfVec3f camPos(GfVec3f(_viewMatrix.GetInverse().ExtractTranslation()));
-        _globalOcean->DisplaceGrid(_globalOceanBasePoints, _globalOceanVertexTypes, camPos, points, normals, colors);
+        _globalOcean->DisplaceGrid(_globalOceanBasePoints, camPos, points, normals, colors);
         
         if (!_globalOceanBvh) _globalOceanBvh = std::make_unique<BVH>();
         VtVec3fArray vtPoints(points.begin(), points.end());

@@ -538,11 +538,21 @@ HdGeminiRenderer::_PrepareScene(HdRenderThread *renderThread, HdGeminiRenderDele
         
         _globalOcean->Update(_time);
         
+        static GfMatrix4d lastOceanView = _viewMatrix;
+        static GfMatrix4d lastOceanProj = _projMatrix;
+        if (_oceanParams.continuousDicing) {
+            if (lastOceanView != _viewMatrix || lastOceanProj != _projMatrix) {
+                rebuildTopology = true;
+            }
+        }
+        
         if (rebuildTopology || _globalOceanBasePoints.empty()) {
             _globalOceanBasePoints.clear();
             _globalOceanIndices.clear();
             _globalOceanUvs.clear();
-            _globalOcean->GenerateGridTopology(_globalOceanBasePoints, _globalOceanIndices, _globalOceanUvs, _globalOceanColors);
+            _globalOcean->GenerateGridTopology(_viewMatrix, _projMatrix, _lastWidth, _lastHeight, _globalOceanBasePoints, _globalOceanIndices, _globalOceanUvs, _globalOceanColors);
+            lastOceanView = _viewMatrix;
+            lastOceanProj = _projMatrix;
         }
 
         std::vector<GfVec3f> points, normals, colors;

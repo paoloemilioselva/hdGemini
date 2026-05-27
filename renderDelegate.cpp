@@ -513,6 +513,16 @@ HdGeminiRenderDelegate::GetRenderSettingDescriptors() const
         VtValue(false)
     });
     list.push_back({
+        "Ocean Dicing Scale",
+        HdGeminiRenderSettingsTokens->oceanDicingScale,
+        VtValue(10.0f)
+    });
+    list.push_back({
+        "Ocean Continuous Dicing",
+        HdGeminiRenderSettingsTokens->oceanContinuousDicing,
+        VtValue(false)
+    });
+    list.push_back({
         "Ocean Water Height",
         HdGeminiRenderSettingsTokens->oceanWaterHeight,
         VtValue(0.0f)
@@ -718,6 +728,10 @@ HdGeminiRenderDelegate::GetRenderSetting(TfToken const& key) const
         return VtValue(16);
     } else if (key == HdGeminiRenderSettingsTokens->oceanEnable) {
         return VtValue(false);
+    } else if (key == HdGeminiRenderSettingsTokens->oceanDicingScale) {
+        return VtValue(10.0f);
+    } else if (key == HdGeminiRenderSettingsTokens->oceanContinuousDicing) {
+        return VtValue(false);
     } else if (key == HdGeminiRenderSettingsTokens->oceanWaterHeight) {
         return VtValue(0.0f);
     } else if (key == HdGeminiRenderSettingsTokens->oceanGridSize) {
@@ -894,6 +908,14 @@ HdGeminiRenderDelegate::SetRenderSetting(TfToken const& key, VtValue const& valu
     } else if (key == HdGeminiRenderSettingsTokens->oceanEnable) {
         if (value.IsHolding<bool>()) {
             _renderer.SetOceanEnable(value.Get<bool>());
+            changed = true;
+        }
+    } else if (key == HdGeminiRenderSettingsTokens->oceanDicingScale) {
+        _renderer.SetOceanDicingScale(getFloat(value, 10.0f));
+        changed = true;
+    } else if (key == HdGeminiRenderSettingsTokens->oceanContinuousDicing) {
+        if (value.IsHolding<bool>()) {
+            _renderer.SetOceanContinuousDicing(value.Get<bool>());
             changed = true;
         }
     } else if (key == HdGeminiRenderSettingsTokens->oceanWaterHeight) {

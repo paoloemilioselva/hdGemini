@@ -91,6 +91,8 @@ public:
     void SetAdaptiveMinSamples(int samples) { _adaptiveMinSamples = samples; }
 
     void SetOceanEnable(bool enable) { _oceanEnable = enable; }
+    void SetOceanDicingScale(float scale) { _oceanParams.dicingScale = scale; }
+    void SetOceanContinuousDicing(bool enable) { _oceanParams.continuousDicing = enable; }
     void SetOceanWaterHeight(float height) { _oceanWaterHeight = height; }
     void SetOceanGridSize(int size) { _oceanParams.gridSize = size; }
     void SetOceanSize(float size) { _oceanParams.size = size; }

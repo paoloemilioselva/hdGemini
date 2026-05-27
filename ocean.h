@@ -23,6 +23,8 @@ struct HdGeminiOceanParams {
     float minK[3] = { 0.0f, 0.0f, 0.0f };
     float maxK[3] = { 1000000.0f, 1000000.0f, 1000000.0f };
     float waterHeight = 0.0f;
+    float dicingScale = 10.0f;
+    bool continuousDicing = false;
     float foamVisibility = 1.0f;
     bool disableShader = false;
     bool repeat = true;
@@ -41,6 +43,8 @@ struct HdGeminiOceanParams {
                minK[0] == o.minK[0] && minK[1] == o.minK[1] && minK[2] == o.minK[2] &&
                maxK[0] == o.maxK[0] && maxK[1] == o.maxK[1] && maxK[2] == o.maxK[2] &&
                waterHeight == o.waterHeight &&
+               dicingScale == o.dicingScale &&
+               continuousDicing == o.continuousDicing &&
                foamVisibility == o.foamVisibility &&
                disableShader == o.disableShader &&
                repeat == o.repeat &&
@@ -69,6 +73,10 @@ public:
     bool IsInitialized() const { return _initialized; }
 
     void GenerateGridTopology(
+        const GfMatrix4d& viewMatrix,
+        const GfMatrix4d& projMatrix,
+        int viewportWidth,
+        int viewportHeight,
         std::vector<GfVec3f>& outBasePoints,
         std::vector<GfVec3i>& outIndices,
         std::vector<GfVec2f>& outUvs,

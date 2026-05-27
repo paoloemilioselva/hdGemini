@@ -84,6 +84,7 @@ public:
 
     void DisplaceGrid(
         const std::vector<GfVec3f>& basePoints,
+        const std::vector<GfVec3f>& baseColors,
         const GfVec3f& cameraPos,
         std::vector<GfVec3f>& outDisplaced,
         std::vector<GfVec3f>& outNormals,

@@ -236,6 +236,7 @@ void HdGeminiOcean::GenerateGridTopology(
 
 void HdGeminiOcean::DisplaceGrid(
     const std::vector<GfVec3f>& basePoints,
+    const std::vector<GfVec3f>& baseColors,
     const GfVec3f& cameraPos,
     std::vector<GfVec3f>& outDisplaced,
     std::vector<GfVec3f>& outNormals,
@@ -248,6 +249,10 @@ void HdGeminiOcean::DisplaceGrid(
         GfVec3f offsetPos = basePoints[i];
         outDisplaced[i] = GetDisplacedPosition(offsetPos);
         outNormals[i] = GetNormal(offsetPos);
-        outColors[i] = GfVec3f(GetFoam(offsetPos));
+        if (_params.disableShader && i < baseColors.size()) {
+            outColors[i] = baseColors[i];
+        } else {
+            outColors[i] = GfVec3f(GetFoam(offsetPos));
+        }
     }
 }

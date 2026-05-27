@@ -78,7 +78,7 @@ void HdGeminiMesh::UpdateOcean(const GfMatrix4f& viewProj, const GfVec3f& camera
     }
 
     std::vector<GfVec3f> displacedScaledPoints, displacedScaledNormals, displacedColors;
-    _oceanSimulator->DisplaceGrid(scaledPoints, GfVec3f(0.0f), displacedScaledPoints, displacedScaledNormals, displacedColors);
+    _oceanSimulator->DisplaceGrid(scaledPoints, std::vector<GfVec3f>(), GfVec3f(0.0f), displacedScaledPoints, displacedScaledNormals, displacedColors);
     
     std::vector<GfVec3f> displacedPoints(_points.size());
     std::vector<GfVec3f> displacedNormals(_points.size());

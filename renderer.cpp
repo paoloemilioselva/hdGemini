@@ -557,7 +557,7 @@ HdGeminiRenderer::_PrepareScene(HdRenderThread *renderThread, HdGeminiRenderDele
 
         std::vector<GfVec3f> points, normals, colors;
         GfVec3f camPos(GfVec3f(_viewMatrix.GetInverse().ExtractTranslation()));
-        _globalOcean->DisplaceGrid(_globalOceanBasePoints, camPos, points, normals, colors);
+        _globalOcean->DisplaceGrid(_globalOceanBasePoints, _globalOceanColors, camPos, points, normals, colors);
         
         if (!_globalOceanBvh) _globalOceanBvh = std::make_unique<BVH>();
         VtVec3fArray vtPoints(points.begin(), points.end());

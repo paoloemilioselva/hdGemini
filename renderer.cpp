@@ -787,7 +787,7 @@ bool HdGeminiRenderer::_IntersectTLAS(const GfVec3f& rayOrigin, const GfVec3f& r
                         hit.uv = instUv;
                         hit.baseColor = instSmoothColor; // Use interpolated vertex color
                         
-                        if (inst.material) {
+                        if (inst.material && !inst.material->GetId().IsEmpty()) {
                             hit.baseColor = inst.material->GetDiffuseColor();
                             hit.metallic = inst.material->GetMetallic();
                             hit.roughness = inst.material->GetRoughness();
@@ -889,7 +889,7 @@ bool HdGeminiRenderer::_IntersectTLAS(const GfVec3f& rayOrigin, const GfVec3f& r
                             hit.uv = instUv;
                             hit.isOcean = true;
                             
-                            if (inst.material) {
+                            if (inst.material && !inst.material->GetId().IsEmpty()) {
                                 hit.baseColor = inst.material->GetDiffuseColor();
                                 hit.metallic = inst.material->GetMetallic();
                                 hit.roughness = inst.material->GetRoughness();

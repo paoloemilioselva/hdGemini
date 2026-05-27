@@ -430,7 +430,7 @@ HdGeminiRenderer::_PrepareScene(HdRenderThread *renderThread, HdGeminiRenderDele
                         inst.mesh = mesh;
                         inst.subset = &subset;
                         inst.material = delegate->GetMaterial(subset.materialId);
-                        inst.transform = GfMatrix4f(t) * mesh->GetTransform();
+                        inst.transform = mesh->GetTransform() * GfMatrix4f(t);
                         inst.invTransform = inst.transform.GetInverse();
                         inst.bounds = TransformBounds(subset.range, inst.transform);
                         inst.centroid = (inst.bounds.GetMin() + inst.bounds.GetMax()) * 0.5f;
@@ -472,7 +472,7 @@ HdGeminiRenderer::_PrepareScene(HdRenderThread *renderThread, HdGeminiRenderDele
                         inst.curves = curves;
                         inst.curveSubset = &subset;
                         inst.material = delegate->GetMaterial(subset.materialId);
-                        inst.transform = GfMatrix4f(t) * curves->GetTransform();
+                        inst.transform = curves->GetTransform() * GfMatrix4f(t);
                         inst.invTransform = inst.transform.GetInverse();
                         inst.bounds = TransformBounds(subset.range, inst.transform);
                         inst.centroid = (inst.bounds.GetMin() + inst.bounds.GetMax()) * 0.5f;

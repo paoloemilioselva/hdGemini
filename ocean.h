@@ -80,8 +80,10 @@ public:
     void DisplaceGrid(
         const std::vector<GfVec3f>& basePoints,
         const std::vector<int>& types,
+        const GfVec3f& cameraPos,
         std::vector<GfVec3f>& outDisplaced,
-        std::vector<GfVec3f>& outNormals) const;
+        std::vector<GfVec3f>& outNormals,
+        std::vector<GfVec3f>& outColors) const;
 
 private:
     float Phillips(float kx, float kz, float amplitude, float windSpeed, const GfVec2f& windDirection) const;

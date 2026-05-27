@@ -77,9 +77,9 @@ void HdGeminiMesh::UpdateOcean(const GfMatrix4f& viewProj, const GfVec3f& camera
         scaledPoints[i] = GfCompMult(_points[i], scale);
     }
 
-    std::vector<GfVec3f> displacedScaledPoints, displacedScaledNormals;
+    std::vector<GfVec3f> displacedScaledPoints, displacedScaledNormals, displacedColors;
     std::vector<int> oceanTypes(scaledPoints.size(), 0);
-    _oceanSimulator->DisplaceGrid(scaledPoints, oceanTypes, displacedScaledPoints, displacedScaledNormals);
+    _oceanSimulator->DisplaceGrid(scaledPoints, oceanTypes, GfVec3f(0.0f), displacedScaledPoints, displacedScaledNormals, displacedColors);
     
     std::vector<GfVec3f> displacedPoints(_points.size());
     std::vector<GfVec3f> displacedNormals(_points.size());
@@ -94,10 +94,11 @@ void HdGeminiMesh::UpdateOcean(const GfMatrix4f& viewProj, const GfVec3f& camera
     
     VtVec3fArray vtPoints(displacedPoints.begin(), displacedPoints.end());
     VtVec3fArray vtNormals(displacedNormals.begin(), displacedNormals.end());
+    VtVec3fArray vtColors(displacedColors.begin(), displacedColors.end());
 
     for (auto& subset : _subsets) {
         if (!subset.indices.empty()) {
-            subset.bvh.Build(vtPoints, subset.indices, subset.uvs, vtNormals, subset.colors, std::vector<int>());
+            subset.bvh.Build(vtPoints, subset.indices, subset.uvs, vtNormals, vtColors, std::vector<int>());
             
             subset.range.SetEmpty();
             for (const auto& tri : subset.indices) {

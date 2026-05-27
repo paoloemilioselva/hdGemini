@@ -547,15 +547,16 @@ HdGeminiRenderer::_PrepareScene(HdRenderThread *renderThread, HdGeminiRenderDele
             _globalOcean->GenerateGridTopology(_globalOceanBasePoints, _globalOceanIndices, _globalOceanUvs, _globalOceanColors, _globalOceanVertexTypes);
         }
 
-        std::vector<GfVec3f> points, normals;
-        _globalOcean->DisplaceGrid(_globalOceanBasePoints, _globalOceanVertexTypes, points, normals);
+        std::vector<GfVec3f> points, normals, colors;
+        GfVec3f camPos(GfVec3f(_viewMatrix.GetInverse().ExtractTranslation()));
+        _globalOcean->DisplaceGrid(_globalOceanBasePoints, _globalOceanVertexTypes, camPos, points, normals, colors);
         
         if (!_globalOceanBvh) _globalOceanBvh = std::make_unique<BVH>();
         VtVec3fArray vtPoints(points.begin(), points.end());
         VtVec3iArray vtIndices(_globalOceanIndices.begin(), _globalOceanIndices.end());
         VtVec2fArray vtUvs(_globalOceanUvs.begin(), _globalOceanUvs.end());
         VtVec3fArray vtNormals(normals.begin(), normals.end());
-        VtVec3fArray vtColors(_globalOceanColors.begin(), _globalOceanColors.end());
+        VtVec3fArray vtColors(colors.begin(), colors.end());
         std::vector<int> matIndices(_globalOceanIndices.size(), -1);
         _globalOceanBvh->Build(vtPoints, vtIndices, vtUvs, vtNormals, vtColors, matIndices);
         
@@ -981,7 +982,7 @@ bool HdGeminiRenderer::_IntersectTLAS(const GfVec3f& rayOrigin, const GfVec3f& r
                                     hit.roughnessTextureChannel = 0;
                                     hit.opacityTextureChannel = 0;
                                     hit.transmissionTextureChannel = 0;
-                                    hit.coat = 0.0f;
+                                    hit.coat = 1.0f * (1.0f - foam); // Coat on water, not foam
                                     hit.coatColor = GfVec3f(1.0f);
                                     hit.coatRoughness = 0.0f;
                                     hit.coatIor = 1.5f;
@@ -1206,7 +1207,7 @@ static GfVec2f _RaySphereIntersect(const GfVec3f& r0, const GfVec3f& rd, float s
     return GfVec2f((-b - std::sqrt(d)) / (2.0f * a), (-b + std::sqrt(d)) / (2.0f * a));
 }
 
-GfVec3f HdGeminiRenderer::_SamplePhysicalSky(const GfVec3f& rayDir, const GfVec3f& sunDir) const {
+GfVec3f HdGeminiRenderer::_SamplePhysicalSky(const GfVec3f& rayDir, const GfVec3f& sunDir, bool includeSun) const {
     GfVec3f dir = rayDir.GetNormalized();
     GfVec3f sDir = sunDir.GetNormalized();
 
@@ -1300,7 +1301,7 @@ GfVec3f HdGeminiRenderer::_SamplePhysicalSky(const GfVec3f& rayDir, const GfVec3
     }
 
     float sunAngularRadius = 0.00465f;
-    if (std::acos(std::clamp(mu, -1.0f, 1.0f)) < sunAngularRadius && isectPlanet[0] < 0.0f) {
+    if (includeSun && std::acos(std::clamp(mu, -1.0f, 1.0f)) < sunAngularRadius && isectPlanet[0] < 0.0f) {
         GfVec3f tau = betaR * opticalDepthR + GfVec3f(betaM * 1.1f) * opticalDepthM;
         GfVec3f attenuation(std::exp(-tau[0]), std::exp(-tau[1]), std::exp(-tau[2]));
         color += GfCompMult(sunIntensity, attenuation); 
@@ -1377,13 +1378,15 @@ static float PowerHeuristic(float f, float g) {
     return f2 / (f2 + g2);
 }
 
-SampledSpectrum HdGeminiRenderer::_TraceShadowRay(const GfVec3f& rayOrigin, const GfVec3f& rayDir, float maxDist, bool isInside, HdRenderThread* renderThread, uint32_t sampleIdx, uint32_t& qmcDim, uint32_t& rng, const SampledWavelengths& lambda) const {
+SampledSpectrum HdGeminiRenderer::_TraceShadowRay(const GfVec3f& rayOrigin, const GfVec3f& rayDir, float maxDist, bool currentlyInside, float currentTransmissionDepth, const GfVec3f& currentTransmissionColor, const GfVec3f& currentTransmissionScatter, HdRenderThread* renderThread, uint32_t sampleIdx, uint32_t& qmcDim, uint32_t& rng, const SampledWavelengths& lambda) const {
     SampledSpectrum transmittance;
     for(int i=0; i<SPECTRUM_SAMPLES; ++i) transmittance[i] = 1.0f;
 
     GfVec3f p = rayOrigin;
     float distRemaining = maxDist;
-    bool currentlyInside = isInside;
+    float transDepth = currentTransmissionDepth;
+    GfVec3f transColor = currentTransmissionColor;
+    GfVec3f transScatter = currentTransmissionScatter;
     int bounce = 0;
 
     while (distRemaining > 0.0f && bounce < 8) {
@@ -1391,16 +1394,33 @@ SampledSpectrum HdGeminiRenderer::_TraceShadowRay(const GfVec3f& rayOrigin, cons
         HitRecord sHit;
         sHit.t = distRemaining;
         if (!_IntersectTLAS(p, rayDir, sHit, renderThread, sampleIdx, qmcDim, rng)) {
+            if (currentlyInside && transDepth > 0.0f) {
+                float distToExit = distRemaining;
+                if (_oceanEnable && p[1] < _oceanWaterHeight && rayDir[1] > 0.0f) {
+                    float tToSurface = (_oceanWaterHeight - p[1]) / rayDir[1];
+                    distToExit = std::min(distRemaining, tToSurface);
+                }
+                
+                SampledSpectrum transSpec = RGBToSpectrum(transColor, lambda);
+                for(int i=0; i<SPECTRUM_SAMPLES; ++i) {
+                    float scaledDepth = transDepth / _metersPerUnit;
+                    float sigma_a = -std::log(std::max(transSpec[i], 1e-4f)) / scaledDepth;
+                    float sigma_s = transScatter[i] / scaledDepth;
+                    float sigma_t = sigma_a + sigma_s;
+                    transmittance[i] *= std::exp(-sigma_t * distToExit);
+                }
+            }
             break; 
         }
 
-        if (currentlyInside && sHit.transmissionDepth > 0.0f && !sHit.thinWalled) {
-            SampledSpectrum transSpec = RGBToSpectrum(sHit.transmissionColor, lambda);
-            SampledSpectrum sigma_a;
+        if (currentlyInside && transDepth > 0.0f) {
+            SampledSpectrum transSpec = RGBToSpectrum(transColor, lambda);
             for(int i=0; i<SPECTRUM_SAMPLES; ++i) {
-                float scaledDepth = sHit.transmissionDepth / _metersPerUnit;
-                sigma_a[i] = -std::log(std::max(transSpec[i], 1e-4f)) / scaledDepth;
-                transmittance[i] *= std::exp(-sigma_a[i] * sHit.t);
+                float scaledDepth = transDepth / _metersPerUnit;
+                float sigma_a = -std::log(std::max(transSpec[i], 1e-4f)) / scaledDepth;
+                float sigma_s = transScatter[i] / scaledDepth;
+                float sigma_t = sigma_a + sigma_s;
+                transmittance[i] *= std::exp(-sigma_t * sHit.t);
             }
         }
 
@@ -1417,6 +1437,10 @@ SampledSpectrum HdGeminiRenderer::_TraceShadowRay(const GfVec3f& rayOrigin, cons
         
         if (!sHit.thinWalled) {
             currentlyInside = !currentlyInside;
+            if (currentlyInside) {
+                transDepth = sHit.transmissionDepth;
+                transColor = sHit.transmissionColor;
+            }
         }
     }
 
@@ -1553,6 +1577,10 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
             }
             ro = ro + rd * (hit.t + 1e-4f);
         }
+        
+        if (mediumStack.size() == 1 && currentRayOrigin[1] < _oceanWaterHeight) {
+            mediumStack.push_back(MediumState{1.33f, _oceanParams.scatteringColor, _oceanParams.scatteringDepth, GfVec3f(0.8f, 0.9f, 0.95f)});
+        }
     }
 
     const int maxDepth = isInteractive ? 2 : 32;
@@ -1571,10 +1599,30 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
         if (renderThread->IsStopRequested()) break;
 
         HitRecord hit;
-        if (!this->_IntersectTLAS(currentRayOrigin, currentRayDir, hit, renderThread, sampleIdx, qmcDim, rng)) {
+        bool intersected = this->_IntersectTLAS(currentRayOrigin, currentRayDir, hit, renderThread, sampleIdx, qmcDim, rng);
+        
+        if (!intersected) {
+            if (_oceanEnable && currentRayOrigin[1] < _oceanWaterHeight && currentRayDir[1] > 0.0f) {
+                float tToSurface = (_oceanWaterHeight - currentRayOrigin[1]) / currentRayDir[1];
+                hit.t = tToSurface;
+                hit.isVolumeHit = false;
+                hit.smoothNormal = GfVec3f(0.0f, 1.0f, 0.0f);
+                hit.thinWalled = false;
+                hit.transmission = 1.0f;
+                hit.baseColor = GfVec3f(1.0f);
+                hit.ior = 1.0f;
+                hit.transmissionDepth = 0.0f;
+                intersected = true;
+            } else if (!mediumStack.empty() && mediumStack.back().depth > 0.0f) {
+                for(int i=0; i<SPECTRUM_SAMPLES; ++i) throughput[i] = 0.0f;
+            }
+        }
+
+        if (!intersected) {
             GfVec3f envRGB;
             if (_enablePhysicalSky) {
-                envRGB = _SamplePhysicalSky(currentRayDir, physicalSunDir);
+                bool includeSun = (bounce == 0 || lastBsdfPdf <= 0.0f);
+                envRGB = _SamplePhysicalSky(currentRayDir, physicalSunDir, includeSun);
             } else {
                 envRGB = _SampleEnvironment(currentRayDir);
             }
@@ -1695,7 +1743,10 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
         }
 
         // --- Medium Volumetric Scattering ---
-        const MediumState& currentMedium = mediumStack.back();
+        const MediumState& currentMedium = mediumStack.back();        bool shadowCurrentlyInside = !mediumStack.empty();
+        float shadowTransDepth = currentMedium.depth;
+        GfVec3f shadowTransColor = currentMedium.transmissionColor;
+        GfVec3f shadowTransScatter = currentMedium.scatterColor;
         if (currentMedium.depth > 0.0f) {
             GfVec3f d_mfp = GfVec3f(currentMedium.depth / _metersPerUnit);
             
@@ -1705,10 +1756,7 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
                 -std::log(std::max(currentMedium.transmissionColor[2], 1e-4f)) / d_mfp[2]
             );
             
-            GfVec3f sigma_s_rgb = currentMedium.scatterColor; // scatterColor is already sigma_s or we can divide by depth
-            // If scatterColor is meant to be albedo, then sigma_s = albedo * sigma_t
-            // But we'll define scatterColor as direct sigma_s multiplier for simplicity, or just use it as scattering coefficient:
-            sigma_s_rgb = GfVec3f(
+            GfVec3f sigma_s_rgb = GfVec3f(
                 currentMedium.scatterColor[0] / d_mfp[0],
                 currentMedium.scatterColor[1] / d_mfp[1],
                 currentMedium.scatterColor[2] / d_mfp[2]
@@ -1725,6 +1773,9 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
             if (d < hit.t) {
                 // Volumetric Scatter
                 currentRayOrigin = currentRayOrigin + currentRayDir * d;
+                for(int i=0; i<SPECTRUM_SAMPLES; ++i) {
+                    throughput[i] *= (1.0f / ext) * std::exp(-(sigma_t[i] - ext) * d);
+                }
                 
                 // --- Volumetric Next Event Estimation (NEE) ---
                 if (!_activeLights.empty()) {
@@ -1744,7 +1795,7 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
                     EvaluateLight(ls, currentRayOrigin, lDir, lightDist, lColor, lightPdf);
                     
                     if (lightDist > 0.0f && lightPdf > 0.0f && (lColor[0]>0 || lColor[1]>0 || lColor[2]>0)) {
-                        SampledSpectrum shadowTransmittance = _TraceShadowRay(currentRayOrigin, lDir, lightDist - 1e-4f, isInside, renderThread, sampleIdx, qmcDim, rng, lambda);
+                        SampledSpectrum shadowTransmittance = _TraceShadowRay(currentRayOrigin, lDir, lightDist - 1e-4f, shadowCurrentlyInside, shadowTransDepth, shadowTransColor, shadowTransScatter, renderThread, sampleIdx, qmcDim, rng, lambda);
                         
                         bool hasTransmittance = false;
                         for(int i=0; i<SPECTRUM_SAMPLES; ++i) if (shadowTransmittance[i] > 0.0f) hasTransmittance = true;
@@ -1779,13 +1830,13 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
                 currentRayDir = (t * std::cos(phi) * sinTheta + b * std::sin(phi) * sinTheta + currentRayDir * cosTheta).GetNormalized();
                 
                 for(int i=0; i<SPECTRUM_SAMPLES; ++i) {
-                    throughput[i] *= (sigma_s[i] / std::max(sigma_t[i], 1e-6f));
+                    throughput[i] *= sigma_s[i];
                 }
                 continue; // Proceed directly to next scattering event
             } else {
                 // Reached boundary, attenuate by transmittance
                 for(int i=0; i<SPECTRUM_SAMPLES; ++i) {
-                    throughput[i] *= std::exp(-sigma_t[i] * hit.t);
+                    throughput[i] *= std::exp(-(sigma_t[i] - ext) * hit.t);
                 }
             }
         } else if (isInside && hit.transmissionDepth > 0.0f && !hit.thinWalled) {
@@ -1963,7 +2014,7 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
                 float nDotL = std::max(0.0f, GfDot(shadingNormal, lDir));
                 if (nDotL > 0) {
                     GfVec3f shadowOrigin = hitPos + shadingNormal * 1e-4f;
-                    SampledSpectrum shadowTransmittance = _TraceShadowRay(shadowOrigin, lDir, lightDist - 1e-3f, isInside, renderThread, sampleIdx, qmcDim, rng, lambda);
+                    SampledSpectrum shadowTransmittance = _TraceShadowRay(shadowOrigin, lDir, lightDist - 1e-3f, shadowCurrentlyInside, shadowTransDepth, shadowTransColor, shadowTransScatter, renderThread, sampleIdx, qmcDim, rng, lambda);
                     
                     bool hasTransmittance = false;
                     for(int i=0; i<SPECTRUM_SAMPLES; ++i) if (shadowTransmittance[i] > 0.0f) hasTransmittance = true;
@@ -2053,7 +2104,7 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
                 float nDotL = std::max(0.0f, GfDot(shadingNormal, physicalSunDir));
                 if (nDotL > 0) {
                     GfVec3f shadowOrigin = hitPos + shadingNormal * 1e-4f;
-                    SampledSpectrum shadowTransmittance = _TraceShadowRay(shadowOrigin, physicalSunDir, 1e30f, isInside, renderThread, sampleIdx, qmcDim, rng, lambda);
+                    SampledSpectrum shadowTransmittance = _TraceShadowRay(shadowOrigin, physicalSunDir, 1e30f, shadowCurrentlyInside, shadowTransDepth, shadowTransColor, shadowTransScatter, renderThread, sampleIdx, qmcDim, rng, lambda);
                     
                     bool hasTransmittance = false;
                     for(int i=0; i<SPECTRUM_SAMPLES; ++i) if (shadowTransmittance[i] > 0.0f) hasTransmittance = true;

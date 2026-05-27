@@ -13,7 +13,12 @@ void HdGeminiOcean::GenerateGridTopology(
     int N = _params.gridSize;
     float size = _params.size > 1e-5f ? _params.size : 100.0f;
     float halfSize = size * 0.5f;
-    float step = size / (float)N;
+    
+    auto mapToGrid = [&](int i) -> float {
+        float u = (float)i / (float)N * 2.0f - 1.0f;
+        float dist = std::pow(std::abs(u), 3.0f); // Power of 3 gives good central detail
+        return std::copysign(dist, u) * halfSize;
+    };
     
     outBasePoints.reserve(N * N * 4 + N * 4 * 4 + 4);
     outUvs.reserve(N * N * 4 + N * 4 * 4 + 4);
@@ -31,10 +36,10 @@ void HdGeminiOcean::GenerateGridTopology(
 
     for (int z = 0; z < N; ++z) {
         for (int x = 0; x < N; ++x) {
-            float minX = -halfSize + x * step;
-            float minZ = -halfSize + z * step;
-            float maxX = minX + step;
-            float maxZ = minZ + step;
+            float minX = mapToGrid(x);
+            float minZ = mapToGrid(z);
+            float maxX = mapToGrid(x + 1);
+            float maxZ = mapToGrid(z + 1);
 
             GfVec3f p0(minX, _params.waterHeight, minZ);
             GfVec3f p1(maxX, _params.waterHeight, minZ);
@@ -64,10 +69,10 @@ void HdGeminiOcean::GenerateGridTopology(
                 outColors.push_back(rc);
                 outColors.push_back(rc);
             } else {
-                outColors.push_back(GfVec3f(GetFoam(p0)));
-                outColors.push_back(GfVec3f(GetFoam(p1)));
-                outColors.push_back(GfVec3f(GetFoam(p2)));
-                outColors.push_back(GfVec3f(GetFoam(p3)));
+                outColors.push_back(GfVec3f(0.0f));
+                outColors.push_back(GfVec3f(0.0f));
+                outColors.push_back(GfVec3f(0.0f));
+                outColors.push_back(GfVec3f(0.0f));
             }
 
             outTypes.push_back(0);
@@ -104,32 +109,32 @@ void HdGeminiOcean::GenerateGridTopology(
 
     // +Z Wall (z = halfSize)
     for (int x = 0; x < N; ++x) {
-        float minX = -halfSize + x * step;
-        float maxX = minX + step;
+        float minX = mapToGrid(x);
+        float maxX = mapToGrid(x + 1);
         float zPos = halfSize;
         addQuad(GfVec3f(minX, _params.waterHeight, zPos), GfVec3f(maxX, _params.waterHeight, zPos),
                 GfVec3f(maxX, bottomY, zPos), GfVec3f(minX, bottomY, zPos), 5, 6);
     }
     // -Z Wall (z = -halfSize)
     for (int x = 0; x < N; ++x) {
-        float minX = -halfSize + x * step;
-        float maxX = minX + step;
+        float minX = mapToGrid(x);
+        float maxX = mapToGrid(x + 1);
         float zPos = -halfSize;
         addQuad(GfVec3f(maxX, _params.waterHeight, zPos), GfVec3f(minX, _params.waterHeight, zPos),
                 GfVec3f(minX, bottomY, zPos), GfVec3f(maxX, bottomY, zPos), 7, 8);
     }
     // +X Wall (x = halfSize)
     for (int z = 0; z < N; ++z) {
-        float minZ = -halfSize + z * step;
-        float maxZ = minZ + step;
+        float minZ = mapToGrid(z);
+        float maxZ = mapToGrid(z + 1);
         float xPos = halfSize;
         addQuad(GfVec3f(xPos, _params.waterHeight, maxZ), GfVec3f(xPos, _params.waterHeight, minZ),
                 GfVec3f(xPos, bottomY, minZ), GfVec3f(xPos, bottomY, maxZ), 1, 2);
     }
     // -X Wall (x = -halfSize)
     for (int z = 0; z < N; ++z) {
-        float minZ = -halfSize + z * step;
-        float maxZ = minZ + step;
+        float minZ = mapToGrid(z);
+        float maxZ = mapToGrid(z + 1);
         float xPos = -halfSize;
         addQuad(GfVec3f(xPos, _params.waterHeight, minZ), GfVec3f(xPos, _params.waterHeight, maxZ),
                 GfVec3f(xPos, bottomY, maxZ), GfVec3f(xPos, bottomY, minZ), 3, 4);
@@ -143,35 +148,44 @@ void HdGeminiOcean::GenerateGridTopology(
 void HdGeminiOcean::DisplaceGrid(
     const std::vector<GfVec3f>& basePoints,
     const std::vector<int>& types,
+    const GfVec3f& cameraPos,
     std::vector<GfVec3f>& outDisplaced,
-    std::vector<GfVec3f>& outNormals) const
+    std::vector<GfVec3f>& outNormals,
+    std::vector<GfVec3f>& outColors) const
 {
     outDisplaced.resize(basePoints.size());
     outNormals.resize(basePoints.size());
+    outColors.resize(basePoints.size());
+    GfVec3f camOffset(cameraPos[0], 0.0f, cameraPos[2]);
     for (size_t i = 0; i < basePoints.size(); ++i) {
         int type = types[i];
+        GfVec3f offsetPos = basePoints[i] + camOffset;
         if (type == 0) {
             // Surface
-            outDisplaced[i] = GetDisplacedPosition(basePoints[i]);
-            outNormals[i] = GetNormal(basePoints[i]);
+            outDisplaced[i] = GetDisplacedPosition(offsetPos);
+            outNormals[i] = GetNormal(offsetPos);
+            outColors[i] = GfVec3f(GetFoam(offsetPos));
         } else if (type == 9) {
             // Bottom face
-            outDisplaced[i] = basePoints[i];
+            outDisplaced[i] = offsetPos;
             outNormals[i] = GfVec3f(0, -1, 0);
+            outColors[i] = GfVec3f(0.0f);
         } else if (type % 2 == 1) {
             // Wall Top (1, 3, 5, 7)
-            outDisplaced[i] = GetDisplacedPosition(basePoints[i]);
+            outDisplaced[i] = GetDisplacedPosition(offsetPos);
             if (type == 1) outNormals[i] = GfVec3f(1, 0, 0);
             else if (type == 3) outNormals[i] = GfVec3f(-1, 0, 0);
             else if (type == 5) outNormals[i] = GfVec3f(0, 0, 1);
             else if (type == 7) outNormals[i] = GfVec3f(0, 0, -1);
+            outColors[i] = GfVec3f(0.0f);
         } else {
             // Wall Bottom (2, 4, 6, 8)
-            outDisplaced[i] = basePoints[i];
+            outDisplaced[i] = offsetPos;
             if (type == 2) outNormals[i] = GfVec3f(1, 0, 0);
             else if (type == 4) outNormals[i] = GfVec3f(-1, 0, 0);
             else if (type == 6) outNormals[i] = GfVec3f(0, 0, 1);
             else if (type == 8) outNormals[i] = GfVec3f(0, 0, -1);
+            outColors[i] = GfVec3f(0.0f);
         }
     }
 }

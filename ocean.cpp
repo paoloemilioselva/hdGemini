@@ -318,5 +318,7 @@ float HdGeminiOcean::GetFoam(const GfVec3f& basePos) const {
     float dDz_dz = (pz[2] - p0[2]) / delta - 1.0f;
 
     float J = (1.0f + dDx_dx) * (1.0f + dDz_dz) - dDx_dz * dDz_dx;
-    return std::max(0.0f, 1.0f - J) * _params.foamVisibility;
+    float foam = std::max(0.0f, 1.0f - J);
+    foam = std::pow(foam, 2.0f); // Sharpen foam peaks
+    return foam * _params.foamVisibility;
 }

@@ -504,11 +504,11 @@ private:
     void _BuildTLAS(class HdRenderThread *renderThread);
     void _SubdivideTLAS(int nodeIdx, int start, int end, class HdRenderThread *renderThread);
     bool _IntersectTLAS(const GfVec3f& rayOrigin, const GfVec3f& rayDir, HitRecord& hit, class HdRenderThread* renderThread, uint32_t sampleIdx, uint32_t& qmcDim, uint32_t& rng) const;
-    SampledSpectrum _TraceShadowRay(const GfVec3f& rayOrigin, const GfVec3f& rayDir, float maxDist, bool isInside, class HdRenderThread* renderThread, uint32_t sampleIdx, uint32_t& qmcDim, uint32_t& rng, const SampledWavelengths& lambda) const;
+    SampledSpectrum _TraceShadowRay(const GfVec3f& rayOrigin, const GfVec3f& rayDir, float maxDist, bool currentlyInside, float currentTransmissionDepth, const GfVec3f& currentTransmissionColor, const GfVec3f& currentTransmissionScatter, class HdRenderThread* renderThread, uint32_t sampleIdx, uint32_t& qmcDim, uint32_t& rng, const SampledWavelengths& lambda) const;
     SampledSpectrum _TraceRay(const GfVec3f& rayOrigin, const GfVec3f& rayDir, int depth, bool isInteractive, HdRenderThread* renderThread, uint32_t sampleIdx, uint32_t& qmcDim, uint32_t& rng, const SampledWavelengths& lambda, GfVec3f* outAlbedo = nullptr, GfVec3f* outNormal = nullptr, float exposureMultiplier = 1.0f, Reservoir* temporalReservoir = nullptr) const;
     void _TracePhoton(class HdRenderThread* renderThread, uint32_t sampleIdx, uint32_t& rng, const SampledWavelengths& lambda);
     GfVec3f _SampleEnvironment(const GfVec3f& rayDir) const;
-    GfVec3f _SamplePhysicalSky(const GfVec3f& rayDir, const GfVec3f& sunDir) const;
+    GfVec3f _SamplePhysicalSky(const GfVec3f& rayDir, const GfVec3f& sunDir, bool includeSun) const;
     GfVec3f _GetSunTransmittance(const GfVec3f& sunDir) const;
     
     bool _IsPointInsideOcean(const GfVec3f& pos) const;

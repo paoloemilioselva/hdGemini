@@ -95,7 +95,7 @@ HdGeminiInstancer::ComputeInstanceTransforms(SdfPath const &prototypeId)
             GfVec3f s = instancerScales[index];
             GfMatrix4d scaleMat(1.0);
             scaleMat.SetScale(GfVec3d(s[0], s[1], s[2]));
-            transform = scaleMat * transform;
+            transform = transform * scaleMat;
         }
 
         if (!instancerRotations.empty() && index < instancerRotations.size()) {
@@ -103,24 +103,24 @@ HdGeminiInstancer::ComputeInstanceTransforms(SdfPath const &prototypeId)
             GfQuatd quat(r[0], r[1], r[2], r[3]);
             GfMatrix4d rotMat(1.0);
             rotMat.SetRotate(quat);
-            transform = rotMat * transform;
+            transform = transform * rotMat;
         } else if (!instancerRotationsH.empty() && index < instancerRotationsH.size()) {
             GfQuath r = instancerRotationsH[index];
             GfQuatd quat(r.GetReal(), r.GetImaginary()[0], r.GetImaginary()[1], r.GetImaginary()[2]);
             GfMatrix4d rotMat(1.0);
             rotMat.SetRotate(quat);
-            transform = rotMat * transform;
+            transform = transform * rotMat;
         }
 
         if (!instancerTranslations.empty() && index < instancerTranslations.size()) {
             GfVec3f t = instancerTranslations[index];
             GfMatrix4d transMat(1.0);
             transMat.SetTranslate(GfVec3d(t[0], t[1], t[2]));
-            transform = transMat * transform;
+            transform = transform * transMat;
         }
 
         if (!instancerTransforms.empty() && index < instancerTransforms.size()) {
-            transform = instancerTransforms[index] * transform;
+            transform = transform * instancerTransforms[index];
         }
 
         transforms[i] = transform * instancerTransform;

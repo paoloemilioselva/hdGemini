@@ -2703,68 +2703,176 @@ HdGeminiRenderer::_ApplyPostProcess()
     std::vector<float> finalColor = color;
 
     if (_enableLensFlare) {
-        std::vector<float> bloom(width * height * 3, 0.0f);
-        float threshold = 2.0f; // Extract bright pixels
+        int downscale = std::max(1, (int)std::min(width, height) / 512);
+        int w = width / downscale;
+        int h = height / downscale;
+        std::vector<float> bright(w * h * 3, 0.0f);
+        float threshold = 2.0f;
+        std::vector<std::pair<int, int>> brightPixels;
         
-        for (unsigned int i = 0; i < width * height; ++i) {
-            float r = color[i*3];
-            float g = color[i*3+1];
-            float b = color[i*3+2];
-            float lum = 0.2126f * r + 0.7152f * g + 0.0722f * b;
-            if (lum > threshold) {
-                bloom[i*3] = r - threshold;
-                bloom[i*3+1] = g - threshold;
-                bloom[i*3+2] = b - threshold;
+        for (int y = 0; y < h; ++y) {
+            for (int x = 0; x < w; ++x) {
+                float r=0, g=0, b=0;
+                int count=0;
+                for (int dy=0; dy<downscale; ++dy) {
+                    for (int dx=0; dx<downscale; ++dx) {
+                        int ix = x*downscale + dx;
+                        int iy = y*downscale + dy;
+                        if (ix < (int)width && iy < (int)height) {
+                            size_t c_idx = (iy * width + ix) * 3;
+                            r += color[c_idx];
+                            g += color[c_idx+1];
+                            b += color[c_idx+2];
+                            count++;
+                        }
+                    }
+                }
+                if (count > 0) { r/=count; g/=count; b/=count; }
+                float lum = 0.2126f * r + 0.7152f * g + 0.0722f * b;
+                if (lum > threshold) {
+                    size_t b_idx = (y * w + x) * 3;
+                    bright[b_idx] = r - threshold;
+                    bright[b_idx+1] = g - threshold;
+                    bright[b_idx+2] = b - threshold;
+                    brightPixels.push_back({x, y});
+                }
             }
         }
 
-        int blurSize = std::max(1, (int)std::min(width, height) / 20);
-        std::vector<float> blurred(width * height * 3, 0.0f);
+        std::vector<float> bokeh(w * h * 3, 0.0f);
+        int blades = _bokehBlades;
+        int R = std::max(1, std::min(w, h) / 30);
+        float pi = 3.14159265f;
+        float d_angle = (blades >= 3) ? (pi * 2.0f / blades) : 0.0f;
+        float area = pi * R * R;
         
-        for (unsigned int y = 0; y < height; ++y) {
-            for (unsigned int x = 0; x < width; ++x) {
-                size_t idx = (y * width + x) * 3;
-                if (bloom[idx] == 0 && bloom[idx+1] == 0 && bloom[idx+2] == 0) continue;
-                
-                for (int d = -blurSize; d <= blurSize; d += 2) {
-                    if (d == 0) continue;
-                    float weight = 1.0f / (std::abs(d) + 1.0f);
-                    
-                    // Horizontal
-                    if ((int)x + d >= 0 && (int)x + d < (int)width) {
-                        size_t b_idx = (y * width + (x + d)) * 3;
-                        blurred[b_idx] += bloom[idx] * weight;
-                        blurred[b_idx+1] += bloom[idx+1] * weight;
-                        blurred[b_idx+2] += bloom[idx+2] * weight;
-                    }
-                    // Vertical
-                    if ((int)y + d >= 0 && (int)y + d < (int)height) {
-                        size_t b_idx = ((y + d) * width + x) * 3;
-                        blurred[b_idx] += bloom[idx] * weight;
-                        blurred[b_idx+1] += bloom[idx+1] * weight;
-                        blurred[b_idx+2] += bloom[idx+2] * weight;
-                    }
-                    // Diagonal 1
-                    if ((int)x + d >= 0 && (int)x + d < (int)width && (int)y + d >= 0 && (int)y + d < (int)height) {
-                        size_t b_idx = ((y + d) * width + (x + d)) * 3;
-                        blurred[b_idx] += bloom[idx] * weight * 0.5f;
-                        blurred[b_idx+1] += bloom[idx+1] * weight * 0.5f;
-                        blurred[b_idx+2] += bloom[idx+2] * weight * 0.5f;
-                    }
-                    // Diagonal 2
-                    if ((int)x + d >= 0 && (int)x + d < (int)width && (int)y - d >= 0 && (int)y - d < (int)height) {
-                        size_t b_idx = ((y - d) * width + (x + d)) * 3;
-                        blurred[b_idx] += bloom[idx] * weight * 0.5f;
-                        blurred[b_idx+1] += bloom[idx+1] * weight * 0.5f;
-                        blurred[b_idx+2] += bloom[idx+2] * weight * 0.5f;
+        for (auto p : brightPixels) {
+            int cx = p.first;
+            int cy = p.second;
+            size_t cidx = (cy * w + cx) * 3;
+            float cr = bright[cidx], cg = bright[cidx+1], cb = bright[cidx+2];
+            
+            for (int dy = -R; dy <= R; ++dy) {
+                for (int dx = -R; dx <= R; ++dx) {
+                    int nx = cx + dx;
+                    int ny = cy + dy;
+                    if (nx >= 0 && nx < w && ny >= 0 && ny < h) {
+                        float dist;
+                        if (blades < 3) {
+                            dist = std::sqrt((float)(dx*dx + dy*dy));
+                        } else {
+                            float a = std::atan2((float)dy, (float)dx) + pi;
+                            float r_dist = std::sqrt((float)(dx*dx + dy*dy));
+                            float v = a - std::floor(a / d_angle) * d_angle - d_angle * 0.5f;
+                            dist = r_dist * std::cos(v);
+                        }
+                        
+                        if (dist <= R) {
+                            float d_norm = dist / (float)R;
+                            float d2 = d_norm * d_norm;
+                            float weight = std::max(0.0f, 1.0f - d2 * d2) / area;
+                            
+                            size_t nidx = (ny * w + nx) * 3;
+                            bokeh[nidx] += cr * weight;
+                            bokeh[nidx+1] += cg * weight;
+                            bokeh[nidx+2] += cb * weight;
+                        }
                     }
                 }
             }
         }
-        for (unsigned int i = 0; i < width * height; ++i) {
-            finalColor[i*3] += blurred[i*3] * 0.1f;
-            finalColor[i*3+1] += blurred[i*3+1] * 0.1f;
-            finalColor[i*3+2] += blurred[i*3+2] * 0.1f;
+
+        std::vector<float> flare(w * h * 3, 0.0f);
+        int ghosts = 5;
+        float ghostDispersal = 0.4f;
+        float cx_screen = w * 0.5f;
+        float cy_screen = h * 0.5f;
+        
+        for (int y = 0; y < h; ++y) {
+            for (int x = 0; x < w; ++x) {
+                float dx = x - cx_screen;
+                float dy = y - cy_screen;
+                float r=0, g=0, b=0;
+                
+                for (int i = 0; i < ghosts; ++i) {
+                    float offset = (float)i * ghostDispersal - 1.0f; 
+                    float sx = cx_screen + dx * offset;
+                    float sy = cy_screen + dy * offset;
+                    
+                    float ca_shift = 0.02f * w;
+                    float dirX = (dx != 0 || dy != 0) ? dx / std::sqrt(dx*dx+dy*dy) : 0;
+                    float dirY = (dx != 0 || dy != 0) ? dy / std::sqrt(dx*dx+dy*dy) : 0;
+                    
+                    auto Sample = [&](float px, float py) -> GfVec3f {
+                        if (px >= 0 && px < w-1 && py >= 0 && py < h-1) {
+                            int ix = (int)px; int iy = (int)py;
+                            float fx = px - ix; float fy = py - iy;
+                            auto C = [&](int xx, int yy) {
+                                size_t idx = (yy*w+xx)*3;
+                                return GfVec3f(bokeh[idx], bokeh[idx+1], bokeh[idx+2]);
+                            };
+                            return C(ix, iy) * (1-fx)*(1-fy) + C(ix+1, iy) * fx*(1-fy) +
+                                   C(ix, iy+1) * (1-fx)*fy + C(ix+1, iy+1) * fx*fy;
+                        }
+                        return GfVec3f(0);
+                    };
+                    
+                    r += Sample(sx + dirX * ca_shift, sy + dirY * ca_shift)[0] * 0.2f;
+                    g += Sample(sx, sy)[1] * 0.2f;
+                    b += Sample(sx - dirX * ca_shift, sy - dirY * ca_shift)[2] * 0.2f;
+                }
+                
+                size_t idx = (y * w + x) * 3;
+                flare[idx] = r;
+                flare[idx+1] = g;
+                flare[idx+2] = b;
+            }
+        }
+        
+        std::vector<float> starburst(w * h * 3, 0.0f);
+        if (blades >= 3) {
+            float spikeLength = std::max(w, h) * 0.2f;
+            float spikeIntensity = 2.0f / (spikeLength * blades);
+            
+            for (auto p : brightPixels) {
+                int cx = p.first;
+                int cy = p.second;
+                size_t cidx = (cy * w + cx) * 3;
+                float cr = bright[cidx], cg = bright[cidx+1], cb = bright[cidx+2];
+                
+                for (int i = 0; i < blades; ++i) {
+                    float angle = i * (2.0f * pi) / blades + pi * 0.5f;
+                    float s_dx = std::cos(angle);
+                    float s_dy = std::sin(angle);
+                    
+                    for (float d = -spikeLength; d <= spikeLength; d += 1.0f) {
+                        if (d == 0.0f) continue;
+                        int nx = cx + s_dx * d;
+                        int ny = cy + s_dy * d;
+                        if (nx >= 0 && nx < w && ny >= 0 && ny < h) {
+                            float weight = (1.0f - std::abs(d) / spikeLength);
+                            weight = weight * weight * spikeIntensity;
+                            size_t nidx = (ny * w + nx) * 3;
+                            starburst[nidx] += cr * weight;
+                            starburst[nidx+1] += cg * weight;
+                            starburst[nidx+2] += cb * weight;
+                        }
+                    }
+                }
+            }
+        }
+        
+        for (unsigned int y = 0; y < height; ++y) {
+            for (unsigned int x = 0; x < width; ++x) {
+                int sx = std::clamp((int)(x / downscale), 0, w - 1);
+                int sy = std::clamp((int)(y / downscale), 0, h - 1);
+                size_t sidx = (sy * w + sx) * 3;
+                size_t idx = (y * width + x) * 3;
+                
+                finalColor[idx] += flare[sidx] * 0.5f + starburst[sidx] * 0.5f + bokeh[sidx] * 0.2f;
+                finalColor[idx+1] += flare[sidx+1] * 0.5f + starburst[sidx+1] * 0.5f + bokeh[sidx+1] * 0.2f;
+                finalColor[idx+2] += flare[sidx+2] * 0.5f + starburst[sidx+2] * 0.5f + bokeh[sidx+2] * 0.2f;
+            }
         }
     }
 

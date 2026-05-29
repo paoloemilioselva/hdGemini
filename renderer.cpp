@@ -248,6 +248,7 @@ HdGeminiRenderer::Render(HdRenderThread *renderThread, HdGeminiRenderDelegate* d
             HdGeminiRenderBuffer* rb = static_cast<HdGeminiRenderBuffer*>(binding.renderBuffer);
             rb->SetConverged(false);
             if (binding.aovName == HdAovTokens->color) _colorBuffer = rb;
+            else if (binding.aovName == HdAovTokens->depth) _depthBuffer = rb;
             else if (binding.aovName == HdGeminiAovTokens->albedo) _albedoBuffer = rb;
             else if (binding.aovName == HdGeminiAovTokens->normal) _normalBuffer = rb;
         }
@@ -1470,7 +1471,7 @@ SampledSpectrum HdGeminiRenderer::_TraceShadowRay(const GfVec3f& rayOrigin, cons
     return transmittance;
 }
 
-SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVec3f& rayDir, int depth, bool isInteractive, HdRenderThread* renderThread, uint32_t sampleIdx, uint32_t& qmcDim, uint32_t& rng, const SampledWavelengths& lambda, GfVec3f* outAlbedo, GfVec3f* outNormal, float exposureMultiplier, Reservoir* temporalReservoir) const
+SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVec3f& rayDir, int depth, bool isInteractive, HdRenderThread* renderThread, uint32_t sampleIdx, uint32_t& qmcDim, uint32_t& rng, const SampledWavelengths& lambda, GfVec3f* outAlbedo, GfVec3f* outNormal, float* outDepth, float exposureMultiplier, Reservoir* temporalReservoir) const
 {
     SampledSpectrum throughput(exposureMultiplier);
     SampledSpectrum totalRadiance(0.0f);
@@ -1623,6 +1624,7 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
 
         HitRecord hit;
         bool intersected = this->_IntersectTLAS(currentRayOrigin, currentRayDir, hit, renderThread, sampleIdx, qmcDim, rng);
+        if (intersected && bounce == 0 && outDepth) *outDepth = hit.t;
         
         if (!intersected) {
             if (_oceanEnable && currentRayOrigin[1] < _oceanWaterHeight && currentRayDir[1] > 0.0f) {
@@ -1635,6 +1637,7 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
                 hit.baseColor = GfVec3f(1.0f);
                 hit.ior = 1.0f;
                 hit.transmissionDepth = 0.0f;
+                if (bounce == 0 && outDepth) *outDepth = hit.t;
                 intersected = true;
             } else if (!mediumStack.empty() && mediumStack.back().depth > 0.0f) {
                 for(int i=0; i<SPECTRUM_SAMPLES; ++i) throughput[i] = 0.0f;
@@ -3149,13 +3152,14 @@ HdGeminiRenderer::_RenderTiles(HdRenderThread *renderThread, HdGeminiRenderDeleg
                     }
                     
                     GfVec3f albedo(0.0f), normal(0.0f);
+                    float hitDepth = 1.0f;
                     
                     Reservoir* pixelReservoir = nullptr;
                     if (!_temporalReservoirs.empty() && (y * width + x) < _temporalReservoirs.size()) {
                         pixelReservoir = &_temporalReservoirs[y * width + x];
                     }
 
-                    SampledSpectrum hitSpectrum = _TraceRay(rayOriginWorld, rayDirWorld, 0, isInteractive, renderThread, sampleIdx, qmcDim, rng, lambda, &albedo, &normal, exposureMultiplier, pixelReservoir);
+                    SampledSpectrum hitSpectrum = _TraceRay(rayOriginWorld, rayDirWorld, 0, isInteractive, renderThread, sampleIdx, qmcDim, rng, lambda, &albedo, &normal, &hitDepth, exposureMultiplier, pixelReservoir);
                     
                     if (lensWaveHeight > -1e29f) {
                         float distToWater = rayOriginWorld[1] - lensWaveHeight;
@@ -3181,9 +3185,14 @@ HdGeminiRenderer::_RenderTiles(HdRenderThread *renderThread, HdGeminiRenderDeleg
 
                     if (isInteractive) {
                         GfVec4f finalColor(hitColor[0], hitColor[1], hitColor[2], 1.0f);
+                        GfVec4f finalAlbedo(albedo[0], albedo[1], albedo[2], 1.0f);
+                        GfVec4f finalNormal(normal[0], normal[1], normal[2], 1.0f);
                         for (int dy = 0; dy < res && y + dy < height; ++dy) {
                             for (int dx = 0; dx < res && x + dx < width; ++dx) {
                                 _colorBuffer->Write(GfVec3i(x + dx, y + dy, 0), 4, finalColor.data());
+                                if (_albedoBuffer) _albedoBuffer->Write(GfVec3i(x + dx, y + dy, 0), 4, finalAlbedo.data());
+                                if (_normalBuffer) _normalBuffer->Write(GfVec3i(x + dx, y + dy, 0), 4, finalNormal.data());
+                                if (_depthBuffer) _depthBuffer->Write(GfVec3i(x + dx, y + dy, 0), 1, &hitDepth);
                             }
                         }
                     } else {
@@ -3196,6 +3205,7 @@ HdGeminiRenderer::_RenderTiles(HdRenderThread *renderThread, HdGeminiRenderDeleg
                         _colorBuffer->WriteSample(GfVec3i(x, y, 0), GfVec4f(hitColor[0], hitColor[1], hitColor[2], 1.0f));
                         if (_albedoBuffer) _albedoBuffer->WriteSample(GfVec3i(x, y, 0), GfVec4f(albedo[0], albedo[1], albedo[2], 1.0f));
                         if (_normalBuffer) _normalBuffer->WriteSample(GfVec3i(x, y, 0), GfVec4f(normal[0], normal[1], normal[2], 1.0f));
+                        if (_depthBuffer) _depthBuffer->WriteSample(GfVec3i(x, y, 0), GfVec4f(hitDepth, 0.0f, 0.0f, 1.0f));
                     }
                 }
                 std::this_thread::yield();
@@ -3203,6 +3213,7 @@ HdGeminiRenderer::_RenderTiles(HdRenderThread *renderThread, HdGeminiRenderDeleg
             if (!renderThread->IsStopRequested()) _colorBuffer->ResolveBucket(startX, startY, endX, endY);
             if (!renderThread->IsStopRequested() && _albedoBuffer) _albedoBuffer->ResolveBucket(startX, startY, endX, endY);
             if (!renderThread->IsStopRequested() && _normalBuffer) _normalBuffer->ResolveBucket(startX, startY, endX, endY);
+            if (!renderThread->IsStopRequested() && _depthBuffer) _depthBuffer->ResolveBucket(startX, startY, endX, endY);
 
             bucket.activePixels = activePixels;
             bucket.maxVariance = maxVariance;
@@ -3531,9 +3542,10 @@ void HdGeminiRenderer::_RenderTilesSYCL(HdRenderThread *renderThread, HdGeminiRe
             uint32_t rng = rs.rng;
             
             GfVec3f albedo(0.0f), normal(0.0f);
+            float hitDepth = 1.0f;
             uint32_t sampleIdx = 0; // GPU/SYCL not yet tracking variance count correctly via CPU loop
             uint32_t qmcDim = 0;
-            SampledSpectrum hitSpectrum = _TraceRay(rayOriginWorld, rayDirWorld, 0, false, renderThread, sampleIdx, qmcDim, rng, rs.lambda, &albedo, &normal, rs.exposureMultiplier);
+            SampledSpectrum hitSpectrum = _TraceRay(rayOriginWorld, rayDirWorld, 0, false, renderThread, sampleIdx, qmcDim, rng, rs.lambda, &albedo, &normal, &hitDepth, rs.exposureMultiplier);
             
             SampledSpectrum heroSpec;
             for(int j=0; j<4; ++j) heroSpec[j] = hitSpectrum[0];
@@ -3550,6 +3562,7 @@ void HdGeminiRenderer::_RenderTilesSYCL(HdRenderThread *renderThread, HdGeminiRe
             _colorBuffer->WriteSampleLockFree(i, GfVec4f(hitColor[0], hitColor[1], hitColor[2], 1.0f));
             if (_albedoBuffer) _albedoBuffer->WriteSampleLockFree(i, GfVec4f(albedo[0], albedo[1], albedo[2], 1.0f));
             if (_normalBuffer) _normalBuffer->WriteSampleLockFree(i, GfVec4f(normal[0], normal[1], normal[2], 1.0f));
+            if (_depthBuffer) _depthBuffer->WriteSampleLockFree(i, GfVec4f(hitDepth, 0.0f, 0.0f, 1.0f));
         }
         std::this_thread::yield();
     });
@@ -3557,6 +3570,7 @@ void HdGeminiRenderer::_RenderTilesSYCL(HdRenderThread *renderThread, HdGeminiRe
     if (!renderThread->IsStopRequested()) _colorBuffer->ResolveBucket(0, 0, width, height);
     if (!renderThread->IsStopRequested() && _albedoBuffer) _albedoBuffer->ResolveBucket(0, 0, width, height);
     if (!renderThread->IsStopRequested() && _normalBuffer) _normalBuffer->ResolveBucket(0, 0, width, height);
+    if (!renderThread->IsStopRequested() && _depthBuffer) _depthBuffer->ResolveBucket(0, 0, width, height);
 }
 #endif
 

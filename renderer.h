@@ -505,7 +505,7 @@ private:
     void _SubdivideTLAS(int nodeIdx, int start, int end, class HdRenderThread *renderThread);
     bool _IntersectTLAS(const GfVec3f& rayOrigin, const GfVec3f& rayDir, HitRecord& hit, class HdRenderThread* renderThread, uint32_t sampleIdx, uint32_t& qmcDim, uint32_t& rng) const;
     SampledSpectrum _TraceShadowRay(const GfVec3f& rayOrigin, const GfVec3f& rayDir, float maxDist, bool currentlyInside, float currentTransmissionDepth, const GfVec3f& currentTransmissionColor, const GfVec3f& currentTransmissionScatter, class HdRenderThread* renderThread, uint32_t sampleIdx, uint32_t& qmcDim, uint32_t& rng, const SampledWavelengths& lambda) const;
-    SampledSpectrum _TraceRay(const GfVec3f& rayOrigin, const GfVec3f& rayDir, int depth, bool isInteractive, HdRenderThread* renderThread, uint32_t sampleIdx, uint32_t& qmcDim, uint32_t& rng, const SampledWavelengths& lambda, GfVec3f* outAlbedo = nullptr, GfVec3f* outNormal = nullptr, float exposureMultiplier = 1.0f, Reservoir* temporalReservoir = nullptr) const;
+    SampledSpectrum _TraceRay(const GfVec3f& rayOrigin, const GfVec3f& rayDir, int depth, bool isInteractive, class HdRenderThread* renderThread, uint32_t sampleIdx, uint32_t& qmcDim, uint32_t& rng, const SampledWavelengths& lambda, GfVec3f* outAlbedo = nullptr, GfVec3f* outNormal = nullptr, float* outDepth = nullptr, float exposureMultiplier = 1.0f, struct Reservoir* temporalReservoir = nullptr) const;
     void _TracePhoton(class HdRenderThread* renderThread, uint32_t sampleIdx, uint32_t& rng, const SampledWavelengths& lambda);
     GfVec3f _SampleEnvironment(const GfVec3f& rayDir) const;
     GfVec3f _SamplePhysicalSky(const GfVec3f& rayDir, const GfVec3f& sunDir, bool includeSun) const;
@@ -538,6 +538,7 @@ private:
     class HdGeminiRenderBuffer* _colorBuffer = nullptr;
     class HdGeminiRenderBuffer* _albedoBuffer = nullptr;
     class HdGeminiRenderBuffer* _normalBuffer = nullptr;
+    class HdGeminiRenderBuffer* _depthBuffer = nullptr;
 
     std::vector<GfVec3f> _accumHeroRGB;
     std::vector<GfVec3f> _accumDiffRGB;

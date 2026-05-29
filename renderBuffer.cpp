@@ -27,8 +27,17 @@ HdGeminiRenderBuffer::Allocate(GfVec3i const& dimensions,
     _multiSampled = multiSampled;
     size_t numPixels = _width * _height;
     size_t formatSize = HdDataSizeOfFormat(format);
-    _buffer.resize(numPixels * formatSize);
-    _renderBuffer.resize(numPixels * formatSize);
+    _buffer.resize(numPixels * formatSize, 0);
+    _renderBuffer.resize(numPixels * formatSize, 0);
+    
+    // Initialize alpha channel to 1.0f for Float32Vec4
+    if (format == HdFormatFloat32Vec4) {
+        for (size_t i = 0; i < numPixels; ++i) {
+            ((float*)_buffer.data())[i * 4 + 3] = 1.0f;
+            ((float*)_renderBuffer.data())[i * 4 + 3] = 1.0f;
+        }
+    }
+    
     _accumBuffer.assign(numPixels * 4, 0.0f);
     _sumSquaredBuffer.assign(numPixels * 4, 0.0f);
     _sampleCount.assign(numPixels, 0);
@@ -61,7 +70,8 @@ static void _WriteOutput(HdFormat format, uint8_t *dst,
         } else if (componentFormat == HdFormatFloat16) {
             ((uint16_t*)dst)[c] = (c < valueComponents) ? GfHalf(value[c]).bits() : 0;
         } else if (componentFormat == HdFormatFloat32) {
-            ((float*)dst)[c] = (c < valueComponents) ? (float)(value[c]) : 0.0f;
+            ((float*)dst)[c] = (c < valueComponents) ? (float)(value[c]) : ((c == 3) ? 1.0f : 0.0f);
+            if (c == 3) ((float*)dst)[c] = 1.0f; // FORCE ALPHA TO 1.0f
         } else if (componentFormat == HdFormatUNorm8) {
             ((uint8_t*)dst)[c] = (c < valueComponents) ? (uint8_t)std::clamp(value[c] * 255.0f, 0.0f, 255.0f) : 0;
         } else if (componentFormat == HdFormatSNorm8) {

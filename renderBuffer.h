@@ -8,6 +8,8 @@
 #include <vector>
 #include <atomic>
 #include <mutex>
+#include <iostream>
+#include <cstdio>
 
 PXR_NAMESPACE_USING_DIRECTIVE
 
@@ -26,7 +28,13 @@ public:
     virtual HdFormat GetFormat() const override { return _format; }
     virtual bool IsMultiSampled() const override { return _multiSampled; }
 
-    virtual void* Map() override { return _buffer.data(); }
+    virtual void* Map() override { 
+        if (!_buffer.empty() && _format == HdFormatFloat32Vec4) {
+            float* f = (float*)_buffer.data();
+            printf("[Gemini] Map() buffer[0] = (%f, %f, %f, %f)\n", f[0], f[1], f[2], f[3]);
+        }
+        return _buffer.data(); 
+    }
     virtual void Unmap() override {}
     virtual bool IsMapped() const override { return false; }
 

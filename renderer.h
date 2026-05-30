@@ -51,6 +51,13 @@ public:
 
     void SetRenderAlbedoOnly(bool val) { _renderAlbedoOnly = val; }
     bool GetRenderAlbedoOnly() const { return _renderAlbedoOnly; }
+
+    void SetEnableGenAi(bool enable) { _enableGenAi = enable; }
+    bool GetEnableGenAi() const { return _enableGenAi; }
+    void SetGenAiPrompt(const std::string& prompt) { _genAiPrompt = prompt; }
+    std::string GetGenAiPrompt() const { return _genAiPrompt; }
+    void SetGenAiStrength(float strength) { _genAiStrength = strength; }
+    float GetGenAiStrength() const { return _genAiStrength; }
     void SetRenderLightGeometry(bool val) { _renderLightGeometry = val; }
     bool GetRenderLightGeometry() const { return _renderLightGeometry; }
 
@@ -155,6 +162,10 @@ private:
     float _hydraShutterSpeed = 0.02f;
     bool _enableLensFlare = false;
     bool _renderIblBackground = true;
+    bool _enableGenAi = false;
+    std::string _genAiPrompt = "";
+    float _genAiStrength = 0.5f;
+    bool _aiGenerationPending = false;
     float _lensDistortion = 0.0f;
     float _chromaticAberration = 0.0f;
     bool _enablePhysicalSky = false;

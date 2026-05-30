@@ -258,7 +258,9 @@ HdGeminiRenderer::Render(HdRenderThread *renderThread, HdGeminiRenderDelegate* d
     if (renderThread->IsStopRequested()) return;
 
     auto start_time = std::chrono::high_resolution_clock::now();
-    _RenderTiles(renderThread, delegate);
+    if (!_aiGenerationPending) {
+        _RenderTiles(renderThread, delegate);
+    }
     auto end_time = std::chrono::high_resolution_clock::now();
     _lastProgressionTimeMs = std::chrono::duration<float, std::milli>(end_time - start_time).count();
 
@@ -288,9 +290,12 @@ HdGeminiRenderer::Render(HdRenderThread *renderThread, HdGeminiRenderDelegate* d
         _resolutionLevel /= 2;
     } else {
         _resolutionLevel = 1;
-        _frameCount++;
         
-        if (_frameCount >= _targetSampleCount) {
+        if (!_aiGenerationPending) {
+            _frameCount++;
+        }
+        
+        if (_frameCount >= _targetSampleCount && !_aiGenerationPending) {
             if (_enableDenoiser || _enableFireflyFilter || _enableChromaticityBlur) {
                 _Denoise();
             }
@@ -299,11 +304,60 @@ HdGeminiRenderer::Render(HdRenderThread *renderThread, HdGeminiRenderDelegate* d
             }
             if (!_isConverged) {
                 _renderEndTime = std::chrono::high_resolution_clock::now();
+                
+                if (_enableGenAi && !_genAiPrompt.empty()) {
+                    FILE* f = fopen("sd_request.bin", "wb");
+                    if (f) {
+                        int magic = 0x12345678;
+                        fwrite(&magic, 4, 1, f);
+                        int w = _colorBuffer ? _colorBuffer->GetWidth() : 1;
+                        int h = _colorBuffer ? _colorBuffer->GetHeight() : 1;
+                        fwrite(&w, 4, 1, f);
+                        fwrite(&h, 4, 1, f);
+                        int promptLen = (int)_genAiPrompt.length();
+                        fwrite(&promptLen, 4, 1, f);
+                        fwrite(_genAiPrompt.c_str(), 1, promptLen, f);
+                        fwrite(&_genAiStrength, 4, 1, f);
+                        if (_colorBuffer && _colorBuffer->Map()) {
+                            fwrite(_colorBuffer->Map(), 4, w * h * 4, f);
+                        }
+                        fclose(f);
+                        _aiGenerationPending = true;
+                    }
+                }
+                
+                if (!_aiGenerationPending) {
+                    _isConverged = true;
+                    for (auto const& binding : _aovBindings) {
+                        if (binding.renderBuffer) {
+                            static_cast<HdGeminiRenderBuffer*>(binding.renderBuffer)->SetConverged(true);
+                        }
+                    }
+                }
             }
-            _isConverged = true;
-            for (auto const& binding : _aovBindings) {
-                if (binding.renderBuffer) {
-                    static_cast<HdGeminiRenderBuffer*>(binding.renderBuffer)->SetConverged(true);
+        }
+        
+        if (_aiGenerationPending) {
+            FILE* f = fopen("sd_response.bin", "rb");
+            if (f) {
+                int magic = 0;
+                if (fread(&magic, 4, 1, f) == 1 && magic == 0x87654321) {
+                    if (_colorBuffer && _colorBuffer->Map()) {
+                        int w = _colorBuffer->GetWidth();
+                        int h = _colorBuffer->GetHeight();
+                        fread(_colorBuffer->Map(), 4, w * h * 4, f);
+                    }
+                    fclose(f);
+                    std::remove("sd_response.bin");
+                    _aiGenerationPending = false;
+                    _isConverged = true;
+                    for (auto const& binding : _aovBindings) {
+                        if (binding.renderBuffer) {
+                            static_cast<HdGeminiRenderBuffer*>(binding.renderBuffer)->SetConverged(true);
+                        }
+                    }
+                } else {
+                    fclose(f);
                 }
             }
         }

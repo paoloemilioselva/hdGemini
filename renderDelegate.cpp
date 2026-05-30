@@ -338,6 +338,9 @@ HdGeminiRenderDelegate::GetRenderSettingDescriptors() const
 {
     HdRenderSettingDescriptorList list;
     list.push_back({std::string("Render Albedo Only (Debug)"), HdGeminiRenderSettingsTokens->renderAlbedoOnly, VtValue(false)});
+    list.push_back({"Generative AI: Enable", HdGeminiRenderSettingsTokens->enableGenAi, VtValue(false)});
+    list.push_back({"Generative AI: Prompt", HdGeminiRenderSettingsTokens->genAiPrompt, VtValue(std::string(""))});
+    list.push_back({"Generative AI: Strength", HdGeminiRenderSettingsTokens->genAiStrength, VtValue(0.5f)});
     list.push_back({std::string("Render Light Geometry"), HdGeminiRenderSettingsTokens->renderLightGeometry, VtValue(true)});
     list.push_back({
         "Enable Subsurface Scattering",
@@ -663,6 +666,12 @@ HdGeminiRenderDelegate::GetRenderSetting(TfToken const& key) const
     
     if (key == HdGeminiRenderSettingsTokens->renderAlbedoOnly) {
         return VtValue(_renderer.GetRenderAlbedoOnly());
+    } else if (key == HdGeminiRenderSettingsTokens->enableGenAi) {
+        return VtValue(_renderer.GetEnableGenAi());
+    } else if (key == HdGeminiRenderSettingsTokens->genAiPrompt) {
+        return VtValue(_renderer.GetGenAiPrompt());
+    } else if (key == HdGeminiRenderSettingsTokens->genAiStrength) {
+        return VtValue(_renderer.GetGenAiStrength());
     }
     if (key == HdGeminiRenderSettingsTokens->renderLightGeometry) {
         return VtValue(_renderer.GetRenderLightGeometry());
@@ -823,6 +832,21 @@ HdGeminiRenderDelegate::SetRenderSetting(TfToken const& key, VtValue const& valu
     if (key == HdGeminiRenderSettingsTokens->renderAlbedoOnly) {
         if (value.IsHolding<bool>()) {
             _renderer.SetRenderAlbedoOnly(value.UncheckedGet<bool>());
+            changed = true;
+        }
+    } else if (key == HdGeminiRenderSettingsTokens->enableGenAi) {
+        if (value.IsHolding<bool>()) {
+            _renderer.SetEnableGenAi(value.Get<bool>());
+            changed = true;
+        }
+    } else if (key == HdGeminiRenderSettingsTokens->genAiPrompt) {
+        if (value.IsHolding<std::string>()) {
+            _renderer.SetGenAiPrompt(value.Get<std::string>());
+            changed = true;
+        }
+    } else if (key == HdGeminiRenderSettingsTokens->genAiStrength) {
+        if (value.IsHolding<float>()) {
+            _renderer.SetGenAiStrength(value.Get<float>());
             changed = true;
         }
     } else if (key == HdGeminiRenderSettingsTokens->renderLightGeometry) {

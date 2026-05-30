@@ -101,7 +101,10 @@ TF_DECLARE_PUBLIC_TOKENS(HdGeminiAovTokens, HD_GEMINI_AOV_TOKENS);
     (meniscusSize)                       \
     (meniscusBend)                       \
     (meniscusTint)                       \
-    (metersPerUnit)
+    (metersPerUnit)                      \
+    (enableGenAi)                        \
+    (genAiPrompt)                        \
+    (genAiStrength)
 
 TF_DECLARE_PUBLIC_TOKENS(HdGeminiRenderSettingsTokens, HD_GEMINI_RENDER_SETTINGS_TOKENS);
 

@@ -845,10 +845,8 @@ HdGeminiRenderDelegate::SetRenderSetting(TfToken const& key, VtValue const& valu
             changed = true;
         }
     } else if (key == HdGeminiRenderSettingsTokens->genAiStrength) {
-        if (value.IsHolding<float>()) {
-            _renderer.SetGenAiStrength(value.Get<float>());
-            changed = true;
-        }
+        _renderer.SetGenAiStrength(getFloat(value, 0.5f));
+        changed = true;
     } else if (key == HdGeminiRenderSettingsTokens->renderLightGeometry) {
         if (value.IsHolding<bool>()) {
             _renderer.SetRenderLightGeometry(value.UncheckedGet<bool>());

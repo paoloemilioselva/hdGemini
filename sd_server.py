@@ -108,13 +108,25 @@ class DebugServerWindow(QWidget):
             
             # Save original size
             original_size = init_image.size
-            init_image_resized = init_image.resize((512, 512))
+            w, h = original_size
             
-            # Run inference
+            # SDXL-Turbo expects sizes to be multiples of 64.
+            # Scale so the max dimension is ~512 to be fast and memory efficient
+            scale = 512.0 / max(w, h)
+            new_w = max(64, (int(w * scale) // 64) * 64)
+            new_h = max(64, (int(h * scale) // 64) * 64)
+            
+            init_image_resized = init_image.resize((new_w, new_h), Image.LANCZOS)
+            
+            # Run inference (use 4 steps so strength has more granularity)
+            # actual steps = int(num_inference_steps * strength)
+            steps = max(4, int(2.0 / (strength + 0.001))) # Ensure at least enough steps to not be 0
+            steps = min(10, steps) # Cap it
+            
             result = self.pipe(
                 prompt=prompt, 
                 image=init_image_resized, 
-                num_inference_steps=2,
+                num_inference_steps=steps,
                 strength=strength, 
                 guidance_scale=0.0
             ).images[0]

@@ -664,7 +664,9 @@ HdGeminiRenderDelegate::GetRenderSetting(TfToken const& key) const
         return v;
     }
     
-    if (key == HdGeminiRenderSettingsTokens->enableSubsurface) {
+    if (key == HdGeminiRenderSettingsTokens->renderAlbedoOnly) {
+        return VtValue(false);
+    } else if (key == HdGeminiRenderSettingsTokens->enableSubsurface) {
         return VtValue(true);
     } else if (key == HdGeminiRenderSettingsTokens->enableSubdivision) {
         return VtValue(true);

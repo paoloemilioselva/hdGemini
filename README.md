@@ -20,6 +20,12 @@
   - Automated binary download and linking via `FetchContent` in CMake.
   - Custom AOVs (`albedo`, `normal`) seamlessly extract unlit color and shading normals on the first bounce to guide the denoiser.
   - Full Float32 HDR color AOV output preserving unclamped highlights for post-processing.
+- **Generative AI Image-to-Image Pipeline (Stable Diffusion XL Turbo)**:
+  - hdGemini integrates a highly specialized **Generative AI** workflow directly into `usdview`. 
+  - Real-time rendering output (including Beauty, Albedo, Normal, and Depth AOVs) is actively piped via binary stream to a standalone Python PySide6 Server running `stabilityai/sdxl-turbo`.
+  - The Python server strictly maps the HDR linear path-traced output into sRGB LDR space using a custom Reinhard curve before passing it as an `init_image` to the SDXL-Turbo neural network, returning breathtaking stylized renders in real-time.
+  - **Standalone Interactive UI**: The Python server features a fully standalone UI to scrub prompt strength, type custom textual descriptions, and interactively browse a history of generations without forcing the C++ renderer to continuously trace the scene.
+  - Generative images are asynchronously flushed back into the `usdview` viewport, retaining the exact camera aspect ratios, lens distortion, and optical alignment.
 - **Physical Materials**: Extensive support for physically-based rendering workflows.
   - Prioritized resolution for **MaterialX** (`mtlx`) and **OpenPBR** surface shaders via the SdrRegistry.
   - Full `standard_surface` support including Base Color, Roughness, Metallic, Clearcoat, Sheen, Volumetric Subsurface Scattering (full Monte Carlo random walk), and physical Emission.
@@ -98,6 +104,8 @@ hdGemini intercepts the Hydra synchronization phase to extract standard `HdMesh`
 
 ## Gallery
 
+![GenAI Server UI](media/genai_ui.png)
+![GenAI Viewport Render](media/genai_render.png)
 <p align="center">
   <img src="images/preview12.png" width="48%" />
   <img src="images/preview11.png" width="48%" />

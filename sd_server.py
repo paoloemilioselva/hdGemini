@@ -74,12 +74,16 @@ class DebugServerWindow(QWidget):
             # 1. Flip Y (USD has origin at bottom-left, PIL expects top-left)
             buffer = np.flipud(buffer)
             
-            # 2. Convert from Linear to sRGB space for the AI model
+            # 2. Convert from Linear HDR to LDR sRGB for the AI model
             # Stable diffusion is trained on sRGB images!
-            linear_rgb = np.clip(buffer[:, :, :3], 0.0, 1.0)
-            srgb = np.where(linear_rgb <= 0.0031308, 
-                           12.92 * linear_rgb, 
-                           1.055 * np.power(linear_rgb, 1.0 / 2.4) - 0.055)
+            linear_rgb = np.clip(buffer[:, :, :3], 0.0, None)
+            
+            # Simple Reinhard tone mapping to handle HDR brightness
+            mapped_rgb = linear_rgb / (linear_rgb + 1.0)
+            
+            srgb = np.where(mapped_rgb <= 0.0031308, 
+                           12.92 * mapped_rgb, 
+                           1.055 * np.power(mapped_rgb, 1.0 / 2.4) - 0.055)
             
             rgb_uint8 = np.clip(srgb * 255.0, 0, 255).astype(np.uint8)
             init_image = Image.fromarray(rgb_uint8)
@@ -101,10 +105,13 @@ class DebugServerWindow(QWidget):
             result_restored = result.resize(original_size)
             result_srgb = np.array(result_restored).astype(np.float32) / 255.0
             
-            # 3. Convert back from sRGB to Linear so usdview can display it correctly
-            result_linear = np.where(result_srgb <= 0.04045,
+            # 3. Convert back from sRGB to Linear HDR so usdview can display it correctly
+            result_linear_mapped = np.where(result_srgb <= 0.04045,
                                     result_srgb / 12.92,
                                     np.power((result_srgb + 0.055) / 1.055, 2.4))
+            
+            # Inverse Reinhard to restore HDR highlights
+            result_linear = result_linear_mapped / np.clip(1.0 - result_linear_mapped, 0.001, 1.0)
             
             # Put back into RGBA buffer
             out_buffer = np.ones((height, width, 4), dtype=np.float32)
@@ -133,16 +140,23 @@ class DebugServerWindow(QWidget):
         row_widget = QWidget()
         row_layout = QHBoxLayout(row_widget)
         
-        # Resize to 256x256 thumbnails for UI
-        img_in_thumb = img_in.resize((256, 256), Image.LANCZOS)
-        img_out_thumb = img_out.resize((256, 256), Image.LANCZOS)
+        # Resize to thumbnails respecting aspect ratio, max width 256
+        def make_thumb(img, max_width=256):
+            w, h = img.size
+            if w > max_width:
+                ratio = max_width / w
+                return img.resize((max_width, int(h * ratio)), Image.LANCZOS)
+            return img.copy()
+            
+        img_in_thumb = make_thumb(img_in, 256)
+        img_out_thumb = make_thumb(img_out, 256)
         
         lbl_in = QLabel()
-        qimg_in = QImage(img_in_thumb.tobytes(), 256, 256, QImage.Format_RGB888)
+        qimg_in = QImage(img_in_thumb.tobytes(), img_in_thumb.width, img_in_thumb.height, QImage.Format_RGB888)
         lbl_in.setPixmap(QPixmap.fromImage(qimg_in))
         
         lbl_out = QLabel()
-        qimg_out = QImage(img_out_thumb.tobytes(), 256, 256, QImage.Format_RGB888)
+        qimg_out = QImage(img_out_thumb.tobytes(), img_out_thumb.width, img_out_thumb.height, QImage.Format_RGB888)
         lbl_out.setPixmap(QPixmap.fromImage(qimg_out))
         
         lbl_prompt = QLabel(f"Prompt: {prompt}")

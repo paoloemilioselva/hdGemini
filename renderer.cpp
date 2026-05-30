@@ -395,10 +395,16 @@ HdGeminiRenderer::_PrepareScene(HdRenderThread *renderThread, HdGeminiRenderDele
         if (light->GetLightType() == HdPrimTypeTokens->distantLight) {
             power = light->GetIntensity() * std::max({light->GetColor()[0], light->GetColor()[1], light->GetColor()[2]}) * 1000.0f;
         } else if (light->GetLightType() == HdPrimTypeTokens->sphereLight) {
-            float r = light->GetWidth() / 2.0f;
+            GfMatrix4f transform = GfMatrix4f(light->GetTransform());
+            float scale = transform.TransformDir(GfVec3f(1, 0, 0)).GetLength();
+            float r = (light->GetWidth() * scale) / 2.0f;
             power = light->GetIntensity() * std::max({light->GetColor()[0], light->GetColor()[1], light->GetColor()[2]}) * (4.0f * (float)M_PI * r * r);
         } else if (light->GetLightType() == HdPrimTypeTokens->rectLight) {
-            power = light->GetIntensity() * std::max({light->GetColor()[0], light->GetColor()[1], light->GetColor()[2]}) * (light->GetWidth() * light->GetHeight());
+            GfMatrix4f transform = GfMatrix4f(light->GetTransform());
+            float scaleX = transform.TransformDir(GfVec3f(1, 0, 0)).GetLength();
+            float scaleY = transform.TransformDir(GfVec3f(0, 1, 0)).GetLength();
+            float area = (light->GetWidth() * scaleX) * (light->GetHeight() * scaleY);
+            power = light->GetIntensity() * std::max({light->GetColor()[0], light->GetColor()[1], light->GetColor()[2]}) * area;
         } else if (light->GetLightType() == HdPrimTypeTokens->domeLight) {
             power = light->GetIntensity() * std::max({light->GetColor()[0], light->GetColor()[1], light->GetColor()[2]}) * 10000.0f;
         }
@@ -1516,7 +1522,10 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
             GfVec3f toLight = lPosWorld - targetPos;
             lightDist = toLight.GetLength();
             lDir = toLight / lightDist;
-            float area = light->GetWidth() * light->GetHeight();
+            GfMatrix4f transform = GfMatrix4f(light->GetTransform());
+            float scaleX = transform.TransformDir(GfVec3f(1, 0, 0)).GetLength();
+            float scaleY = transform.TransformDir(GfVec3f(0, 1, 0)).GetLength();
+            float area = (light->GetWidth() * scaleX) * (light->GetHeight() * scaleY);
             if (area > 0) {
                 GfVec3f lNormal = GfMatrix4f(light->GetTransform()).TransformDir(GfVec3f(0, 0, -1)).GetNormalized();
                 float cosThetaL = std::max(0.0f, GfDot(lNormal, -lDir));
@@ -1642,8 +1651,10 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
                         if (t > 0.0f && t < lightT) {
                             float localX = localOrigin[0] + t * localDir[0];
                             float localY = localOrigin[1] + t * localDir[1];
-                            float w = light->GetWidth() * 0.5f;
-                            float h = light->GetHeight() * 0.5f;
+                            GfMatrix4f transform = GfMatrix4f(light->GetTransform());
+                            float scale = transform.TransformDir(GfVec3f(1, 0, 0)).GetLength();
+                            float w = (light->GetWidth() * scale) / 2.0f;
+                            float h = (light->GetHeight() * scale) / 2.0f;
                             if (localX >= -w && localX <= w && localY >= -h && localY <= h) {
                                 lightT = t;
                                 intersectedLight = light;
@@ -2578,7 +2589,10 @@ void HdGeminiRenderer::_TracePhoton(class HdRenderThread* renderThread, uint32_t
         
         dir = GfMatrix4f(light->GetTransform()).TransformDir(localDir).GetNormalized();
         
-        float area = light->GetWidth() * light->GetHeight();
+        GfMatrix4f transform = GfMatrix4f(light->GetTransform());
+        float scaleX = transform.TransformDir(GfVec3f(1, 0, 0)).GetLength();
+        float scaleY = transform.TransformDir(GfVec3f(0, 1, 0)).GetLength();
+        float area = (light->GetWidth() * scaleX) * (light->GetHeight() * scaleY);
         powerRGB = light->GetColor() * light->GetIntensity() * area * (float)M_PI / lightPdf;
     } else if (light->GetLightType() == HdPrimTypeTokens->distantLight || light->GetLightType() == HdPrimTypeTokens->domeLight) {
         return; // Skip infinite lights for standard photon mapping to avoid tracing useless photons

@@ -41,6 +41,7 @@ public:
 
     void GetFloatBuffer(std::vector<float>& outFloats) const;
     float* GetFloatBufferPointer() { return _accumBuffer.data(); }
+    void GetAveragedFloatBuffer(std::vector<float>& outFloats) const;
     void SetFromFloatBuffer(const float* data);
 
     void WriteSample(GfVec3i const& pixel, GfVec4f const& color);

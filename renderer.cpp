@@ -318,8 +318,34 @@ HdGeminiRenderer::Render(HdRenderThread *renderThread, HdGeminiRenderDelegate* d
                         fwrite(&promptLen, 4, 1, f);
                         fwrite(_genAiPrompt.c_str(), 1, promptLen, f);
                         fwrite(&_genAiStrength, 4, 1, f);
-                        if (_colorBuffer && _colorBuffer->GetFloatBufferPointer()) {
-                            fwrite(_colorBuffer->GetFloatBufferPointer(), 4, w * h * 4, f);
+                        if (_colorBuffer) {
+                            std::vector<float> avgColor;
+                            _colorBuffer->GetAveragedFloatBuffer(avgColor);
+                            fwrite(avgColor.data(), 4, w * h * 4, f);
+                            
+                            int hasDepth = _depthBuffer ? 1 : 0;
+                            int hasNormal = _normalBuffer ? 1 : 0;
+                            int hasAlbedo = _albedoBuffer ? 1 : 0;
+                            
+                            fwrite(&hasDepth, 4, 1, f);
+                            fwrite(&hasNormal, 4, 1, f);
+                            fwrite(&hasAlbedo, 4, 1, f);
+                            
+                            if (hasDepth) {
+                                std::vector<float> avgDepth;
+                                _depthBuffer->GetAveragedFloatBuffer(avgDepth);
+                                fwrite(avgDepth.data(), 4, w * h * 4, f);
+                            }
+                            if (hasNormal) {
+                                std::vector<float> avgNormal;
+                                _normalBuffer->GetAveragedFloatBuffer(avgNormal);
+                                fwrite(avgNormal.data(), 4, w * h * 4, f);
+                            }
+                            if (hasAlbedo) {
+                                std::vector<float> avgAlbedo;
+                                _albedoBuffer->GetAveragedFloatBuffer(avgAlbedo);
+                                fwrite(avgAlbedo.data(), 4, w * h * 4, f);
+                            }
                         }
                         fclose(f);
                         _aiGenerationPending = true;

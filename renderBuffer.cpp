@@ -120,6 +120,20 @@ HdGeminiRenderBuffer::GetFloatBuffer(std::vector<float>& outFloats) const
 }
 
 void
+HdGeminiRenderBuffer::GetAveragedFloatBuffer(std::vector<float>& outFloats) const
+{
+    std::lock_guard<std::mutex> lock((const_cast<HdGeminiRenderBuffer*>(this))->_bufferMutex);
+    outFloats.resize(_width * _height * 4);
+    for (size_t i = 0; i < _width * _height; ++i) {
+        float invCount = (_sampleCount[i] > 0) ? (1.0f / (float)_sampleCount[i]) : 1.0f;
+        outFloats[i * 4 + 0] = _accumBuffer[i * 4 + 0] * invCount;
+        outFloats[i * 4 + 1] = _accumBuffer[i * 4 + 1] * invCount;
+        outFloats[i * 4 + 2] = _accumBuffer[i * 4 + 2] * invCount;
+        outFloats[i * 4 + 3] = _accumBuffer[i * 4 + 3] * invCount;
+    }
+}
+
+void
 HdGeminiRenderBuffer::WriteSample(GfVec3i const& pixel, GfVec4f const& color)
 {
     std::lock_guard<std::mutex> lock(_bufferMutex);
@@ -179,6 +193,9 @@ HdGeminiRenderBuffer::SetFromFloatBuffer(const float* data)
     
     // Copy into accum buffer
     std::memcpy(_accumBuffer.data(), data, _width * _height * 4 * sizeof(float));
+    
+    // Reset sample count so subsequent resolves don't average it down
+    _sampleCount.assign(_width * _height, 1);
     
     // Write out to render buffer
     size_t formatSize = HdDataSizeOfFormat(_format);

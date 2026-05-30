@@ -66,6 +66,22 @@ class DebugServerWindow(QWidget):
                 buffer_bytes = f.read(buffer_size * 4)
                 buffer = np.frombuffer(buffer_bytes, dtype=np.float32).reshape((height, width, 4))
                 
+                # Check if there are extra AOVs
+                aovs = {}
+                try:
+                    has_depth, has_normal, has_albedo = struct.unpack("iii", f.read(12))
+                    if has_depth:
+                        depth_bytes = f.read(buffer_size * 4)
+                        aovs['depth'] = np.frombuffer(depth_bytes, dtype=np.float32).reshape((height, width, 4))
+                    if has_normal:
+                        normal_bytes = f.read(buffer_size * 4)
+                        aovs['normal'] = np.frombuffer(normal_bytes, dtype=np.float32).reshape((height, width, 4))
+                    if has_albedo:
+                        albedo_bytes = f.read(buffer_size * 4)
+                        aovs['albedo'] = np.frombuffer(albedo_bytes, dtype=np.float32).reshape((height, width, 4))
+                except struct.error:
+                    pass # Older version of the plugin, ignore
+                
             # Delete request file so we don't process it again
             os.remove(REQUEST_FILE)
             
@@ -73,6 +89,8 @@ class DebugServerWindow(QWidget):
             
             # 1. Flip Y (USD has origin at bottom-left, PIL expects top-left)
             buffer = np.flipud(buffer)
+            for k in aovs:
+                aovs[k] = np.flipud(aovs[k])
             
             # 2. Convert from Linear HDR to LDR sRGB for the AI model
             # Stable diffusion is trained on sRGB images!
@@ -129,14 +147,14 @@ class DebugServerWindow(QWidget):
             print("Response saved.")
             
             # Add to UI
-            self.add_debug_images(init_image, result, prompt)
+            self.add_debug_images(init_image, result, prompt, aovs)
             
         except Exception as e:
             print(f"Error processing request: {e}")
             if os.path.exists(REQUEST_FILE):
                 os.remove(REQUEST_FILE)
 
-    def add_debug_images(self, img_in, img_out, prompt):
+    def add_debug_images(self, img_in, img_out, prompt, aovs):
         row_widget = QWidget()
         row_layout = QHBoxLayout(row_widget)
         
@@ -159,12 +177,36 @@ class DebugServerWindow(QWidget):
         qimg_out = QImage(img_out_thumb.tobytes(), img_out_thumb.width, img_out_thumb.height, QImage.Format_RGB888)
         lbl_out.setPixmap(QPixmap.fromImage(qimg_out))
         
+        row_layout.addWidget(QLabel("Input:"))
+        row_layout.addWidget(lbl_in)
+        
+        for name, aov_data in aovs.items():
+            if name == 'depth':
+                # Normalize depth for display
+                d = aov_data[:, :, 0]
+                d = np.nan_to_num(d)
+                d = np.clip(d / np.max(d) * 255.0, 0, 255).astype(np.uint8)
+                aov_img = Image.fromarray(d).convert("RGB")
+            else:
+                c = np.clip(aov_data[:, :, :3], 0.0, 1.0)
+                if name == 'normal':
+                    c = (c + 1.0) * 0.5
+                c = (c * 255.0).astype(np.uint8)
+                aov_img = Image.fromarray(c)
+                
+            aov_thumb = make_thumb(aov_img, 256)
+            lbl_aov = QLabel()
+            qimg_aov = QImage(aov_thumb.tobytes(), aov_thumb.width, aov_thumb.height, QImage.Format_RGB888)
+            lbl_aov.setPixmap(QPixmap.fromImage(qimg_aov))
+            row_layout.addWidget(QLabel(name.capitalize() + ":"))
+            row_layout.addWidget(lbl_aov)
+
+        row_layout.addWidget(QLabel("Output:"))
+        row_layout.addWidget(lbl_out)
+        
         lbl_prompt = QLabel(f"Prompt: {prompt}")
         lbl_prompt.setWordWrap(True)
         lbl_prompt.setMaximumWidth(150)
-        
-        row_layout.addWidget(lbl_in)
-        row_layout.addWidget(lbl_out)
         row_layout.addWidget(lbl_prompt)
         
         self.grid_layout.addWidget(row_widget)

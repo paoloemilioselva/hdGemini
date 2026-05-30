@@ -84,8 +84,6 @@ class SDServer(QMainWindow):
                 
             # Memory optimizations
             self.pipe.enable_attention_slicing()
-            if hasattr(self.pipe, "enable_model_cpu_offload"):
-                self.pipe.enable_model_cpu_offload()
             print("Model loaded successfully!")
         except Exception as e:
             print(f"Error loading model: {e}")

@@ -1487,7 +1487,7 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
         lColor = GfVec3f(0.0f);
         
         if (light->GetLightType() == HdPrimTypeTokens->distantLight) {
-            lDir = GfMatrix4f(light->GetTransform()).TransformDir(GfVec3f(0, 0, -1)).GetNormalized();
+            lDir = GfMatrix4f(light->GetTransform()).TransformDir(GfVec3f(0, 0, 1)).GetNormalized();
             lColor = light->GetColor() * light->GetIntensity();
         } else if (light->GetLightType() == HdPrimTypeTokens->domeLight && !_envMapRowCdf.empty()) {
             float u1 = ls.u;
@@ -1518,7 +1518,7 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
             lDir = toLight / lightDist;
             float area = light->GetWidth() * light->GetHeight();
             if (area > 0) {
-                GfVec3f lNormal = GfMatrix4f(light->GetTransform()).TransformDir(GfVec3f(0, 0, -1)).GetNormalized();
+                GfVec3f lNormal = GfMatrix4f(light->GetTransform()).TransformDir(GfVec3f(0, 0, 1)).GetNormalized();
                 float cosThetaL = std::max(0.0f, GfDot(lNormal, -lDir));
                 if (cosThetaL > 0) {
                     lightPdf *= (lightDist * lightDist) / (area * cosThetaL);
@@ -1539,7 +1539,7 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
         if (lightDist > 0 && light->GetLightType() != HdPrimTypeTokens->domeLight && light->GetLightType() != HdPrimTypeTokens->distantLight) {
             float coneAngle = light->GetShapingConeAngle();
             if (coneAngle < 180.0f) {
-                GfVec3f lNormal = GfMatrix4f(light->GetTransform()).TransformDir(GfVec3f(0, 0, -1)).GetNormalized();
+                GfVec3f lNormal = GfMatrix4f(light->GetTransform()).TransformDir(GfVec3f(0, 0, 1)).GetNormalized();
                 float cosTheta = GfDot(lNormal, -lDir);
                 float coneAngleRad = coneAngle * (float)(M_PI / 180.0);
                 float cosConeAngle = std::cos(coneAngleRad);
@@ -2522,7 +2522,7 @@ void HdGeminiRenderer::_TracePhoton(class HdRenderThread* renderThread, uint32_t
         float u2 = qmc::SampleDimension(sampleIdx, qmcDim++, rng);
         float r = std::sqrt(u1);
         float theta = 2.0f * M_PI * u2;
-        GfVec3f localDir(r * std::cos(theta), r * std::sin(theta), -std::sqrt(std::max(0.0f, 1.0f - u1)));
+        GfVec3f localDir(r * std::cos(theta), r * std::sin(theta), std::sqrt(std::max(0.0f, 1.0f - u1)));
         
         dir = GfMatrix4f(light->GetTransform()).TransformDir(localDir).GetNormalized();
         

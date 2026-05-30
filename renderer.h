@@ -51,6 +51,8 @@ public:
 
     void SetRenderAlbedoOnly(bool val) { _renderAlbedoOnly = val; }
     bool GetRenderAlbedoOnly() const { return _renderAlbedoOnly; }
+    void SetRenderLightGeometry(bool val) { _renderLightGeometry = val; }
+    bool GetRenderLightGeometry() const { return _renderLightGeometry; }
 
     void SetEnableSubsurface(bool enable) { _enableSubsurface = enable; }
     bool GetEnableSubsurface() const { return _enableSubsurface; }
@@ -123,6 +125,7 @@ public:
 private:
     bool _isConverged = false;
     bool _renderAlbedoOnly = false;
+    bool _renderLightGeometry = true;
     bool _enableSubsurface = true;
     bool _enableDenoiser = true;
     bool _enableFireflyFilter = true;

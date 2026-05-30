@@ -1624,6 +1624,58 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
 
         HitRecord hit;
         bool intersected = this->_IntersectTLAS(currentRayOrigin, currentRayDir, hit, renderThread, sampleIdx, qmcDim, rng);
+        
+        if (_renderLightGeometry) {
+            float lightT = hit.t;
+            HdGeminiLight* intersectedLight = nullptr;
+            GfVec3f lightNormal;
+            GfVec3f lightColor;
+            
+            for (const auto& light : _activeLights) {
+                if (light->GetLightType() == HdPrimTypeTokens->rectLight) {
+                    GfMatrix4f invTransform = GfMatrix4f(light->GetTransform()).GetInverse();
+                    GfVec3f localOrigin = invTransform.Transform(currentRayOrigin);
+                    GfVec3f localDir = invTransform.TransformDir(currentRayDir);
+                    
+                    if (std::abs(localDir[2]) > 1e-6f) {
+                        float t = -localOrigin[2] / localDir[2];
+                        if (t > 0.0f && t < lightT) {
+                            float localX = localOrigin[0] + t * localDir[0];
+                            float localY = localOrigin[1] + t * localDir[1];
+                            float w = light->GetWidth() * 0.5f;
+                            float h = light->GetHeight() * 0.5f;
+                            if (localX >= -w && localX <= w && localY >= -h && localY <= h) {
+                                lightT = t;
+                                intersectedLight = light;
+                                GfVec3f n(0, 0, localDir[2] > 0.0f ? -1.0f : 1.0f);
+                                lightNormal = GfMatrix4f(light->GetTransform()).TransformDir(n).GetNormalized();
+                                // RectLight only emits from the -Z face (which means localDir[2] > 0)
+                                if (localDir[2] > 0.0f) {
+                                    lightColor = light->GetColor() * light->GetIntensity();
+                                } else {
+                                    lightColor = GfVec3f(0.01f); // Dark grey for the back side
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if (intersectedLight) {
+                hit.t = lightT;
+                hit.baseColor = GfVec3f(0.0f);
+                hit.emission = lightColor;
+                hit.normal = lightNormal;
+                hit.smoothNormal = lightNormal;
+                hit.roughness = 1.0f;
+                hit.metallic = 0.0f;
+                hit.specular = 0.0f;
+                hit.isVolumeHit = false;
+                hit.thinWalled = true;
+                hit.transmission = 0.0f;
+                intersected = true;
+            }
+        }
+
         if (intersected && bounce == 0 && outDepth) *outDepth = hit.t;
         
         if (!intersected) {

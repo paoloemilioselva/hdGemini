@@ -27,6 +27,7 @@ TF_DECLARE_PUBLIC_TOKENS(HdGeminiAovTokens, HD_GEMINI_AOV_TOKENS);
 
 #define HD_GEMINI_RENDER_SETTINGS_TOKENS \
     (renderAlbedoOnly)                   \
+    (renderLightGeometry)                \
     (enableDenoiser)                     \
     (enableFireflyFilter)                \
     (enableChromaticityBlur)             \

@@ -337,11 +337,8 @@ HdRenderSettingDescriptorList
 HdGeminiRenderDelegate::GetRenderSettingDescriptors() const
 {
     HdRenderSettingDescriptorList list;
-    list.push_back({
-        "Render Albedo Only (Debug)",
-        HdGeminiRenderSettingsTokens->renderAlbedoOnly,
-        VtValue(false)
-    });
+    list.push_back({std::string("Render Albedo Only (Debug)"), HdGeminiRenderSettingsTokens->renderAlbedoOnly, VtValue(false)});
+    list.push_back({std::string("Render Light Geometry"), HdGeminiRenderSettingsTokens->renderLightGeometry, VtValue(true)});
     list.push_back({
         "Enable Subsurface Scattering",
         HdGeminiRenderSettingsTokens->enableSubsurface,
@@ -665,7 +662,10 @@ HdGeminiRenderDelegate::GetRenderSetting(TfToken const& key) const
     }
     
     if (key == HdGeminiRenderSettingsTokens->renderAlbedoOnly) {
-        return VtValue(false);
+        return VtValue(_renderer.GetRenderAlbedoOnly());
+    }
+    if (key == HdGeminiRenderSettingsTokens->renderLightGeometry) {
+        return VtValue(_renderer.GetRenderLightGeometry());
     } else if (key == HdGeminiRenderSettingsTokens->enableSubsurface) {
         return VtValue(true);
     } else if (key == HdGeminiRenderSettingsTokens->enableSubdivision) {
@@ -822,7 +822,12 @@ HdGeminiRenderDelegate::SetRenderSetting(TfToken const& key, VtValue const& valu
 
     if (key == HdGeminiRenderSettingsTokens->renderAlbedoOnly) {
         if (value.IsHolding<bool>()) {
-            _renderer.SetRenderAlbedoOnly(value.Get<bool>());
+            _renderer.SetRenderAlbedoOnly(value.UncheckedGet<bool>());
+            changed = true;
+        }
+    } else if (key == HdGeminiRenderSettingsTokens->renderLightGeometry) {
+        if (value.IsHolding<bool>()) {
+            _renderer.SetRenderLightGeometry(value.UncheckedGet<bool>());
             changed = true;
         }
     } else if (key == HdGeminiRenderSettingsTokens->enableSubsurface) {

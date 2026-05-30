@@ -244,7 +244,6 @@ HdGeminiRenderer::Render(HdRenderThread *renderThread, HdGeminiRenderDelegate* d
     _normalBuffer = nullptr;
 
     for (auto const& binding : _aovBindings) {
-        std::cout << "[Gemini] AOV Binding received: " << binding.aovName << ", has renderBuffer: " << (binding.renderBuffer != nullptr) << std::endl;
         if (binding.renderBuffer) {
             HdGeminiRenderBuffer* rb = static_cast<HdGeminiRenderBuffer*>(binding.renderBuffer);
             rb->SetConverged(false);

@@ -40,6 +40,8 @@ public:
     void SetConverged(bool converged) { _converged.store(converged); }
 
     void GetFloatBuffer(std::vector<float>& outFloats) const;
+    float* GetFloatBufferPointer() { return _accumBuffer.data(); }
+    void SetFromFloatBuffer(const float* data);
 
     void WriteSample(GfVec3i const& pixel, GfVec4f const& color);
     void WriteSampleLockFree(size_t idx, GfVec4f const& color);

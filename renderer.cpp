@@ -318,8 +318,8 @@ HdGeminiRenderer::Render(HdRenderThread *renderThread, HdGeminiRenderDelegate* d
                         fwrite(&promptLen, 4, 1, f);
                         fwrite(_genAiPrompt.c_str(), 1, promptLen, f);
                         fwrite(&_genAiStrength, 4, 1, f);
-                        if (_colorBuffer && _colorBuffer->Map()) {
-                            fwrite(_colorBuffer->Map(), 4, w * h * 4, f);
+                        if (_colorBuffer && _colorBuffer->GetFloatBufferPointer()) {
+                            fwrite(_colorBuffer->GetFloatBufferPointer(), 4, w * h * 4, f);
                         }
                         fclose(f);
                         _aiGenerationPending = true;
@@ -340,12 +340,15 @@ HdGeminiRenderer::Render(HdRenderThread *renderThread, HdGeminiRenderDelegate* d
         if (_aiGenerationPending) {
             FILE* f = fopen("sd_response.bin", "rb");
             if (f) {
-                int magic = 0;
+                unsigned int magic = 0;
                 if (fread(&magic, 4, 1, f) == 1 && magic == 0x87654321) {
-                    if (_colorBuffer && _colorBuffer->Map()) {
+                    if (_colorBuffer && _colorBuffer->GetFloatBufferPointer()) {
                         int w = _colorBuffer->GetWidth();
                         int h = _colorBuffer->GetHeight();
-                        fread(_colorBuffer->Map(), 4, w * h * 4, f);
+                        std::vector<float> tempBuf(w * h * 4);
+                        if (fread(tempBuf.data(), 4, w * h * 4, f) == (size_t)(w * h * 4)) {
+                            _colorBuffer->SetFromFloatBuffer(tempBuf.data());
+                        }
                     }
                     fclose(f);
                     std::remove("sd_response.bin");

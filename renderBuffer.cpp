@@ -172,6 +172,26 @@ HdGeminiRenderBuffer::Resolve()
 }
 
 void
+HdGeminiRenderBuffer::SetFromFloatBuffer(const float* data)
+{
+    std::lock_guard<std::mutex> lock(_bufferMutex);
+    _version++;
+    
+    // Copy into accum buffer
+    std::memcpy(_accumBuffer.data(), data, _width * _height * 4 * sizeof(float));
+    
+    // Write out to render buffer
+    size_t formatSize = HdDataSizeOfFormat(_format);
+    for (unsigned int i = 0; i < _width * _height; ++i) {
+        uint8_t *dst = &_renderBuffer[i * formatSize];
+        _WriteOutput(_format, dst, 4, &_accumBuffer[i * 4]);
+    }
+    
+    // Resolve immediately
+    Resolve();
+}
+
+void
 HdGeminiRenderBuffer::ResolveBucket(unsigned int startX, unsigned int startY, unsigned int endX, unsigned int endY)
 {
     if (_buffer.empty() || _buffer.size() != _renderBuffer.size()) return;

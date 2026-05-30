@@ -224,7 +224,7 @@ if __name__ == "__main__":
 
     try:
         pipe = AutoPipelineForImage2Image.from_pretrained(
-            "stabilityai/sd-turbo", 
+            "stabilityai/sdxl-turbo", 
             torch_dtype=dtype,
             variant=variant
         )

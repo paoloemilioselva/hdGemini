@@ -363,31 +363,31 @@ HdGeminiRenderer::Render(HdRenderThread *renderThread, HdGeminiRenderDelegate* d
             }
         }
         
-        if (_aiGenerationPending) {
-            FILE* f = fopen("sd_response.bin", "rb");
-            if (f) {
-                unsigned int magic = 0;
-                if (fread(&magic, 4, 1, f) == 1 && magic == 0x87654321) {
-                    if (_colorBuffer && _colorBuffer->GetFloatBufferPointer()) {
-                        int w = _colorBuffer->GetWidth();
-                        int h = _colorBuffer->GetHeight();
-                        std::vector<float> tempBuf(w * h * 4);
-                        if (fread(tempBuf.data(), 4, w * h * 4, f) == (size_t)(w * h * 4)) {
-                            _colorBuffer->SetFromFloatBuffer(tempBuf.data());
-                        }
+        // ALWAYS check for AI response, even if we didn't just request it!
+        // This allows the standalone Python UI to push updates manually.
+        FILE* f = fopen("sd_response.bin", "rb");
+        if (f) {
+            unsigned int magic = 0;
+            if (fread(&magic, 4, 1, f) == 1 && magic == 0x87654321) {
+                if (_colorBuffer && _colorBuffer->GetFloatBufferPointer()) {
+                    int w = _colorBuffer->GetWidth();
+                    int h = _colorBuffer->GetHeight();
+                    std::vector<float> tempBuf(w * h * 4);
+                    if (fread(tempBuf.data(), 4, w * h * 4, f) == (size_t)(w * h * 4)) {
+                        _colorBuffer->SetFromFloatBuffer(tempBuf.data());
                     }
-                    fclose(f);
-                    std::remove("sd_response.bin");
-                    _aiGenerationPending = false;
-                    _isConverged = true;
-                    for (auto const& binding : _aovBindings) {
-                        if (binding.renderBuffer) {
-                            static_cast<HdGeminiRenderBuffer*>(binding.renderBuffer)->SetConverged(true);
-                        }
-                    }
-                } else {
-                    fclose(f);
                 }
+                fclose(f);
+                std::remove("sd_response.bin");
+                _aiGenerationPending = false;
+                _isConverged = true;
+                for (auto const& binding : _aovBindings) {
+                    if (binding.renderBuffer) {
+                        static_cast<HdGeminiRenderBuffer*>(binding.renderBuffer)->SetConverged(true);
+                    }
+                }
+            } else {
+                fclose(f);
             }
         }
     }

@@ -14,3 +14,16 @@ build
 *.a
 *.so
 *.dylib
+
+# Python and AI Server ignores
+__pycache__/
+*.py[cod]
+*$py.class
+sd_venv/
+.venv/
+venv/
+ENV/
+env/
+.cache/
+sd_request.bin*
+sd_response.bin*

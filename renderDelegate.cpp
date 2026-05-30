@@ -338,6 +338,11 @@ HdGeminiRenderDelegate::GetRenderSettingDescriptors() const
 {
     HdRenderSettingDescriptorList list;
     list.push_back({
+        "Render Albedo Only (Debug)",
+        HdGeminiRenderSettingsTokens->renderAlbedoOnly,
+        VtValue(false)
+    });
+    list.push_back({
         "Enable Subsurface Scattering",
         HdGeminiRenderSettingsTokens->enableSubsurface,
         VtValue(true)
@@ -813,7 +818,12 @@ HdGeminiRenderDelegate::SetRenderSetting(TfToken const& key, VtValue const& valu
     bool changed = false;
     bool postProcessChanged = false;
 
-    if (key == HdGeminiRenderSettingsTokens->enableSubsurface) {
+    if (key == HdGeminiRenderSettingsTokens->renderAlbedoOnly) {
+        if (value.IsHolding<bool>()) {
+            _renderer.SetRenderAlbedoOnly(value.Get<bool>());
+            changed = true;
+        }
+    } else if (key == HdGeminiRenderSettingsTokens->enableSubsurface) {
         if (value.IsHolding<bool>()) {
             _renderer.SetEnableSubsurface(value.Get<bool>());
             changed = true;

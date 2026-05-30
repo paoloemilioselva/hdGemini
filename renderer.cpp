@@ -3190,7 +3190,11 @@ HdGeminiRenderer::_RenderTiles(HdRenderThread *renderThread, HdGeminiRenderDeleg
                         GfVec4f finalNormal(normal[0], normal[1], normal[2], 1.0f);
                         for (int dy = 0; dy < res && y + dy < height; ++dy) {
                             for (int dx = 0; dx < res && x + dx < width; ++dx) {
-                                _colorBuffer->Write(GfVec3i(x + dx, y + dy, 0), 4, finalColor.data());
+                                if (_renderAlbedoOnly) {
+                                    _colorBuffer->Write(GfVec3i(x + dx, y + dy, 0), 4, finalAlbedo.data());
+                                } else {
+                                    _colorBuffer->Write(GfVec3i(x + dx, y + dy, 0), 4, finalColor.data());
+                                }
                                 if (_albedoBuffer) _albedoBuffer->Write(GfVec3i(x + dx, y + dy, 0), 4, finalAlbedo.data());
                                 if (_normalBuffer) _normalBuffer->Write(GfVec3i(x + dx, y + dy, 0), 4, finalNormal.data());
                                 if (_depthBuffer) _depthBuffer->Write(GfVec3i(x + dx, y + dy, 0), 1, &hitDepth);
@@ -3203,7 +3207,11 @@ HdGeminiRenderer::_RenderTiles(HdRenderThread *renderThread, HdGeminiRenderDeleg
                             _accumDiffRGB[idx] += diffRGB;
                         }
 
-                        _colorBuffer->WriteSample(GfVec3i(x, y, 0), GfVec4f(hitColor[0], hitColor[1], hitColor[2], 1.0f));
+                        if (_renderAlbedoOnly) {
+                            _colorBuffer->WriteSample(GfVec3i(x, y, 0), GfVec4f(albedo[0], albedo[1], albedo[2], 1.0f));
+                        } else {
+                            _colorBuffer->WriteSample(GfVec3i(x, y, 0), GfVec4f(hitColor[0], hitColor[1], hitColor[2], 1.0f));
+                        }
                         if (_albedoBuffer) _albedoBuffer->WriteSample(GfVec3i(x, y, 0), GfVec4f(albedo[0], albedo[1], albedo[2], 1.0f));
                         if (_normalBuffer) _normalBuffer->WriteSample(GfVec3i(x, y, 0), GfVec4f(normal[0], normal[1], normal[2], 1.0f));
                         if (_depthBuffer) _depthBuffer->WriteSample(GfVec3i(x, y, 0), GfVec4f(hitDepth, 0.0f, 0.0f, 1.0f));
@@ -3560,7 +3568,11 @@ void HdGeminiRenderer::_RenderTilesSYCL(HdRenderThread *renderThread, HdGeminiRe
             _accumDiffRGB[i] += diffRGB;
             
             GfVec3f hitColor = heroRGB + diffRGB;
-            _colorBuffer->WriteSampleLockFree(i, GfVec4f(hitColor[0], hitColor[1], hitColor[2], 1.0f));
+            if (_renderAlbedoOnly) {
+                _colorBuffer->WriteSampleLockFree(i, GfVec4f(albedo[0], albedo[1], albedo[2], 1.0f));
+            } else {
+                _colorBuffer->WriteSampleLockFree(i, GfVec4f(hitColor[0], hitColor[1], hitColor[2], 1.0f));
+            }
             if (_albedoBuffer) _albedoBuffer->WriteSampleLockFree(i, GfVec4f(albedo[0], albedo[1], albedo[2], 1.0f));
             if (_normalBuffer) _normalBuffer->WriteSampleLockFree(i, GfVec4f(normal[0], normal[1], normal[2], 1.0f));
             if (_depthBuffer) _depthBuffer->WriteSampleLockFree(i, GfVec4f(hitDepth, 0.0f, 0.0f, 1.0f));

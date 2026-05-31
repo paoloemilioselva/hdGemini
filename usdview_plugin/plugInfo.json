@@ -4,13 +4,12 @@
             "Info": {
                 "Types": {
                     "gemini_usdview.GeminiPluginContainer": {
-                        "bases": ["PluginContainer"],
+                        "bases": ["pxr.Usdviewq.plugin.PluginContainer"],
                         "displayName": "Gemini Renderer Usdview Plugin"
                     }
                 }
             },
             "Name": "gemini_usdview",
-            "Root": "..",
             "Type": "python"
         }
     ]

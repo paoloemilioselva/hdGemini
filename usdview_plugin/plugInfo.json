@@ -1,0 +1,20 @@
+{
+    "Plugins": [
+        {
+            "Info": {
+                "TfPluginModule": "gemini_usdview",
+                "Types": {
+                    "gemini_usdview.GeminiPluginContainer": {
+                        "bases": ["PluginContainer"],
+                        "displayName": "Gemini Renderer Usdview Plugin"
+                    }
+                }
+            },
+            "LibraryPath": "",
+            "Name": "gemini_usdview",
+            "ResourcePath": "resources",
+            "Root": "..",
+            "Type": "python"
+        }
+    ]
+}

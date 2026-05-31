@@ -114,6 +114,8 @@ add_library( ${DELEGATE_NAME} SHARED
     renderPass.h
     renderBuffer.cpp
     renderBuffer.h
+    renderSettings.cpp
+    renderSettings.h
     mesh.cpp
     mesh.h
     curves.cpp
@@ -184,6 +186,10 @@ elseif( _target_name MATCHES "usd" )
     set(_installation_folder "C:/Users/paolo/Desktop/usd-26.03-extra")
     install(TARGETS ${DELEGATE_NAME} RUNTIME DESTINATION ${_installation_folder}/plugin/usd)
     install(FILES ${CMAKE_SOURCE_DIR}/usd-extra/plugInfo.json DESTINATION ${_installation_folder}/plugin/usd/${DELEGATE_NAME}/resources )
+    
+    # Install Gemini Usdview Plugin
+    install(FILES ${CMAKE_SOURCE_DIR}/usdview_plugin/plugInfo.json DESTINATION ${_installation_folder}/plugin/usd/gemini_usdview)
+    install(FILES ${CMAKE_SOURCE_DIR}/usdview_plugin/__init__.py DESTINATION ${_installation_folder}/lib/python/gemini_usdview)
     
     # Install OIDN DLLs
     if(OpenImageDenoise_FOUND)

@@ -10,6 +10,8 @@
 #include "volume.h"
 #include "field.h"
 
+#include "renderSettings.h"
+
 #include "pxr/imaging/hd/renderIndex.h"
 #include "pxr/imaging/hd/changeTracker.h"
 #include "pxr/imaging/hd/camera.h"
@@ -46,6 +48,7 @@ const TfTokenVector HdGeminiRenderDelegate::SUPPORTED_SPRIM_TYPES =
 const TfTokenVector HdGeminiRenderDelegate::SUPPORTED_BPRIM_TYPES =
 {
     HdPrimTypeTokens->renderBuffer,
+    HdPrimTypeTokens->renderSettings,
     TfToken("openvdbAsset"),
 };
 
@@ -290,6 +293,9 @@ HdGeminiRenderDelegate::CreateBprim(TfToken const& typeId,
     if (typeId == HdPrimTypeTokens->renderBuffer) {
         return new HdGeminiRenderBuffer(bprimId);
     }
+    if (typeId == HdPrimTypeTokens->renderSettings) {
+        return new HdGeminiRenderSettings(bprimId, this);
+    }
     if (typeId == TfToken("openvdbAsset")) {
         return new HdGeminiField(bprimId, typeId);
     }
@@ -302,6 +308,9 @@ HdGeminiRenderDelegate::CreateFallbackBprim(TfToken const& typeId)
     HDGEMINI_LOG << "[Gemini] CreateFallbackBprim: " << typeId.GetText() << std::endl;
     if (typeId == HdPrimTypeTokens->renderBuffer) {
         return new HdGeminiRenderBuffer(SdfPath::EmptyPath());
+    }
+    if (typeId == HdPrimTypeTokens->renderSettings) {
+        return new HdGeminiRenderSettings(SdfPath::EmptyPath(), this);
     }
     return nullptr;
 }

@@ -3148,11 +3148,18 @@ HdGeminiRenderer::_RenderTiles(HdRenderThread *renderThread, HdGeminiRenderDeleg
         _lastHeight = height;
         _colorBufferVersion = _colorBuffer->GetVersion();
         
-        _temporalReservoirs.assign(width * height, Reservoir{});
+        if (_enableRestirDI) {
+            _temporalReservoirs.assign(width * height, Reservoir{});
+        }
         _photonMap.Clear();
         _sppmPasses = 0;
     }
     
+    if (!_enableRestirDI && !_temporalReservoirs.empty()) {
+        _temporalReservoirs.clear();
+    } else if (_enableRestirDI && _temporalReservoirs.size() != width * height) {
+        _temporalReservoirs.assign(width * height, Reservoir{});
+    }    
     if (_enableSPPM && !_activeLights.empty()) {
         _sppmPasses++;
         _photonMap.searchRadius = std::max(0.001f, 0.1f / std::sqrt((float)_sppmPasses));

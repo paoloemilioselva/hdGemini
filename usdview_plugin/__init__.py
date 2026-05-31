@@ -39,6 +39,7 @@ def createRenderSettings(usdviewApi):
     add_attr("gemini:enableFireflyFilter", Sdf.ValueTypeNames.Bool, True, "Enable Pre-Pass: Firefly Filter", "Post-Processing")
     add_attr("gemini:enableChromaticityBlur", Sdf.ValueTypeNames.Bool, True, "Enable Pre-Pass: Chromaticity Blur", "Post-Processing")
     add_attr("gemini:targetSampleCount", Sdf.ValueTypeNames.Int, 32, "Target Sample Count", "Sampling")
+    add_attr("gemini:enableRestirDI", Sdf.ValueTypeNames.Bool, True, "Enable ReSTIR Direct Illumination", "Sampling")
     add_attr("gemini:maxReflectionBounces", Sdf.ValueTypeNames.Int, 8, "Max Reflection Bounces", "Sampling")
     add_attr("gemini:maxRefractionBounces", Sdf.ValueTypeNames.Int, 8, "Max Refraction Bounces", "Sampling")
     add_attr("gemini:resolutionLevel", Sdf.ValueTypeNames.Int, 2, "Resolution Level", "Sampling")

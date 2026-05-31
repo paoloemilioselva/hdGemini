@@ -150,7 +150,6 @@ def editSelectedPrim(usdviewApi):
     
     for ns, attrs in sorted(tabs_data.items()):
         tab = QtWidgets.QWidget()
-        layout = QtWidgets.QFormLayout(tab)
         
         # Add a scroll area if there are many properties
         scroll = QtWidgets.QScrollArea()

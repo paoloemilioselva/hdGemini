@@ -249,7 +249,14 @@ def editSelectedPrim(usdviewApi):
         tab_layout = QtWidgets.QVBoxLayout(tab)
         tab_layout.addWidget(scroll)
         tab_widget.addTab(tab, ns)
-        
+    # Workaround: Force Update by toggling active state
+    force_update_btn = QtWidgets.QPushButton("Force Update")
+    def force_update():
+        prim.SetActive(False)
+        prim.SetActive(True)
+    force_update_btn.clicked.connect(force_update)
+    main_layout.addWidget(force_update_btn)
+
     # Save dialog reference to avoid garbage collection
     usdviewApi.qMainWindow._gemini_prim_editor = dialog
     dialog.show()

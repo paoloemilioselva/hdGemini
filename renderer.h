@@ -73,6 +73,8 @@ public:
     void SetTargetSampleCount(int count) { _targetSampleCount = count; }
     void SetEnableRestirDI(bool val) { _enableRestirDI = val; }
     bool GetEnableRestirDI() const { return _enableRestirDI; }
+    void SetEnablePathGuiding(bool val) { _enablePathGuiding = val; }
+    bool GetEnablePathGuiding() const { return _enablePathGuiding; }
     void SetMaxReflectionBounces(int bounces) { _maxReflectionBounces = bounces; }
     void SetMaxRefractionBounces(int bounces) { _maxRefractionBounces = bounces; }
     void SetResolutionLevel(int level) { 

@@ -382,6 +382,11 @@ HdGeminiRenderDelegate::GetRenderSettingDescriptors() const
         VtValue(true)
     });
     list.push_back({
+        "Enable Path Guiding",
+        HdGeminiRenderSettingsTokens->enablePathGuiding,
+        VtValue(true)
+    });
+    list.push_back({
         "Target Sample Count",
         HdGeminiRenderSettingsTokens->targetSampleCount,
         VtValue(32)
@@ -701,6 +706,8 @@ HdGeminiRenderDelegate::GetRenderSetting(TfToken const& key) const
         return VtValue(_renderer.GetEnableChromaticityBlur());
     } else if (key == HdGeminiRenderSettingsTokens->enableRestirDI) {
         return VtValue(_renderer.GetEnableRestirDI());
+    } else if (key == HdGeminiRenderSettingsTokens->enablePathGuiding) {
+        return VtValue(_renderer.GetEnablePathGuiding());
     } else if (key == HdGeminiRenderSettingsTokens->targetSampleCount) {
         return VtValue(32);
     } else if (key == HdGeminiRenderSettingsTokens->maxReflectionBounces) {
@@ -898,6 +905,11 @@ HdGeminiRenderDelegate::SetRenderSetting(TfToken const& key, VtValue const& valu
     } else if (key == HdGeminiRenderSettingsTokens->enableRestirDI) {
         if (value.IsHolding<bool>()) {
             _renderer.SetEnableRestirDI(value.UncheckedGet<bool>());
+            changed = true;
+        }
+    } else if (key == HdGeminiRenderSettingsTokens->enablePathGuiding) {
+        if (value.IsHolding<bool>()) {
+            _renderer.SetEnablePathGuiding(value.UncheckedGet<bool>());
             changed = true;
         }
     } else if (key == HdGeminiRenderSettingsTokens->targetSampleCount) {

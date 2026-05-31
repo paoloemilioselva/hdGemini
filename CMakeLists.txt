@@ -188,7 +188,7 @@ elseif( _target_name MATCHES "usd" )
     install(FILES ${CMAKE_SOURCE_DIR}/usd-extra/plugInfo.json DESTINATION ${_installation_folder}/plugin/usd/${DELEGATE_NAME}/resources )
     
     # Install Gemini Usdview Plugin
-    install(FILES ${CMAKE_SOURCE_DIR}/usdview_plugin/plugInfo.json DESTINATION ${_installation_folder}/plugin/usd/gemini_usdview)
+    install(FILES ${CMAKE_SOURCE_DIR}/usdview_plugin/plugInfo.json DESTINATION ${_installation_folder}/plugin/usd/gemini_usdview/resources)
     install(FILES ${CMAKE_SOURCE_DIR}/usdview_plugin/__init__.py DESTINATION ${_installation_folder}/lib/python/gemini_usdview)
     
     # Install OIDN DLLs

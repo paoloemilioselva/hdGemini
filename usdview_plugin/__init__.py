@@ -146,8 +146,6 @@ def editSelectedPrim(usdviewApi):
             tabs_data[namespace] = []
         tabs_data[namespace].append(attr)
         
-    editors = []
-    
     for ns, attrs in sorted(tabs_data.items()):
         tab = QtWidgets.QWidget()
         
@@ -169,25 +167,25 @@ def editSelectedPrim(usdviewApi):
             if isinstance(val, bool):
                 cb = QtWidgets.QCheckBox()
                 cb.setChecked(val)
+                cb.toggled.connect(lambda v, a=attr: a.Set(v))
                 scroll_layout.addRow(display_name, cb)
-                editors.append((attr, cb, "bool"))
             elif isinstance(val, int):
                 sb = QtWidgets.QSpinBox()
                 sb.setRange(-999999, 999999)
                 sb.setValue(val)
+                sb.valueChanged.connect(lambda v, a=attr: a.Set(v))
                 scroll_layout.addRow(display_name, sb)
-                editors.append((attr, sb, "int"))
             elif isinstance(val, float):
                 dsb = QtWidgets.QDoubleSpinBox()
                 dsb.setRange(-999999.0, 999999.0)
                 dsb.setValue(val)
+                dsb.valueChanged.connect(lambda v, a=attr: a.Set(v))
                 scroll_layout.addRow(display_name, dsb)
-                editors.append((attr, dsb, "float"))
             elif isinstance(val, str):
                 le = QtWidgets.QLineEdit()
                 le.setText(val)
+                le.textChanged.connect(lambda v, a=attr: a.Set(v))
                 scroll_layout.addRow(display_name, le)
-                editors.append((attr, le, "str"))
             elif isinstance(val, Gf.Vec3f):
                 w = QtWidgets.QWidget()
                 l = QtWidgets.QHBoxLayout(w)
@@ -195,34 +193,24 @@ def editSelectedPrim(usdviewApi):
                 s1 = QtWidgets.QDoubleSpinBox(); s1.setRange(-9999.0, 9999.0); s1.setValue(val[0])
                 s2 = QtWidgets.QDoubleSpinBox(); s2.setRange(-9999.0, 9999.0); s2.setValue(val[1])
                 s3 = QtWidgets.QDoubleSpinBox(); s3.setRange(-9999.0, 9999.0); s3.setValue(val[2])
+                
+                def update_vec3f(val_unused, a=attr, v1=s1, v2=s2, v3=s3):
+                    a.Set(Gf.Vec3f(v1.value(), v2.value(), v3.value()))
+                s1.valueChanged.connect(update_vec3f)
+                s2.valueChanged.connect(update_vec3f)
+                s3.valueChanged.connect(update_vec3f)
+                
                 l.addWidget(s1); l.addWidget(s2); l.addWidget(s3)
                 scroll_layout.addRow(display_name, w)
-                editors.append((attr, (s1, s2, s3), "vec3f"))
                 
         scroll.setWidget(scroll_widget)
         tab_layout = QtWidgets.QVBoxLayout(tab)
         tab_layout.addWidget(scroll)
         tab_widget.addTab(tab, ns)
         
-    buttons = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel)
-    buttons.accepted.connect(dialog.accept)
-    buttons.rejected.connect(dialog.reject)
-    main_layout.addWidget(buttons)
-    
-    if dialog.exec() == QtWidgets.QDialog.Accepted:
-        # Save values
-        for attr, widget, type_ in editors:
-            if type_ == "bool":
-                attr.Set(widget.isChecked())
-            elif type_ == "int":
-                attr.Set(widget.value())
-            elif type_ == "float":
-                attr.Set(widget.value())
-            elif type_ == "str":
-                attr.Set(widget.text())
-            elif type_ == "vec3f":
-                s1, s2, s3 = widget
-                attr.Set(Gf.Vec3f(s1.value(), s2.value(), s3.value()))
+    # Save dialog reference to avoid garbage collection
+    usdviewApi.qMainWindow._gemini_prim_editor = dialog
+    dialog.show()
 
 class GeminiPluginContainer(PluginContainer):
     def registerPlugins(self, plugRegistry, usdviewApi):

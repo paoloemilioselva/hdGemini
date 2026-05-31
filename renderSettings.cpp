@@ -24,7 +24,12 @@ HdGeminiRenderSettings::Sync(HdSceneDelegate* sceneDelegate,
     if (nsSettingsValue.IsHolding<VtDictionary>()) {
         VtDictionary nsSettings = nsSettingsValue.UncheckedGet<VtDictionary>();
         for (const auto& kv : nsSettings) {
-            _delegate->SetRenderSetting(TfToken(kv.first), kv.second);
+            std::string keyStr = kv.first;
+            size_t colonIdx = keyStr.rfind(':');
+            if (colonIdx != std::string::npos) {
+                keyStr = keyStr.substr(colonIdx + 1);
+            }
+            _delegate->SetRenderSetting(TfToken(keyStr), kv.second);
         }
     }
     

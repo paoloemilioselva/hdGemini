@@ -135,3 +135,41 @@ hdGemini intercepts the Hydra synchronization phase to extract standard `HdMesh`
   <img src="images/preview2.png" width="48%" />
   <img src="images/preview1.png" width="48%" />
 </p>
+
+## Installation Directory Structure
+
+hdGemini compiles and installs its binaries and plugins into an external folder (e.g., `usd-26.03-extra`). For OpenUSD to successfully discover both the Hydra render delegate and the custom `usdview` plugin, this folder must be structured correctly and appended to your `PXR_PLUGINPATH_NAME` environment variable.
+
+A crucial requirement for OpenUSD plugin discovery is a root `plugInfo.json` file inside the `plugin/usd/` directory that tells USD to look into subdirectories.
+
+Make sure a file named `plugInfo.json` exists at the root of the plugin directory (e.g., `C:\Users\paolo\Desktop\usd-26.03-extra\plugin\usd\plugInfo.json`) with the following content:
+
+```json
+{
+    "Includes": [
+        "*/resources/"
+    ]
+}
+```
+
+The overall installation directory should look like this:
+```text
+usd-26.03-extra/
+│
+├── lib/
+│   ├── python/
+│   │   └── gemini_usdview/
+│   │       └── __init__.py           # The usdview plugin UI code
+│   └── (OIDN and SYCL .dll files)
+│
+└── plugin/
+    └── usd/
+        ├── plugInfo.json             # <-- IMPORTANT: Root discovery file
+        ├── hdGemini.dll              # The compiled Hydra render delegate
+        ├── hdGemini/
+        │   └── resources/
+        │       └── plugInfo.json     # Render delegate plugin definition
+        └── gemini_usdview/
+            └── resources/
+                └── plugInfo.json     # usdview plugin definition
+```

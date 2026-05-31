@@ -2,7 +2,6 @@
     "Plugins": [
         {
             "Info": {
-                "TfPluginModule": "gemini_usdview",
                 "Types": {
                     "gemini_usdview.GeminiPluginContainer": {
                         "bases": ["PluginContainer"],
@@ -10,9 +9,7 @@
                     }
                 }
             },
-            "LibraryPath": "",
             "Name": "gemini_usdview",
-            "ResourcePath": "resources",
             "Root": "..",
             "Type": "python"
         }

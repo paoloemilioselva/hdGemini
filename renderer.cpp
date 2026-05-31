@@ -3397,6 +3397,15 @@ HdGeminiRenderer::_RenderTiles(HdRenderThread *renderThread, HdGeminiRenderDeleg
             if (!renderThread->IsStopRequested() && _normalBuffer) _normalBuffer->ResolveBucket(startX, startY, endX, endY);
             if (!renderThread->IsStopRequested() && _depthBuffer) _depthBuffer->ResolveBucket(startX, startY, endX, endY);
 
+            if (_enableOnScreenStats && !renderThread->IsStopRequested()) {
+                unsigned int statsStartY = std::max(0, (int)height - 60);
+                if (endY > statsStartY && startX < 800) {
+                    std::lock_guard<std::mutex> lock(_statsMutex);
+                    _DrawStats();
+                    _colorBuffer->ResolveBucket(0, statsStartY, std::min(800u, width), height);
+                }
+            }
+
             bucket.activePixels = activePixels;
             bucket.maxVariance = maxVariance;
         }

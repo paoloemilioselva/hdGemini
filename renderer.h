@@ -604,6 +604,7 @@ private:
 
     mutable std::map<std::string, TextureData> _textureCache;
     mutable std::mutex _textureMutex;
+    mutable std::mutex _statsMutex;
 
 #ifdef HDGEMINI_HAS_SYCL
     sycl::queue* _syclQueue = nullptr;

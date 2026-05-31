@@ -7,22 +7,23 @@
 PXR_NAMESPACE_OPEN_SCOPE
 
 HdGeminiRenderSettings::HdGeminiRenderSettings(SdfPath const& id, HdGeminiRenderDelegate* delegate)
-    : HdBprim(id), _delegate(delegate)
+    : HdRenderSettings(id), _delegate(delegate)
 {
 }
 
 HdGeminiRenderSettings::~HdGeminiRenderSettings() = default;
 
 void
-HdGeminiRenderSettings::Sync(HdSceneDelegate* sceneDelegate,
-                             HdRenderParam* renderParam,
-                             HdDirtyBits* dirtyBits)
+HdGeminiRenderSettings::_Sync(HdSceneDelegate* sceneDelegate,
+                              HdRenderParam* renderParam,
+                              const HdDirtyBits* dirtyBits)
 {
     SdfPath const& id = GetId();
 
-    VtValue nsSettingsValue = sceneDelegate->Get(id, HdRenderSettingsPrimTokens->namespacedSettings);
-    if (nsSettingsValue.IsHolding<VtDictionary>()) {
-        VtDictionary nsSettings = nsSettingsValue.UncheckedGet<VtDictionary>();
+    std::cout << "[Gemini] Syncing RenderSettings bprim: " << id.GetText() << std::endl;
+
+    if (*dirtyBits & HdRenderSettings::DirtyNamespacedSettings) {
+        VtDictionary nsSettings = GetNamespacedSettings();
         for (const auto& kv : nsSettings) {
             std::string keyStr = kv.first;
             size_t colonIdx = keyStr.rfind(':');
@@ -32,20 +33,6 @@ HdGeminiRenderSettings::Sync(HdSceneDelegate* sceneDelegate,
             _delegate->SetRenderSetting(TfToken(keyStr), kv.second);
         }
     }
-    
-    *dirtyBits = HdChangeTracker::Clean;
-}
-
-HdDirtyBits
-HdGeminiRenderSettings::GetInitialDirtyBitsMask() const
-{
-    // Need a bit that will trigger sync, use AllDirty or similar
-    return HdChangeTracker::AllDirty;
-}
-
-void
-HdGeminiRenderSettings::Finalize(HdRenderParam* renderParam)
-{
 }
 
 PXR_NAMESPACE_CLOSE_SCOPE

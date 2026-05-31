@@ -95,6 +95,11 @@ If you do not have Intel oneAPI installed, the `compile.bat` script will gracefu
 .\launch_gemini.bat
 ```
 
+### usdview Plugin
+hdGemini includes a native `usdview` plugin accessible via the **Gemini** menu item. This plugin allows you to easily create a custom `RenderSettings` prim and interactively edit its properties in a clean, categorized UI.
+> [!NOTE]
+> **Change Tracking Workaround**: Certain versions of OpenUSD's `UsdImaging` adapter have limitations correctly broadcasting updates when custom `namespacedSettings` change. If your edits in the Prim Editor do not immediately trigger a viewport update, click the **Force Update** button at the bottom of the editor. This instantly drops and re-adds the prim in Hydra, guaranteeing a clean synchronization of your edited settings.
+
 ## Architecture Notes
 
 hdGemini intercepts the Hydra synchronization phase to extract standard `HdMesh`, `HdMaterial`, and `HdLight` data. 

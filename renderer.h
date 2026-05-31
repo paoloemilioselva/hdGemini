@@ -238,6 +238,7 @@ private:
         float transmission = 0.0f;
         GfVec3f transmissionColor = GfVec3f(1.0f);
         GfVec3f emission = GfVec3f(0.0f);
+        float emissionPdf = 0.0f;
         SdfAssetPath diffuseTexture;
         SdfAssetPath normalTexture;
         SdfAssetPath metallicTexture;

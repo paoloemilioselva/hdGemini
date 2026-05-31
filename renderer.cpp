@@ -1717,7 +1717,7 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
         HitRecord hit;
         bool intersected = this->_IntersectTLAS(currentRayOrigin, currentRayDir, hit, renderThread, sampleIdx, qmcDim, rng);
         
-        if (_renderLightGeometry) {
+        if (_renderLightGeometry || bounce > 0) {
             float lightT = hit.t;
             HdGeminiLight* intersectedLight = nullptr;
             GfVec3f lightNormal;
@@ -1767,6 +1767,20 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
                 hit.thinWalled = true;
                 hit.transmission = 0.0f;
                 intersected = true;
+                
+                auto it = std::find(_activeLights.begin(), _activeLights.end(), intersectedLight);
+                if (it != _activeLights.end()) {
+                    int idx = (int)std::distance(_activeLights.begin(), it);
+                    float prob = _lightPowerCdf[idx] - (idx > 0 ? _lightPowerCdf[idx-1] : 0.0f);
+                    GfMatrix4f transform = GfMatrix4f(intersectedLight->GetTransform());
+                    float scaleX = transform.TransformDir(GfVec3f(1, 0, 0)).GetLength();
+                    float scaleY = transform.TransformDir(GfVec3f(0, 1, 0)).GetLength();
+                    float area = (intersectedLight->GetWidth() * scaleX) * (intersectedLight->GetHeight() * scaleY);
+                    float cosThetaL = std::max(0.0f, GfDot(lightNormal, -currentRayDir));
+                    if (cosThetaL > 0.0f && area > 0.0f) {
+                        hit.emissionPdf = std::max(prob, 1e-6f) * (lightT * lightT) / (area * cosThetaL);
+                    }
+                }
             }
         }
 
@@ -2075,8 +2089,12 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
                 }
             }
         }
-
-        totalRadiance += throughput * RGBToSpectrum(hit.emission, lambda);
+        if (bounce == 0) {
+            totalRadiance += throughput * RGBToSpectrum(hit.emission, lambda);
+        } else {
+            float misWeight = (lastBsdfPdf <= 0.0f) ? 1.0f : PowerHeuristic(lastBsdfPdf, hit.emissionPdf);
+            totalRadiance += throughput * RGBToSpectrum(hit.emission, lambda) * misWeight;
+        }
 
         // --- Apply dispersion (Fix 5: moved before direct lighting) ---
         float iorBase = hit.ior;

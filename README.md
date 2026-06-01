@@ -8,6 +8,8 @@
   - Utilizes **Hero Wavelength Sampling** to efficiently evaluate 4 continuous wavelengths per ray, eliminating metamerism and enabling true physical color mixing.
   - **Light Transport**:
     - **Microfacet GGX Importance Sampling**: Analytically matches the material's Normal Distribution Function (NDF) across all specular layers (Base Reflection, Coat, Sheen, and Transmission/Refraction) to massively accelerate specular convergence.
+    - **ReSTIR DI (Reservoir Spatio-Temporal Importance Resampling)**: Dynamically maintains spatio-temporal reservoirs to efficiently sample millions of unshadowed light sources in real-time, instantly resolving complex direct illumination.
+    - **Path Guiding**: Constructs spatial directional grids on the fly during rendering. The renderer learns the incident radiance distribution and guides indirect bounces towards sources of light, drastically improving convergence in complex interior scenes with difficult visibility.
     - **Multiple Importance Sampling (MIS)**: Integrates Direct Light Sampling (Next Event Estimation) with Indirect BSDF Sampling using the Power Heuristic. Explicitly combining the light's PDF and the material's BSDF PDF eliminates fireflies and rapidly resolves noisy lighting interactions.
     - Path termination is efficiently handled via Russian Roulette.
   - Incoming RGB textures are on-the-fly "uplifted" to continuous spectra using a smooth, optimized Gaussian basis. Scalar maps (normal, roughness, metallic) are meticulously preserved in raw RGB space to avoid precision loss.
@@ -93,6 +95,16 @@ If you do not have Intel oneAPI installed, the `compile.bat` script will gracefu
 
 # Launch usdview with the hdGemini render delegate
 .\launch_gemini.bat
+```
+
+### Offline Rendering & Render Farms
+hdGemini fully supports offline batch rendering via OpenUSD's `usdrecord` application.
+1. Use the provided `render_gemini.bat` script to run sequence renders from the command line, passing all standard `usdrecord` arguments.
+2. The renderer automatically outputs Pixar Tractor/Alfred compatible progress tracking strings (`ALF_PROGRESS X%`) precisely at every 10% milestone, enabling seamless integration and progress monitoring on professional render farm dashboards (like Deadline or Tractor).
+
+```cmd
+# Render frames 1 to 100 offline at 1920px width
+.\render_gemini.bat ..\assets\my_scene.usda output_frame.###.png -f 1:100 --imageWidth 1920
 ```
 
 ### usdview Plugin

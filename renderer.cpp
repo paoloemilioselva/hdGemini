@@ -293,6 +293,13 @@ HdGeminiRenderer::Render(HdRenderThread *renderThread, HdGeminiRenderDelegate* d
         
         if (!_aiGenerationPending) {
             _frameCount++;
+            if (_targetSampleCount > 0) {
+                int currentProgress = (_frameCount * 100) / _targetSampleCount;
+                int previousProgress = ((_frameCount - 1) * 100) / _targetSampleCount;
+                if ((currentProgress / 10) > (previousProgress / 10)) {
+                    std::cout << "ALF_PROGRESS " << (currentProgress / 10) * 10 << "%" << std::endl;
+                }
+            }
         }
         
         if (_frameCount >= _targetSampleCount && !_aiGenerationPending) {

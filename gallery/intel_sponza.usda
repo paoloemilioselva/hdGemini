@@ -1,0 +1,57 @@
+#usda 1.0
+(
+    metersPerUnit = 1.0
+    upAxis = "Y"
+    subLayers = [
+        @C:\Users\paolo\Desktop\openusd\main_sponza\NewSponza_Main_USD_Yup_003.usda@,
+    ]
+)
+
+def "Render"
+{
+    def RenderSettings "GeminiRenderSettings"
+    {
+        custom bool gemini:physicalSkyEnable = True (
+            uiHints = {
+                string displayName = "Enable Physical Sky"
+                string displayGroup = "Physical Sky"
+            }
+        )
+        custom float gemini:physicalSkyAltitude = 100.0 (
+            uiHints = {
+                string displayName = "Physical Sky Altitude"
+                string displayGroup = "Physical Sky"
+            }
+        )
+        custom float gemini:physicalSkyAzimuth = 0.0 (
+            uiHints = {
+                string displayName = "Physical Sky Azimuth"
+                string displayGroup = "Physical Sky"
+            }
+        )
+        custom bool gemini:enablePhysicalCamera = True (
+            uiHints = {
+                string displayName = "Override Physical Camera Parameters"
+                string displayGroup = "Camera"
+            }
+        )
+        custom float gemini:iso = 50.0 (
+            uiHints = {
+                string displayName = "ISO"
+                string displayGroup = "Camera"
+            }
+        )
+        custom float gemini:shutterSpeed = 0.0005 (
+            uiHints = {
+                string displayName = "Shutter Speed"
+                string displayGroup = "Camera"
+            }
+        )
+        custom int gemini:targetSampleCount = 1024 (
+            uiHints = {
+                string displayName = "Target Sample Count"
+                string displayGroup = "Sampling"
+            }
+        )
+    }
+}

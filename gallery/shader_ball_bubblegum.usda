@@ -1,0 +1,48 @@
+#usda 1.0
+(
+    metersPerUnit = 1.0
+    upAxis = "Y"
+    subLayers = [
+        @C:\Users\paolo\Desktop\code\assets\full_assets\StandardShaderBall\standard_shader_ball_scene.usda@,
+    ]
+)
+
+over "standard_shader_ball_scene" (
+    variants = {
+        string example_material = "mtlx_bubblegum"
+    }    
+)
+{
+
+}
+
+def "Render"
+{
+    def RenderSettings "GeminiRenderSettings"
+    {
+        custom bool gemini:enablePhysicalCamera = True (
+            uiHints = {
+                string displayName = "Override Physical Camera Parameters"
+                string displayGroup = "Camera"
+            }
+        )
+        custom float gemini:iso = 400.0 (
+            uiHints = {
+                string displayName = "ISO"
+                string displayGroup = "Camera"
+            }
+        )
+        custom float gemini:shutterSpeed = 0.05 (
+            uiHints = {
+                string displayName = "Shutter Speed"
+                string displayGroup = "Camera"
+            }
+        )
+        custom int gemini:targetSampleCount = 1024 (
+            uiHints = {
+                string displayName = "Target Sample Count"
+                string displayGroup = "Sampling"
+            }
+        )
+    }
+}

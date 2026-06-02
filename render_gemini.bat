@@ -23,4 +23,4 @@ SET PATH=%USDROOT%\bin;%USDEXTRA%\bin;%RMANTREE%\bin;%PATH%
 SET PATH=%USDROOT%\lib;%USDEXTRA%\lib;%RMANTREE%\lib;%PATH%
 
 echo Launching usdrecord with Gemini renderer...
-usdrecord --renderer Gemini %*
+usdrecord --renderer Gemini --disableCameraLight %*

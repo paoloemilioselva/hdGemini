@@ -185,3 +185,21 @@ usd-26.03-extra/
 .\render_gemini.bat --imageWidth 1024 --camera camera gallery\shader_ball_bubblegum.usda gallery\shader_ball_bubblegum.jpg
 ```
 ![StandardShaderBall BubbleGum](gallery/shader_ball_bubblegum.jpg)
+
+### StandardShaderBall Glass
+**Reference:** [StandardShaderBall Repository](https://github.com/usd-wg/assets/tree/main/full_assets/StandardShaderBall)
+
+**Command:**
+```cmd
+.\render_gemini.bat --imageWidth 1024 --camera camera gallery\shader_ball_glass.usda gallery\shader_ball_glass.jpg
+```
+![StandardShaderBall Glass](gallery/shader_ball_glass.jpg)
+
+### StandardShaderBall Gold
+**Reference:** [StandardShaderBall Repository](https://github.com/usd-wg/assets/tree/main/full_assets/StandardShaderBall)
+
+**Command:**
+```cmd
+.\render_gemini.bat --imageWidth 1024 --camera camera gallery\shader_ball_gold.usda gallery\shader_ball_gold.jpg
+```
+![StandardShaderBall Gold](gallery/shader_ball_gold.jpg)

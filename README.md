@@ -119,35 +119,6 @@ hdGemini intercepts the Hydra synchronization phase to extract standard `HdMesh`
 - The `HdGeminiRenderer` uses `WorkParallelForN` to dispatch screen buckets to multiple threads.
 - `_TraceRay` leverages an iterative, stack-based TLAS traversal to rapidly identify bounding box intersections before delegating to individual BVHs, maintaining O(1) direct light lookups and deep recursion paths.
 
-## Gallery
-
-![GenAI Server UI](media/genai_ui.png)
-![GenAI Viewport Render](media/genai_render.png)
-<p align="center">
-  <img src="images/preview12.png" width="48%" />
-  <img src="images/preview11.png" width="48%" />
-</p>
-<p align="center">
-  <img src="images/preview10.png" width="48%" />
-  <img src="images/preview9.png" width="48%" />
-</p>
-<p align="center">
-  <img src="images/preview8.png" width="48%" />
-  <img src="images/preview7.png" width="48%" />
-</p>
-<p align="center">
-  <img src="images/preview6.png" width="48%" />
-  <img src="images/preview5.png" width="48%" />
-</p>
-<p align="center">
-  <img src="images/preview4.png" width="48%" />
-  <img src="images/preview3.png" width="48%" />
-</p>
-<p align="center">
-  <img src="images/preview2.png" width="48%" />
-  <img src="images/preview1.png" width="48%" />
-</p>
-
 ## Installation Directory Structure
 
 hdGemini compiles and installs its binaries and plugins into an external folder (e.g., `usd-26.03-extra`). For OpenUSD to successfully discover both the Hydra render delegate and the custom `usdview` plugin, this folder must be structured correctly and appended to your `PXR_PLUGINPATH_NAME` environment variable.
@@ -185,3 +156,32 @@ usd-26.03-extra/
             └── resources/
                 └── plugInfo.json     # usdview plugin definition
 ```
+
+## Gallery
+
+### Intel Sponza Base Scene
+**Reference:** [Intel Graphics Research Samples](http://intel.com/content/www/us/en/developer/topic-technology/graphics-research/samples.html)
+
+**Command:**
+```cmd
+.\render_gemini.bat --imageWidth 1024 --camera PhysCamera001 gallery\intel_sponza.usda gallery\intel_sponza.jpg
+```
+![Intel Sponza Base Scene](gallery/intel_sponza.jpg)
+
+### OpenChessSet
+**Reference:** [OpenChessSet Repository](https://github.com/usd-wg/assets/tree/main/full_assets/OpenChessSet)
+
+**Command:**
+```cmd
+.\render_gemini.bat --imageWidth 1024 --camera renderCam gallery\chess_board.usda gallery\chess_board.jpg
+```
+![OpenChessSet](gallery/chess_board.jpg)
+
+### StandardShaderBall BubbleGum
+**Reference:** [StandardShaderBall Repository](https://github.com/usd-wg/assets/tree/main/full_assets/StandardShaderBall)
+
+**Command:**
+```cmd
+.\render_gemini.bat --imageWidth 1024 --camera camera gallery\shader_ball_bubblegum.usda gallery\shader_ball_bubblegum.jpg
+```
+![StandardShaderBall BubbleGum](gallery/shader_ball_bubblegum.jpg)

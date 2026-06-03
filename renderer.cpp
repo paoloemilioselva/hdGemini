@@ -1684,7 +1684,8 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
         SampledSpectrum throughput;
         SampledSpectrum totalRadianceBefore;
     };
-    std::vector<PathVertex> pathHistory;
+    PathVertex pathHistory[16];
+    int pathHistoryCount = 0;
     
     struct MediumState {
         float ior = 1.0f;
@@ -1694,7 +1695,9 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
     };
     
     // Nested Dielectrics tracking stack
-    std::vector<MediumState> mediumStack = { MediumState{1.0f, GfVec3f(0.0f), 0.0f, GfVec3f(1.0f)} };
+    MediumState mediumStack[16];
+    int mediumStackCount = 0;
+    mediumStack[mediumStackCount++] = MediumState{1.0f, GfVec3f(0.0f), 0.0f, GfVec3f(1.0f)};
     
     // Perform a BVH-accurate test to see if the camera is underwater
     if (_oceanEnable) {
@@ -1709,15 +1712,15 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
             if (hit.isOcean) {
                 // If we hit the ocean from below (smoothNormal points roughly up +Y, rd is up +Y -> dot > 0)
                 if (GfDot(hit.smoothNormal, rd) > 0.0f) {
-                    mediumStack.push_back(MediumState{hit.ior, hit.transmissionScatter, hit.transmissionDepth, hit.transmissionColor});
+                    if (mediumStackCount < 16) mediumStack[mediumStackCount++] = MediumState{hit.ior, hit.transmissionScatter, hit.transmissionDepth, hit.transmissionColor};
                 }
                 break; // First ocean hit determines if we are above or below
             }
             ro = ro + rd * (hit.t + RAY_EPSILON(ro));
         }
         
-        if (mediumStack.size() == 1 && currentRayOrigin[1] < _oceanWaterHeight) {
-            mediumStack.push_back(MediumState{1.33f, _oceanParams.scatteringColor, _oceanParams.scatteringDepth, GfVec3f(0.8f, 0.9f, 0.95f)});
+        if (mediumStackCount == 1 && currentRayOrigin[1] < _oceanWaterHeight) {
+            mediumStack[mediumStackCount++] = MediumState{1.33f, _oceanParams.scatteringColor, _oceanParams.scatteringDepth, GfVec3f(0.8f, 0.9f, 0.95f)};
         }
     }
 
@@ -1821,7 +1824,7 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
                 hit.transmissionDepth = 0.0f;
                 if (bounce == 0 && outDepth) *outDepth = hit.t;
                 intersected = true;
-            } else if (!mediumStack.empty() && mediumStack.back().depth > 0.0f) {
+            } else if (mediumStackCount > 0 && mediumStack[mediumStackCount-1].depth > 0.0f) {
                 for(int i=0; i<SPECTRUM_SAMPLES; ++i) throughput[i] = 0.0f;
             }
         }
@@ -1944,14 +1947,14 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
         }
 
         bool isInside = GfDot(hit.smoothNormal, currentRayDir) > 0;
-        float etaI_fresnel = mediumStack.back().ior;
+        float etaI_fresnel = mediumStack[mediumStackCount-1].ior;
         float etaT_fresnel = hit.ior;
         if (isInside) {
-            etaT_fresnel = (mediumStack.size() > 1) ? mediumStack[mediumStack.size() - 2].ior : 1.0f;
+            etaT_fresnel = (mediumStackCount > 1) ? mediumStack[mediumStackCount - 2].ior : 1.0f;
         }
 
         // --- Medium Volumetric Scattering ---
-        const MediumState& currentMedium = mediumStack.back();        bool shadowCurrentlyInside = !mediumStack.empty();
+        const MediumState& currentMedium = mediumStack[mediumStackCount-1];        bool shadowCurrentlyInside = mediumStackCount > 0;
         float shadowTransDepth = currentMedium.depth;
         GfVec3f shadowTransColor = currentMedium.transmissionColor;
         GfVec3f shadowTransScatter = currentMedium.scatterColor;
@@ -2270,7 +2273,7 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
                         float coatAtten = 1.0f;
                         GfVec3f coatSpecDirect(0.0f);
                         if (hit.coat > 0.0f && !isInside) {
-                            float coatF = hit.coat * FresnelDielectric(GfDot(-currentRayDir, shadingNormal), mediumStack.back().ior, hit.coatIor);
+                            float coatF = hit.coat * FresnelDielectric(GfDot(-currentRayDir, shadingNormal), mediumStack[mediumStackCount-1].ior, hit.coatIor);
                             coatAtten = 1.0f - coatF;
                             // Coat specular lobe
                             float coatAlpha = std::max(0.001f, hit.coatRoughness * hit.coatRoughness);
@@ -2363,7 +2366,7 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
 
         // --- Coat Layer (Fix 2: energy conservation) ---
         if (hit.coat > 0.0f && !isInside) {
-            float coatFresnel = hit.coat * FresnelDielectric(GfDot(currentRayDir, shadingNormal), mediumStack.back().ior, hit.coatIor);
+            float coatFresnel = hit.coat * FresnelDielectric(GfDot(currentRayDir, shadingNormal), mediumStack[mediumStackCount-1].ior, hit.coatIor);
             if (qmc::SampleDimension(sampleIdx, qmcDim++, rng) < coatFresnel) {
                 if (reflectionBounces >= (isInteractive ? 1 : _maxReflectionBounces)) break;
                 reflectionBounces++;
@@ -2524,10 +2527,10 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
             
             if (sssProb + transProb > 1e-6f && remainingProb < sssProb + transProb) {
                 // Refraction (Both Transmission and SSS refract into the volume)
-                float etaI = mediumStack.back().ior;
+                float etaI = mediumStack[mediumStackCount-1].ior;
                 float etaT = hit.ior;
                 if (isInside) {
-                    etaT = (mediumStack.size() > 1) ? mediumStack[mediumStack.size() - 2].ior : 1.0f;
+                    etaT = (mediumStackCount > 1) ? mediumStack[mediumStackCount - 2].ior : 1.0f;
                 }
                 
                 float eta = etaI / etaT;
@@ -2560,9 +2563,9 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
                         currentRayDir = refractDir;
                         currentRayOrigin = hitPos - n * RAY_EPSILON(hitPos);
                         if (isInside) {
-                            if (mediumStack.size() > 1) mediumStack.pop_back();
+                            if (mediumStackCount > 1) mediumStackCount--;
                         } else {
-                            mediumStack.push_back(MediumState{hit.ior, hit.transmissionScatter, hit.transmissionDepth, hit.transmissionColor});
+                            if (mediumStackCount < 16) mediumStack[mediumStackCount++] = MediumState{hit.ior, hit.transmissionScatter, hit.transmissionDepth, hit.transmissionColor};
                         }
                         
                         if (remainingProb >= sssProb) {
@@ -2658,12 +2661,13 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
             pv.dir = currentRayDir;
             pv.throughput = throughput;
             pv.totalRadianceBefore = totalRadiance;
-            pathHistory.push_back(pv);
+            if (pathHistoryCount < 16) pathHistory[pathHistoryCount++] = pv;
         }
     }
     
-    if (_enablePathGuiding && !pathHistory.empty()) {
-        for (const auto& pv : pathHistory) {
+    if (_enablePathGuiding && pathHistoryCount > 0) {
+        for (int i = 0; i < pathHistoryCount; ++i) {
+            const auto& pv = pathHistory[i];
             SampledSpectrum addedRadiance = totalRadiance - pv.totalRadianceBefore;
             GfVec3f returningL(0.0f);
             for(int i=0; i<SPECTRUM_SAMPLES; ++i) {

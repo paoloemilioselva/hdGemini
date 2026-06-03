@@ -1229,6 +1229,11 @@ GfVec4f HdGeminiRenderer::_SampleTexture(const SdfAssetPath& path, const GfVec2f
 
     HioFormat format = image->GetFormat();
     int channels = HioGetComponentCount(format);
+    if (channels <= 0 || data.width == 0 || data.height == 0) {
+        HDGEMINI_LOG << "[Gemini]   Invalid texture channels or dimensions: " << assetPath << std::endl;
+        _textureCache[cacheKey] = TextureData();
+        return GfVec4f(-1.0f);
+    }
     bool isFloat = (format == HioFormatFloat32 || format == HioFormatFloat32Vec2 || format == HioFormatFloat32Vec3 || format == HioFormatFloat32Vec4 ||
                     format == HioFormatFloat16 || format == HioFormatFloat16Vec2 || format == HioFormatFloat16Vec3 || format == HioFormatFloat16Vec4);
     bool isOriginalSrgb = (format == HioFormatUNorm8srgb || format == HioFormatUNorm8Vec2srgb || format == HioFormatUNorm8Vec3srgb || format == HioFormatUNorm8Vec4srgb);
@@ -2835,16 +2840,31 @@ HdGeminiRenderer::_Denoise()
         float g = std::max(0.0f, heroOutput[i*3+1] + diffOutput[i*3+1]);
         float b = std::max(0.0f, heroOutput[i*3+2] + diffOutput[i*3+2]);
         sanitize(r); sanitize(g); sanitize(b);
-        prefiltered[i*3+0] = r;
-        prefiltered[i*3+1] = g;
-        prefiltered[i*3+2] = b;
+        // Clamp to prevent overflow in OIDN's internal fp16 network
+        prefiltered[i*3+0] = std::min(r, 65000.0f);
+        prefiltered[i*3+1] = std::min(g, 65000.0f);
+        prefiltered[i*3+2] = std::min(b, 65000.0f);
     }
 
     if (!albedo.empty()) {
-        for(size_t i=0; i<albedo.size(); ++i) sanitize(albedo[i]);
+        if (albedo.size() != width * height * 3) {
+            albedo.clear();
+        } else {
+            for(size_t i=0; i<albedo.size(); ++i) {
+                sanitize(albedo[i]);
+                albedo[i] = std::max(0.0f, std::min(albedo[i], 1.0f));
+            }
+        }
     }
     if (!normal.empty()) {
-        for(size_t i=0; i<normal.size(); ++i) sanitize(normal[i]);
+        if (normal.size() != width * height * 3) {
+            normal.clear();
+        } else {
+            for(size_t i=0; i<normal.size(); ++i) {
+                sanitize(normal[i]);
+                normal[i] = std::max(-1.0f, std::min(normal[i], 1.0f));
+            }
+        }
     }
 
     std::vector<float> output = prefiltered;

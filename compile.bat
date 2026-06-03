@@ -17,7 +17,7 @@ if exist "C:\Program Files (x86)\Intel\oneAPI\setvars.bat" (
 
 if not exist build mkdir build
 cd build
-cmake -G "Ninja" -DTARGET_CONFIG=usd-26.03 -DCMAKE_BUILD_TYPE=Release %SYCL_FLAG% ..
+cmake -G "Ninja" -DTARGET_CONFIG=usd-26.03 -DCMAKE_BUILD_TYPE=RelWithDebInfo %SYCL_FLAG% ..
 ninja install
 if %ERRORLEVEL% NEQ 0 (
     echo Build failed!

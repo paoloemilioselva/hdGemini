@@ -419,7 +419,7 @@ HdGeminiRenderDelegate::GetRenderSettingDescriptors() const
     list.push_back({
         "Enable SYCL GPU Acceleration",
         HdGeminiRenderSettingsTokens->enableSycl,
-        VtValue(true)
+        VtValue(false)
     });
     list.push_back({
         "Enable On-Screen Stats",

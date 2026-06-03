@@ -46,7 +46,7 @@ def createRenderSettings(usdviewApi):
     add_attr("gemini:resolutionLevel", Sdf.ValueTypeNames.Int, 2, "Resolution Level", "Sampling")
     add_attr("gemini:antiAliasingFilter", Sdf.ValueTypeNames.Int, 1, "Anti-Aliasing Filter (0=None, 1=Box, 2=Tent, 3=Gaussian)", "Sampling")
     add_attr("gemini:enableDoF", Sdf.ValueTypeNames.Bool, False, "Enable DoF", "Camera")
-    add_attr("gemini:enableSycl", Sdf.ValueTypeNames.Bool, True, "Enable SYCL GPU Acceleration", "System")
+    add_attr("gemini:enableSycl", Sdf.ValueTypeNames.Bool, False, "Enable SYCL GPU Acceleration", "System")
     add_attr("gemini:enableOnScreenStats", Sdf.ValueTypeNames.Bool, False, "Enable On-Screen Stats", "System")
     add_attr("gemini:focalLength", Sdf.ValueTypeNames.Float, 50.0, "Focal Length (mm)", "Camera")
     add_attr("gemini:fStop", Sdf.ValueTypeNames.Float, 5.6, "F-Stop (Aperture)", "Camera")

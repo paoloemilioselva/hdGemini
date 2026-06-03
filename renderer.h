@@ -150,7 +150,7 @@ private:
     int _maxRefractionBounces = 8;
     int _initialResolutionLevel = 2;
     int _antiAliasingFilter = 1;
-    bool _enableSycl = true;
+    bool _enableSycl = false;
     bool _enableOnScreenStats = false;
     
     bool _enableDoF = false;

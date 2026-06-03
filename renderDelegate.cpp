@@ -719,7 +719,7 @@ HdGeminiRenderDelegate::GetRenderSetting(TfToken const& key) const
     } else if (key == HdGeminiRenderSettingsTokens->antiAliasingFilter) {
         return VtValue(1);
     } else if (key == HdGeminiRenderSettingsTokens->enableSycl) {
-        return VtValue(true);
+        return VtValue(false);
     } else if (key == HdGeminiRenderSettingsTokens->enableOnScreenStats) {
         return VtValue(false);
     } else if (key == HdGeminiRenderSettingsTokens->enableDoF) {

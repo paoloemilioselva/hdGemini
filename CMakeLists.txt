@@ -185,6 +185,7 @@ if( _target_name MATCHES "houdini" )
 elseif( _target_name MATCHES "usd" )
     set(_installation_folder "C:/Users/paolo/Desktop/usd-26.03-extra")
     install(TARGETS ${DELEGATE_NAME} RUNTIME DESTINATION ${_installation_folder}/plugin/usd)
+    install(FILES $<TARGET_PDB_FILE:${DELEGATE_NAME}> DESTINATION ${_installation_folder}/plugin/usd OPTIONAL)
     install(FILES ${CMAKE_SOURCE_DIR}/usd-extra/plugInfo.json DESTINATION ${_installation_folder}/plugin/usd/${DELEGATE_NAME}/resources )
     
     # Install Gemini Usdview Plugin

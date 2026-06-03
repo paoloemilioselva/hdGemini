@@ -906,12 +906,12 @@ bool HdGeminiRenderer::_IntersectTLAS(const GfVec3f& rayOrigin, const GfVec3f& r
                             hit.transmission = inst.material->GetTransmission();
                             hit.transmissionColor = inst.material->GetTransmissionColor();
                             hit.emission = inst.material->GetEmissionColor() * inst.material->GetEmission();
-                            hit.diffuseTexture = inst.material->GetDiffuseTexture();
-                            hit.normalTexture = inst.material->GetNormalTexture();
-                            hit.metallicTexture = inst.material->GetMetallicTexture();
-                            hit.roughnessTexture = inst.material->GetRoughnessTexture();
-                            hit.opacityTexture = inst.material->GetOpacityTexture();
-                            hit.transmissionTexture = inst.material->GetTransmissionTexture();
+                            hit.diffuseTexture = &inst.material->GetDiffuseTexture();
+                            hit.normalTexture = &inst.material->GetNormalTexture();
+                            hit.metallicTexture = &inst.material->GetMetallicTexture();
+                            hit.roughnessTexture = &inst.material->GetRoughnessTexture();
+                            hit.opacityTexture = &inst.material->GetOpacityTexture();
+                            hit.transmissionTexture = &inst.material->GetTransmissionTexture();
                             hit.metallicTextureChannel = inst.material->GetMetallicTextureChannel();
                             hit.roughnessTextureChannel = inst.material->GetRoughnessTextureChannel();
                             hit.opacityTextureChannel = inst.material->GetOpacityTextureChannel();
@@ -945,12 +945,12 @@ bool HdGeminiRenderer::_IntersectTLAS(const GfVec3f& rayOrigin, const GfVec3f& r
                             hit.transmission = 0.0f;
                             hit.transmissionColor = GfVec3f(1.0f);
                             hit.emission = GfVec3f(0.0f);
-                            hit.diffuseTexture = SdfAssetPath();
-                            hit.normalTexture = SdfAssetPath();
-                            hit.metallicTexture = SdfAssetPath();
-                            hit.roughnessTexture = SdfAssetPath();
-                            hit.opacityTexture = SdfAssetPath();
-                            hit.transmissionTexture = SdfAssetPath();
+                            hit.diffuseTexture = nullptr;
+                            hit.normalTexture = nullptr;
+                            hit.metallicTexture = nullptr;
+                            hit.roughnessTexture = nullptr;
+                            hit.opacityTexture = nullptr;
+                            hit.transmissionTexture = nullptr;
                             hit.metallicTextureChannel = 0;
                             hit.roughnessTextureChannel = 0;
                             hit.opacityTextureChannel = 0;
@@ -1007,12 +1007,12 @@ bool HdGeminiRenderer::_IntersectTLAS(const GfVec3f& rayOrigin, const GfVec3f& r
                                 hit.transmission = inst.material->GetTransmission();
                                 hit.transmissionColor = inst.material->GetTransmissionColor();
                                 hit.emission = inst.material->GetEmissionColor() * inst.material->GetEmission();
-                                hit.diffuseTexture = inst.material->GetDiffuseTexture();
-                                hit.normalTexture = inst.material->GetNormalTexture();
-                                hit.metallicTexture = inst.material->GetMetallicTexture();
-                                hit.roughnessTexture = inst.material->GetRoughnessTexture();
-                                hit.opacityTexture = inst.material->GetOpacityTexture();
-                                hit.transmissionTexture = inst.material->GetTransmissionTexture();
+                                hit.diffuseTexture = &inst.material->GetDiffuseTexture();
+                                hit.normalTexture = &inst.material->GetNormalTexture();
+                                hit.metallicTexture = &inst.material->GetMetallicTexture();
+                                hit.roughnessTexture = &inst.material->GetRoughnessTexture();
+                                hit.opacityTexture = &inst.material->GetOpacityTexture();
+                                hit.transmissionTexture = &inst.material->GetTransmissionTexture();
                                 hit.metallicTextureChannel = inst.material->GetMetallicTextureChannel();
                                 hit.roughnessTextureChannel = inst.material->GetRoughnessTextureChannel();
                                 hit.opacityTextureChannel = inst.material->GetOpacityTextureChannel();
@@ -1048,12 +1048,12 @@ bool HdGeminiRenderer::_IntersectTLAS(const GfVec3f& rayOrigin, const GfVec3f& r
                                     hit.transmission = 0.0f;
                                     hit.transmissionColor = GfVec3f(0.0f);
                                     hit.emission = GfVec3f(0.0f);
-                                    hit.diffuseTexture = SdfAssetPath();
-                                    hit.normalTexture = SdfAssetPath();
-                                    hit.metallicTexture = SdfAssetPath();
-                                    hit.roughnessTexture = SdfAssetPath();
-                                    hit.opacityTexture = SdfAssetPath();
-                                    hit.transmissionTexture = SdfAssetPath();
+                                    hit.diffuseTexture = nullptr;
+                                    hit.normalTexture = nullptr;
+                                    hit.metallicTexture = nullptr;
+                                    hit.roughnessTexture = nullptr;
+                                    hit.opacityTexture = nullptr;
+                                    hit.transmissionTexture = nullptr;
                                     hit.metallicTextureChannel = 0;
                                     hit.roughnessTextureChannel = 0;
                                     hit.opacityTextureChannel = 0;
@@ -1089,12 +1089,12 @@ bool HdGeminiRenderer::_IntersectTLAS(const GfVec3f& rayOrigin, const GfVec3f& r
                                     hit.transmission = 1.0f - foam * 0.8f;
                                     hit.transmissionColor = GfVec3f(0.8f, 0.9f, 0.95f);
                                     hit.emission = GfVec3f(0.0f);
-                                    hit.diffuseTexture = SdfAssetPath();
-                                    hit.normalTexture = SdfAssetPath();
-                                    hit.metallicTexture = SdfAssetPath();
-                                    hit.roughnessTexture = SdfAssetPath();
-                                    hit.opacityTexture = SdfAssetPath();
-                                    hit.transmissionTexture = SdfAssetPath();
+                                    hit.diffuseTexture = nullptr;
+                                    hit.normalTexture = nullptr;
+                                    hit.metallicTexture = nullptr;
+                                    hit.roughnessTexture = nullptr;
+                                    hit.opacityTexture = nullptr;
+                                    hit.transmissionTexture = nullptr;
                                     hit.metallicTextureChannel = 0;
                                     hit.roughnessTextureChannel = 0;
                                     hit.opacityTextureChannel = 0;
@@ -1865,43 +1865,43 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
             break;
         }
 
-        if (!hit.diffuseTexture.GetAssetPath().empty()) {
-            GfVec4f texVal = _SampleTexture(hit.diffuseTexture, hit.uv);
+        if (hit.diffuseTexture && !hit.diffuseTexture->GetAssetPath().empty()) {
+            GfVec4f texVal = _SampleTexture(*hit.diffuseTexture, hit.uv);
             if (texVal[0] >= 0.0f) {
                 hit.baseColor = GfCompMult(hit.baseColor, GfVec3f(texVal[0], texVal[1], texVal[2]));
             }
         }
 
-        if (!hit.metallicTexture.GetAssetPath().empty()) {
-            GfVec4f texVal = _SampleTexture(hit.metallicTexture, hit.uv, true);
+        if (hit.metallicTexture && !hit.metallicTexture->GetAssetPath().empty()) {
+            GfVec4f texVal = _SampleTexture(*hit.metallicTexture, hit.uv, true);
             if (texVal[0] >= 0.0f) {
                 hit.metallic = texVal[hit.metallicTextureChannel];
             }
         }
 
-        if (!hit.roughnessTexture.GetAssetPath().empty()) {
-            GfVec4f texVal = _SampleTexture(hit.roughnessTexture, hit.uv, true);
+        if (hit.roughnessTexture && !hit.roughnessTexture->GetAssetPath().empty()) {
+            GfVec4f texVal = _SampleTexture(*hit.roughnessTexture, hit.uv, true);
             if (texVal[0] >= 0.0f) {
                 hit.roughness = texVal[hit.roughnessTextureChannel];
             }
         }
 
-        if (!hit.opacityTexture.GetAssetPath().empty()) {
-            GfVec4f texVal = _SampleTexture(hit.opacityTexture, hit.uv, true);
+        if (hit.opacityTexture && !hit.opacityTexture->GetAssetPath().empty()) {
+            GfVec4f texVal = _SampleTexture(*hit.opacityTexture, hit.uv, true);
             if (texVal[0] >= 0.0f) {
                 hit.opacity = texVal[hit.opacityTextureChannel];
             }
         }
 
-        if (!hit.transmissionTexture.GetAssetPath().empty()) {
-            GfVec4f texVal = _SampleTexture(hit.transmissionTexture, hit.uv, true);
+        if (hit.transmissionTexture && !hit.transmissionTexture->GetAssetPath().empty()) {
+            GfVec4f texVal = _SampleTexture(*hit.transmissionTexture, hit.uv, true);
             if (texVal[0] >= 0.0f) {
                 hit.transmission = texVal[hit.transmissionTextureChannel];
             }
         }
 
-        if (!hit.normalTexture.GetAssetPath().empty()) {
-            GfVec4f texVal = _SampleTexture(hit.normalTexture, hit.uv, true);
+        if (hit.normalTexture && !hit.normalTexture->GetAssetPath().empty()) {
+            GfVec4f texVal = _SampleTexture(*hit.normalTexture, hit.uv, true);
             if (texVal[0] >= 0.0f) {
                 GfVec3f nTex = GfVec3f(texVal[0], texVal[1], texVal[2]) * 2.0f - GfVec3f(1.0f);
                 

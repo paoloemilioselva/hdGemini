@@ -1295,10 +1295,10 @@ GfVec4f HdGeminiRenderer::_SampleTextureData(const TextureData& data, const GfVe
 
     float px = u * (data.width - 1);
     float py = v * (data.height - 1);
-    int x0 = (int)std::floor(px);
-    int y0 = (int)std::floor(py);
-    int x1 = std::min(x0 + 1, data.width - 1);
-    int y1 = std::min(y0 + 1, data.height - 1);
+    int x0 = std::max(0, std::min((int)std::floor(px), data.width - 1));
+    int y0 = std::max(0, std::min((int)std::floor(py), data.height - 1));
+    int x1 = std::max(0, std::min(x0 + 1, data.width - 1));
+    int y1 = std::max(0, std::min(y0 + 1, data.height - 1));
     float fx = px - x0;
     float fy = py - y0;
 

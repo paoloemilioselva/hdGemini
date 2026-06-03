@@ -5,6 +5,7 @@
 #include "pxr/imaging/hd/material.h"
 #include "pxr/base/gf/vec3f.h"
 #include "pxr/usd/sdf/assetPath.h"
+#include <algorithm>
 
 PXR_NAMESPACE_USING_DIRECTIVE
 
@@ -113,22 +114,22 @@ public:
     void SetRoughnessTexture(const SdfAssetPath& v) { _roughnessTexture = v; }
 
     int GetMetallicTextureChannel() const { return _metallicTextureChannel; }
-    void SetMetallicTextureChannel(int v) { _metallicTextureChannel = v; }
+    void SetMetallicTextureChannel(int v) { _metallicTextureChannel = std::max(0, std::min(v, 3)); }
 
     int GetRoughnessTextureChannel() const { return _roughnessTextureChannel; }
-    void SetRoughnessTextureChannel(int v) { _roughnessTextureChannel = v; }
+    void SetRoughnessTextureChannel(int v) { _roughnessTextureChannel = std::max(0, std::min(v, 3)); }
 
     const SdfAssetPath& GetOpacityTexture() const { return _opacityTexture; }
     void SetOpacityTexture(const SdfAssetPath& v) { _opacityTexture = v; }
 
     int GetOpacityTextureChannel() const { return _opacityTextureChannel; }
-    void SetOpacityTextureChannel(int v) { _opacityTextureChannel = v; }
+    void SetOpacityTextureChannel(int v) { _opacityTextureChannel = std::max(0, std::min(v, 3)); }
 
     const SdfAssetPath& GetTransmissionTexture() const { return _transmissionTexture; }
     void SetTransmissionTexture(const SdfAssetPath& v) { _transmissionTexture = v; }
 
     int GetTransmissionTextureChannel() const { return _transmissionTextureChannel; }
-    void SetTransmissionTextureChannel(int v) { _transmissionTextureChannel = v; }
+    void SetTransmissionTextureChannel(int v) { _transmissionTextureChannel = std::max(0, std::min(v, 3)); }
 
     private:
     GfVec3f _diffuseColor;    float _metallic;

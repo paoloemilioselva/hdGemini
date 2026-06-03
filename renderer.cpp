@@ -167,7 +167,16 @@ HdGeminiRenderer::HdGeminiRenderer()
 {
 #ifdef HDGEMINI_HAS_SYCL
     try {
-        _syclQueue = new sycl::queue(sycl::default_selector_v);
+        auto async_handler = [](sycl::exception_list exceptions) {
+            for (std::exception_ptr const& e : exceptions) {
+                try {
+                    std::rethrow_exception(e);
+                } catch (sycl::exception const& ex) {
+                    std::cerr << "[Gemini] SYCL Async Exception: " << ex.what() << std::endl;
+                }
+            }
+        };
+        _syclQueue = new sycl::queue(sycl::default_selector_v, async_handler);
         _syclDeviceName = _syclQueue->get_device().get_info<sycl::info::device::name>();
         auto t1 = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
         std::cout << "[Gemini] [" << std::put_time(std::localtime(&t1), "%T") << "] SYCL queue initialized on: " << _syclDeviceName << std::endl;
@@ -2828,6 +2837,9 @@ HdGeminiRenderer::_Denoise()
     if (_enableDenoiser) {
         try {
             oidn::DeviceRef device = oidn::newDevice(oidn::DeviceType::CPU);
+            device.setErrorFunction([](void* userPtr, oidn::Error error, const char* message) {
+                std::cerr << "[Gemini] OIDN Fatal Error (" << (int)error << "): " << (message ? message : "Unknown") << std::endl;
+            });
             device.commit();
 
             oidn::FilterRef filter = device.newFilter("RT");

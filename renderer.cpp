@@ -486,6 +486,8 @@ HdGeminiRenderer::_PrepareScene(HdRenderThread *renderThread, HdGeminiRenderDele
         _envMapTotalLuminance = 0.0f;
         _lastEnvMapPath = SdfAssetPath();
     }
+    
+    _hasDomeLight = foundDome;
 
     _lightPowerCdf.clear();
     _lightPowerTotal = 0.0f;
@@ -740,8 +742,7 @@ HdGeminiRenderer::_PrepareScene(HdRenderThread *renderThread, HdGeminiRenderDele
                 _usmEnvMapColCdfSize = _envMapColCdf.size();
             }
             std::copy(_envMapColCdf.begin(), _envMapColCdf.end(), _usmEnvMapColCdf);
-        } else {
-            _hasDomeLight = false;
+            std::copy(_envMapColCdf.begin(), _envMapColCdf.end(), _usmEnvMapColCdf);
         }
     }
 #endif
@@ -2823,13 +2824,27 @@ HdGeminiRenderer::_Denoise()
     auto getLuminance = [](float r, float g, float b) {
         return 0.2126f * r + 0.7152f * g + 0.0722f * b;
     };
+    auto sanitize = [](float& val) {
+        if (std::isnan(val) || std::isinf(val)) val = 0.0f;
+    };
 
     // 1. Recombine for OIDN directly (eliminating manual blur/firefly passes)
     std::vector<float> prefiltered(width * height * 3);
     for(size_t i=0; i<width*height; ++i) {
-        prefiltered[i*3+0] = std::max(0.0f, heroOutput[i*3+0] + diffOutput[i*3+0]);
-        prefiltered[i*3+1] = std::max(0.0f, heroOutput[i*3+1] + diffOutput[i*3+1]);
-        prefiltered[i*3+2] = std::max(0.0f, heroOutput[i*3+2] + diffOutput[i*3+2]);
+        float r = std::max(0.0f, heroOutput[i*3+0] + diffOutput[i*3+0]);
+        float g = std::max(0.0f, heroOutput[i*3+1] + diffOutput[i*3+1]);
+        float b = std::max(0.0f, heroOutput[i*3+2] + diffOutput[i*3+2]);
+        sanitize(r); sanitize(g); sanitize(b);
+        prefiltered[i*3+0] = r;
+        prefiltered[i*3+1] = g;
+        prefiltered[i*3+2] = b;
+    }
+
+    if (!albedo.empty()) {
+        for(size_t i=0; i<albedo.size(); ++i) sanitize(albedo[i]);
+    }
+    if (!normal.empty()) {
+        for(size_t i=0; i<normal.size(); ++i) sanitize(normal[i]);
     }
 
     std::vector<float> output = prefiltered;
@@ -3172,6 +3187,9 @@ HdGeminiRenderer::_RenderTiles(HdRenderThread *renderThread, HdGeminiRenderDeleg
         }
         _photonMap.Clear();
         _sppmPasses = 0;
+        
+        _accumHeroRGB.assign(width * height, GfVec3f(0.0f));
+        _accumDiffRGB.assign(width * height, GfVec3f(0.0f));
     }
     
     if (!_enableRestirDI && !_temporalReservoirs.empty()) {

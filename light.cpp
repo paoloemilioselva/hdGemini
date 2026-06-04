@@ -74,6 +74,20 @@ HdGeminiLight::Sync(HdSceneDelegate *sceneDelegate,
             if (heightVal.IsHolding<float>()) {
                 _height = heightVal.UncheckedGet<float>();
             }
+        } else if (_lightType == HdPrimTypeTokens->sphereLight || _lightType == HdPrimTypeTokens->diskLight) {
+            VtValue radiusVal = sceneDelegate->GetLightParamValue(id, HdLightTokens->radius);
+            if (radiusVal.IsHolding<float>()) {
+                _radius = radiusVal.UncheckedGet<float>();
+            }
+        } else if (_lightType == HdPrimTypeTokens->cylinderLight) {
+            VtValue radiusVal = sceneDelegate->GetLightParamValue(id, HdLightTokens->radius);
+            if (radiusVal.IsHolding<float>()) {
+                _radius = radiusVal.UncheckedGet<float>();
+            }
+            VtValue lengthVal = sceneDelegate->GetLightParamValue(id, HdLightTokens->length);
+            if (lengthVal.IsHolding<float>()) {
+                _length = lengthVal.UncheckedGet<float>();
+            }
         }
         
         HDGEMINI_LOG << "[Gemini] Syncing light " << id.GetText() << " (type: " << _lightType.GetText() << "):" << std::endl;

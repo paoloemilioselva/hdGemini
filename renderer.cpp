@@ -617,8 +617,20 @@ HdGeminiRenderer::_PrepareScene(HdRenderThread *renderThread, HdGeminiRenderDele
         } else if (light->GetLightType() == HdPrimTypeTokens->sphereLight) {
             GfMatrix4f transform = GfMatrix4f(light->GetTransform());
             float scale = transform.TransformDir(GfVec3f(1, 0, 0)).GetLength();
-            float r = (light->GetWidth() * scale) / 2.0f;
+            float r = light->GetRadius() * scale;
             power = light->GetIntensity() * std::max({light->GetColor()[0], light->GetColor()[1], light->GetColor()[2]}) * (4.0f * (float)M_PI * r * r);
+        } else if (light->GetLightType() == HdPrimTypeTokens->diskLight) {
+            GfMatrix4f transform = GfMatrix4f(light->GetTransform());
+            float scale = transform.TransformDir(GfVec3f(1, 0, 0)).GetLength();
+            float r = light->GetRadius() * scale;
+            power = light->GetIntensity() * std::max({light->GetColor()[0], light->GetColor()[1], light->GetColor()[2]}) * ((float)M_PI * r * r);
+        } else if (light->GetLightType() == HdPrimTypeTokens->cylinderLight) {
+            GfMatrix4f transform = GfMatrix4f(light->GetTransform());
+            float scaleR = transform.TransformDir(GfVec3f(1, 0, 0)).GetLength();
+            float scaleL = transform.TransformDir(GfVec3f(0, 0, 1)).GetLength();
+            float r = light->GetRadius() * scaleR;
+            float l = light->GetLength() * scaleL;
+            power = light->GetIntensity() * std::max({light->GetColor()[0], light->GetColor()[1], light->GetColor()[2]}) * (2.0f * (float)M_PI * r * l);
         } else if (light->GetLightType() == HdPrimTypeTokens->rectLight) {
             GfMatrix4f transform = GfMatrix4f(light->GetTransform());
             float scaleX = transform.TransformDir(GfVec3f(1, 0, 0)).GetLength();
@@ -1760,7 +1772,80 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
                     lightDist = -1.0f;
                 }
             }
+        } else if (light->GetLightType() == HdPrimTypeTokens->sphereLight) {
+            GfMatrix4f transform = GfMatrix4f(light->GetTransform());
+            float scale = transform.TransformDir(GfVec3f(1, 0, 0)).GetLength();
+            float r = light->GetRadius() * scale;
+            if (r > 0) {
+                float phi = ls.u * 2.0f * (float)M_PI;
+                float cosTheta = 1.0f - 2.0f * ls.v;
+                float sinTheta = std::sqrt(std::max(0.0f, 1.0f - cosTheta * cosTheta));
+                GfVec3f lPosLocal(r * sinTheta * std::cos(phi), r * sinTheta * std::sin(phi), r * cosTheta);
+                GfVec3f lPosWorld = transform.Transform(lPosLocal);
+                GfVec3f toLight = lPosWorld - targetPos;
+                lightDist = toLight.GetLength();
+                lDir = toLight / lightDist;
+                
+                GfVec3f lNormal = transform.TransformDir(lPosLocal).GetNormalized();
+                float cosThetaL = std::max(0.0f, GfDot(lNormal, -lDir));
+                if (cosThetaL > 0) {
+                    float area = 4.0f * (float)M_PI * r * r;
+                    lightPdf *= (lightDist * lightDist) / (area * cosThetaL);
+                    lColor = light->GetColor() * light->GetIntensity();
+                } else {
+                    lightDist = -1.0f;
+                }
+            }
+        } else if (light->GetLightType() == HdPrimTypeTokens->diskLight) {
+            GfMatrix4f transform = GfMatrix4f(light->GetTransform());
+            float scale = transform.TransformDir(GfVec3f(1, 0, 0)).GetLength();
+            float r = light->GetRadius() * scale;
+            if (r > 0) {
+                float rSample = r * std::sqrt(ls.u);
+                float theta = 2.0f * (float)M_PI * ls.v;
+                GfVec3f lPosLocal(rSample * std::cos(theta), rSample * std::sin(theta), 0.0f);
+                GfVec3f lPosWorld = transform.Transform(lPosLocal);
+                GfVec3f toLight = lPosWorld - targetPos;
+                lightDist = toLight.GetLength();
+                lDir = toLight / lightDist;
+                
+                GfVec3f lNormal = transform.TransformDir(GfVec3f(0, 0, -1)).GetNormalized();
+                float cosThetaL = std::max(0.0f, GfDot(lNormal, -lDir));
+                if (cosThetaL > 0) {
+                    float area = (float)M_PI * r * r;
+                    lightPdf *= (lightDist * lightDist) / (area * cosThetaL);
+                    lColor = light->GetColor() * light->GetIntensity();
+                } else {
+                    lightDist = -1.0f;
+                }
+            }
+        } else if (light->GetLightType() == HdPrimTypeTokens->cylinderLight) {
+            GfMatrix4f transform = GfMatrix4f(light->GetTransform());
+            float scaleR = transform.TransformDir(GfVec3f(1, 0, 0)).GetLength();
+            float scaleL = transform.TransformDir(GfVec3f(0, 0, 1)).GetLength();
+            float r = light->GetRadius() * scaleR;
+            float l = light->GetLength() * scaleL;
+            if (r > 0 && l > 0) {
+                float phi = ls.u * 2.0f * (float)M_PI;
+                float z = (ls.v - 0.5f) * l;
+                GfVec3f lPosLocal(r * std::cos(phi), r * std::sin(phi), z);
+                GfVec3f lPosWorld = transform.Transform(lPosLocal);
+                GfVec3f toLight = lPosWorld - targetPos;
+                lightDist = toLight.GetLength();
+                lDir = toLight / lightDist;
+                
+                GfVec3f lNormal = transform.TransformDir(GfVec3f(lPosLocal[0], lPosLocal[1], 0.0f)).GetNormalized();
+                float cosThetaL = std::max(0.0f, GfDot(lNormal, -lDir));
+                if (cosThetaL > 0) {
+                    float area = 2.0f * (float)M_PI * r * l;
+                    lightPdf *= (lightDist * lightDist) / (area * cosThetaL);
+                    lColor = light->GetColor() * light->GetIntensity();
+                } else {
+                    lightDist = -1.0f;
+                }
+            }
         } else {
+            // Point light fallback for any unhandled lights
             GfVec3f lPos = GfMatrix4f(light->GetTransform()).ExtractTranslation();
             GfVec3f toLight = lPos - targetPos;
             lightDist = toLight.GetLength();
@@ -1868,11 +1953,11 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
             GfVec3f lightColor;
             
             for (const auto& light : _activeLights) {
+                GfMatrix4f invTransform = GfMatrix4f(light->GetTransform()).GetInverse();
+                GfVec3f localOrigin = invTransform.Transform(currentRayOrigin);
+                GfVec3f localDir = invTransform.TransformDir(currentRayDir);
+                
                 if (light->GetLightType() == HdPrimTypeTokens->rectLight) {
-                    GfMatrix4f invTransform = GfMatrix4f(light->GetTransform()).GetInverse();
-                    GfVec3f localOrigin = invTransform.Transform(currentRayOrigin);
-                    GfVec3f localDir = invTransform.TransformDir(currentRayDir);
-                    
                     if (std::abs(localDir[2]) > 1e-6f) {
                         float t = -localOrigin[2] / localDir[2];
                         if (t > 0.0f && t < lightT) {
@@ -1887,12 +1972,73 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
                                 intersectedLight = light;
                                 GfVec3f n(0, 0, localDir[2] > 0.0f ? -1.0f : 1.0f);
                                 lightNormal = GfMatrix4f(light->GetTransform()).TransformDir(n).GetNormalized();
-                                // RectLight only emits from the -Z face (which means localDir[2] > 0)
                                 if (localDir[2] > 0.0f) {
                                     lightColor = light->GetColor() * light->GetIntensity();
                                 } else {
-                                    lightColor = GfVec3f(0.01f); // Dark grey for the back side
+                                    lightColor = GfVec3f(0.01f);
                                 }
+                            }
+                        }
+                    }
+                } else if (light->GetLightType() == HdPrimTypeTokens->diskLight) {
+                    if (std::abs(localDir[2]) > 1e-6f) {
+                        float t = -localOrigin[2] / localDir[2];
+                        if (t > 0.0f && t < lightT) {
+                            float localX = localOrigin[0] + t * localDir[0];
+                            float localY = localOrigin[1] + t * localDir[1];
+                            GfMatrix4f transform = GfMatrix4f(light->GetTransform());
+                            float scale = transform.TransformDir(GfVec3f(1, 0, 0)).GetLength();
+                            float r = light->GetRadius() * scale;
+                            if (localX * localX + localY * localY <= r * r) {
+                                lightT = t;
+                                intersectedLight = light;
+                                GfVec3f n(0, 0, localDir[2] > 0.0f ? -1.0f : 1.0f);
+                                lightNormal = GfMatrix4f(light->GetTransform()).TransformDir(n).GetNormalized();
+                                if (localDir[2] > 0.0f) {
+                                    lightColor = light->GetColor() * light->GetIntensity();
+                                } else {
+                                    lightColor = GfVec3f(0.01f);
+                                }
+                            }
+                        }
+                    }
+                } else if (light->GetLightType() == HdPrimTypeTokens->sphereLight) {
+                    GfMatrix4f transform = GfMatrix4f(light->GetTransform());
+                    float scale = transform.TransformDir(GfVec3f(1, 0, 0)).GetLength();
+                    float r = light->GetRadius() * scale;
+                    GfVec2f isect = _RaySphereIntersect(localOrigin, localDir, r);
+                    float t = isect[0] > 0.0f ? isect[0] : isect[1];
+                    if (t > 0.0f && t < lightT) {
+                        lightT = t;
+                        intersectedLight = light;
+                        GfVec3f hitLocal = localOrigin + t * localDir;
+                        lightNormal = transform.TransformDir(hitLocal).GetNormalized();
+                        lightColor = light->GetColor() * light->GetIntensity();
+                    }
+                } else if (light->GetLightType() == HdPrimTypeTokens->cylinderLight) {
+                    GfMatrix4f transform = GfMatrix4f(light->GetTransform());
+                    float scaleR = transform.TransformDir(GfVec3f(1, 0, 0)).GetLength();
+                    float scaleL = transform.TransformDir(GfVec3f(0, 0, 1)).GetLength();
+                    float r = light->GetRadius() * scaleR;
+                    float l = light->GetLength() * scaleL;
+                    
+                    float a = localDir[0]*localDir[0] + localDir[1]*localDir[1];
+                    float b = 2.0f * (localOrigin[0]*localDir[0] + localOrigin[1]*localDir[1]);
+                    float c = localOrigin[0]*localOrigin[0] + localOrigin[1]*localOrigin[1] - r*r;
+                    
+                    float d = b*b - 4.0f*a*c;
+                    if (d >= 0.0f && a > 1e-6f) {
+                        float t0 = (-b - std::sqrt(d)) / (2.0f*a);
+                        float t1 = (-b + std::sqrt(d)) / (2.0f*a);
+                        float t = t0 > 0.0f ? t0 : t1;
+                        if (t > 0.0f && t < lightT) {
+                            float z = localOrigin[2] + t * localDir[2];
+                            if (z >= -l/2.0f && z <= l/2.0f) {
+                                lightT = t;
+                                intersectedLight = light;
+                                GfVec3f hitLocal(localOrigin[0] + t*localDir[0], localOrigin[1] + t*localDir[1], 0.0f);
+                                lightNormal = transform.TransformDir(hitLocal).GetNormalized();
+                                lightColor = light->GetColor() * light->GetIntensity();
                             }
                         }
                     }

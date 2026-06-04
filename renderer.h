@@ -396,6 +396,7 @@ private:
     struct PhotonMap {
         std::vector<Photon> photons;
         std::unordered_map<uint64_t, std::vector<int>> spatialHash;
+        std::mutex mutex;
         float searchRadius = 0.1f;
         
         void Clear() {
@@ -411,6 +412,7 @@ private:
         }
         
         void AddPhoton(const Photon& p) {
+            std::lock_guard<std::mutex> lock(mutex);
             int idx = (int)photons.size();
             photons.push_back(p);
             spatialHash[Hash(p.pos)].push_back(idx);

@@ -36,50 +36,71 @@
 #include <dbghelp.h>
 #pragma comment(lib, "dbghelp.lib")
 
+static CRITICAL_SECTION _geminiCrashLock;
+static bool _geminiCrashLockInit = false;
+static volatile LONG _geminiCrashCount = 0;
+
 static void _GeminiPrintStackTrace(PEXCEPTION_POINTERS exInfo) {
+    // Only let the first crash print fully; others just note their existence
+    LONG crashNum = InterlockedIncrement(&_geminiCrashCount);
+    
+    EnterCriticalSection(&_geminiCrashLock);
+    
+    if (crashNum > 1) {
+        std::cerr << "[Gemini] Additional crash #" << crashNum 
+                  << " on thread " << GetCurrentThreadId()
+                  << " at 0x" << std::hex << exInfo->ExceptionRecord->ExceptionAddress 
+                  << std::dec << std::endl;
+        LeaveCriticalSection(&_geminiCrashLock);
+        return;
+    }
+
     HANDLE process = GetCurrentProcess();
-    HANDLE thread = GetCurrentThread();
     
     SymSetOptions(SYMOPT_LOAD_LINES | SYMOPT_UNDNAME | SYMOPT_DEFERRED_LOADS);
     SymInitialize(process, NULL, TRUE);
 
-    CONTEXT ctx = *exInfo->ContextRecord;
-    STACKFRAME64 frame = {};
-    DWORD machineType = IMAGE_FILE_MACHINE_AMD64;
-    frame.AddrPC.Offset = ctx.Rip;
-    frame.AddrPC.Mode = AddrModeFlat;
-    frame.AddrFrame.Offset = ctx.Rbp;
-    frame.AddrFrame.Mode = AddrModeFlat;
-    frame.AddrStack.Offset = ctx.Rsp;
-    frame.AddrStack.Mode = AddrModeFlat;
-
     std::cerr << "\n[Gemini] *** ACCESS VIOLATION (0xC0000005) ***" << std::endl;
-    std::cerr << "[Gemini] Crash address: 0x" << std::hex << exInfo->ExceptionRecord->ExceptionAddress << std::dec << std::endl;
-    std::cerr << "[Gemini] Stack trace:" << std::endl;
+    std::cerr << "[Gemini] Thread ID: " << GetCurrentThreadId() << std::endl;
+    std::cerr << "[Gemini] Crash address: 0x" << std::hex 
+              << exInfo->ExceptionRecord->ExceptionAddress << std::dec << std::endl;
+    
+    // Print faulting instruction pointer and what memory was accessed
+    if (exInfo->ExceptionRecord->NumberParameters >= 2) {
+        ULONG_PTR accessType = exInfo->ExceptionRecord->ExceptionInformation[0];
+        ULONG_PTR accessAddr = exInfo->ExceptionRecord->ExceptionInformation[1];
+        std::cerr << "[Gemini] " << (accessType == 0 ? "READ" : (accessType == 1 ? "WRITE" : "EXECUTE"))
+                  << " access to address: 0x" << std::hex << accessAddr << std::dec << std::endl;
+    }
 
-    char symbolBuf[sizeof(SYMBOL_INFO) + 512];
+    // Use RtlCaptureStackBackTrace - much more reliable on x64 than StackWalk64
+    void* stack[64];
+    USHORT frames = CaptureStackBackTrace(0, 64, stack, NULL);
+    
+    std::cerr << "[Gemini] Stack trace (" << frames << " frames):" << std::endl;
+
+    char symbolBuf[sizeof(SYMBOL_INFO) + 1024];
     SYMBOL_INFO* symbol = (SYMBOL_INFO*)symbolBuf;
     symbol->SizeOfStruct = sizeof(SYMBOL_INFO);
-    symbol->MaxNameLen = 512;
+    symbol->MaxNameLen = 1024;
 
     IMAGEHLP_LINE64 line = {};
     line.SizeOfStruct = sizeof(IMAGEHLP_LINE64);
 
-    for (int i = 0; i < 32; ++i) {
-        if (!StackWalk64(machineType, process, thread, &frame, &ctx,
-                         NULL, SymFunctionTableAccess64, SymGetModuleBase64, NULL)) {
-            break;
-        }
-        if (frame.AddrPC.Offset == 0) break;
-
-        DWORD64 addr = frame.AddrPC.Offset;
-        DWORD64 moduleBase = SymGetModuleBase64(process, addr);
+    for (USHORT i = 0; i < frames; ++i) {
+        DWORD64 addr = (DWORD64)stack[i];
+        
+        // Get module name via VirtualQuery + GetModuleFileName (always works)
+        char modulePath[MAX_PATH] = "<unknown>";
         char moduleName[MAX_PATH] = "<unknown>";
-        if (moduleBase) {
-            IMAGEHLP_MODULE64 modInfo = {};
-            modInfo.SizeOfStruct = sizeof(IMAGEHLP_MODULE64);
-            if (SymGetModuleInfo64(process, addr, &modInfo)) {
-                strncpy(moduleName, modInfo.ModuleName, MAX_PATH - 1);
+        MEMORY_BASIC_INFORMATION mbi = {};
+        if (VirtualQuery((void*)addr, &mbi, sizeof(mbi))) {
+            HMODULE hMod = (HMODULE)mbi.AllocationBase;
+            if (GetModuleFileNameA(hMod, modulePath, MAX_PATH)) {
+                // Extract just the filename
+                const char* lastSlash = strrchr(modulePath, '\\');
+                if (!lastSlash) lastSlash = strrchr(modulePath, '/');
+                strncpy(moduleName, lastSlash ? lastSlash + 1 : modulePath, MAX_PATH - 1);
             }
         }
 
@@ -94,17 +115,22 @@ static void _GeminiPrintStackTrace(PEXCEPTION_POINTERS exInfo) {
                           << " +0x" << std::hex << displacement64 << std::dec << std::endl;
             }
         } else {
-            std::cerr << "  #" << i << " " << moduleName << " 0x" << std::hex << addr << std::dec << std::endl;
+            DWORD64 moduleBase = 0;
+            if (VirtualQuery((void*)addr, &mbi, sizeof(mbi))) {
+                moduleBase = (DWORD64)mbi.AllocationBase;
+            }
+            std::cerr << "  #" << i << " " << moduleName << " +0x" << std::hex 
+                      << (addr - moduleBase) << std::dec << std::endl;
         }
     }
     std::cerr << "[Gemini] *** END STACK TRACE ***\n" << std::endl;
     SymCleanup(process);
+    LeaveCriticalSection(&_geminiCrashLock);
 }
 
 static LONG WINAPI _GeminiVectoredHandler(PEXCEPTION_POINTERS exInfo) {
     if (exInfo->ExceptionRecord->ExceptionCode == EXCEPTION_ACCESS_VIOLATION) {
         _GeminiPrintStackTrace(exInfo);
-        // Continue search so the default handler can terminate the process
         return EXCEPTION_CONTINUE_SEARCH;
     }
     return EXCEPTION_CONTINUE_SEARCH;
@@ -113,7 +139,8 @@ static LONG WINAPI _GeminiVectoredHandler(PEXCEPTION_POINTERS exInfo) {
 static bool _geminiVehInstalled = false;
 static void _GeminiInstallCrashHandler() {
     if (!_geminiVehInstalled) {
-        // First handler (1) means it runs BEFORE any other handlers (including OIDN's)
+        InitializeCriticalSection(&_geminiCrashLock);
+        _geminiCrashLockInit = true;
         AddVectoredExceptionHandler(1, _GeminiVectoredHandler);
         _geminiVehInstalled = true;
     }

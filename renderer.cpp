@@ -3615,7 +3615,8 @@ HdGeminiRenderer::_RenderTiles(HdRenderThread *renderThread, HdGeminiRenderDeleg
                             lensU *= apertureRadius; lensV *= apertureRadius;
 
                             GfVec3f lensPointCam(lensU, lensV, 0.0f);
-                            GfVec3f focalPointCam = nearPlanePointCam * activeFocusDistance;
+                            float t_focus = activeFocusDistance / std::max(1e-5f, std::abs(nearPlanePointCam[2]));
+                            GfVec3f focalPointCam = nearPlanePointCam * t_focus;
                             
                             GfVec3f lensPointWorld = GfVec3f(_inverseViewMatrix.Transform(GfVec3d(lensPointCam)));
                             GfVec3f focalPointWorld = GfVec3f(_inverseViewMatrix.Transform(GfVec3d(focalPointCam)));
@@ -3960,7 +3961,8 @@ void HdGeminiRenderer::_RenderTilesSYCL(HdRenderThread *renderThread, HdGeminiRe
                 lensU *= scaledFocalLength / (2.0f * fStop); lensV *= scaledFocalLength / (2.0f * fStop);
 
                 float lensCam[4] = {lensU, lensV, 0.0f, 1.0f};
-                float focalCam[4] = {nearPlanePointCam[0]*focusDist, nearPlanePointCam[1]*focusDist, nearPlanePointCam[2]*focusDist, 1.0f};
+                float t_focus = focusDist / sycl::max(1e-5f, sycl::fabs(nearPlanePointCam[2]));
+                float focalCam[4] = {nearPlanePointCam[0]*t_focus, nearPlanePointCam[1]*t_focus, nearPlanePointCam[2]*t_focus, 1.0f};
                 float lensWorld[4] = {0,0,0,0}; float focalWorld[4] = {0,0,0,0};
                 for(int i=0; i<4; ++i) { for(int j=0; j<4; ++j) { lensWorld[i] += lensCam[j] * invView[j*4 + i]; focalWorld[i] += focalCam[j] * invView[j*4 + i]; } }
                 

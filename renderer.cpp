@@ -31,6 +31,95 @@
 #include <iomanip>
 #include <ctime>
 
+#ifdef _WIN32
+#include <windows.h>
+#include <dbghelp.h>
+#pragma comment(lib, "dbghelp.lib")
+
+static void _GeminiPrintStackTrace(PEXCEPTION_POINTERS exInfo) {
+    HANDLE process = GetCurrentProcess();
+    HANDLE thread = GetCurrentThread();
+    
+    SymSetOptions(SYMOPT_LOAD_LINES | SYMOPT_UNDNAME | SYMOPT_DEFERRED_LOADS);
+    SymInitialize(process, NULL, TRUE);
+
+    CONTEXT ctx = *exInfo->ContextRecord;
+    STACKFRAME64 frame = {};
+    DWORD machineType = IMAGE_FILE_MACHINE_AMD64;
+    frame.AddrPC.Offset = ctx.Rip;
+    frame.AddrPC.Mode = AddrModeFlat;
+    frame.AddrFrame.Offset = ctx.Rbp;
+    frame.AddrFrame.Mode = AddrModeFlat;
+    frame.AddrStack.Offset = ctx.Rsp;
+    frame.AddrStack.Mode = AddrModeFlat;
+
+    std::cerr << "\n[Gemini] *** ACCESS VIOLATION (0xC0000005) ***" << std::endl;
+    std::cerr << "[Gemini] Crash address: 0x" << std::hex << exInfo->ExceptionRecord->ExceptionAddress << std::dec << std::endl;
+    std::cerr << "[Gemini] Stack trace:" << std::endl;
+
+    char symbolBuf[sizeof(SYMBOL_INFO) + 512];
+    SYMBOL_INFO* symbol = (SYMBOL_INFO*)symbolBuf;
+    symbol->SizeOfStruct = sizeof(SYMBOL_INFO);
+    symbol->MaxNameLen = 512;
+
+    IMAGEHLP_LINE64 line = {};
+    line.SizeOfStruct = sizeof(IMAGEHLP_LINE64);
+
+    for (int i = 0; i < 32; ++i) {
+        if (!StackWalk64(machineType, process, thread, &frame, &ctx,
+                         NULL, SymFunctionTableAccess64, SymGetModuleBase64, NULL)) {
+            break;
+        }
+        if (frame.AddrPC.Offset == 0) break;
+
+        DWORD64 addr = frame.AddrPC.Offset;
+        DWORD64 moduleBase = SymGetModuleBase64(process, addr);
+        char moduleName[MAX_PATH] = "<unknown>";
+        if (moduleBase) {
+            IMAGEHLP_MODULE64 modInfo = {};
+            modInfo.SizeOfStruct = sizeof(IMAGEHLP_MODULE64);
+            if (SymGetModuleInfo64(process, addr, &modInfo)) {
+                strncpy(moduleName, modInfo.ModuleName, MAX_PATH - 1);
+            }
+        }
+
+        DWORD64 displacement64 = 0;
+        DWORD displacement32 = 0;
+        if (SymFromAddr(process, addr, &displacement64, symbol)) {
+            if (SymGetLineFromAddr64(process, addr, &displacement32, &line)) {
+                std::cerr << "  #" << i << " " << moduleName << "!" << symbol->Name
+                          << " [" << line.FileName << ":" << line.LineNumber << "]" << std::endl;
+            } else {
+                std::cerr << "  #" << i << " " << moduleName << "!" << symbol->Name
+                          << " +0x" << std::hex << displacement64 << std::dec << std::endl;
+            }
+        } else {
+            std::cerr << "  #" << i << " " << moduleName << " 0x" << std::hex << addr << std::dec << std::endl;
+        }
+    }
+    std::cerr << "[Gemini] *** END STACK TRACE ***\n" << std::endl;
+    SymCleanup(process);
+}
+
+static LONG WINAPI _GeminiVectoredHandler(PEXCEPTION_POINTERS exInfo) {
+    if (exInfo->ExceptionRecord->ExceptionCode == EXCEPTION_ACCESS_VIOLATION) {
+        _GeminiPrintStackTrace(exInfo);
+        // Continue search so the default handler can terminate the process
+        return EXCEPTION_CONTINUE_SEARCH;
+    }
+    return EXCEPTION_CONTINUE_SEARCH;
+}
+
+static bool _geminiVehInstalled = false;
+static void _GeminiInstallCrashHandler() {
+    if (!_geminiVehInstalled) {
+        // First handler (1) means it runs BEFORE any other handlers (including OIDN's)
+        AddVectoredExceptionHandler(1, _GeminiVectoredHandler);
+        _geminiVehInstalled = true;
+    }
+}
+#endif // _WIN32
+
 #ifdef HDGEMINI_HAS_OIDN
 #ifndef SYCL_LANGUAGE_VERSION
 #define SYCL_LANGUAGE_VERSION 202001L
@@ -165,6 +254,9 @@ HdGeminiRenderer::HdGeminiRenderer()
     , _resolutionLevel(_initialResolutionLevel)
     , _frameCount(0)
 {
+#ifdef _WIN32
+    _GeminiInstallCrashHandler();
+#endif
 #ifdef HDGEMINI_HAS_SYCL
     try {
         auto async_handler = [](sycl::exception_list exceptions) {

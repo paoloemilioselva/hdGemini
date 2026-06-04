@@ -167,6 +167,7 @@ target_link_libraries(
     osdCPU.lib
     TBB::tbb
     ${OIDN_LIBRARIES}
+    dbghelp.lib
 )
 
 if(HDGEMINI_USE_SYCL)

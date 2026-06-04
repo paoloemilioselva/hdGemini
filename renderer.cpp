@@ -3423,11 +3423,11 @@ HdGeminiRenderer::_RenderTiles(HdRenderThread *renderThread, HdGeminiRenderDeleg
     
     GfVec3f cameraPosWorld(_inverseViewMatrix.Transform(GfVec3f(0, 0, 0)));
     
-    float activeFocalLength = _enablePhysicalCamera ? _focalLength : _hydraFocalLength;
-    float activeFStop = _enablePhysicalCamera ? _fStop : _hydraFStop;
-    float activeFocusDistance = _enablePhysicalCamera ? _focusDistance : _hydraFocusDistance;
-    float activeIso = _enablePhysicalCamera ? _iso : _hydraIso;
-    float activeShutterSpeed = _enablePhysicalCamera ? _shutterSpeed : _hydraShutterSpeed;
+    float activeFocalLength = std::max(0.01f, _enablePhysicalCamera ? _focalLength : _hydraFocalLength);
+    float activeFStop = std::max(0.01f, _enablePhysicalCamera ? _fStop : _hydraFStop);
+    float activeFocusDistance = std::max(0.01f, _enablePhysicalCamera ? _focusDistance : _hydraFocusDistance);
+    float activeIso = std::max(0.01f, _enablePhysicalCamera ? _iso : _hydraIso);
+    float activeShutterSpeed = std::max(0.0001f, _enablePhysicalCamera ? _shutterSpeed : _hydraShutterSpeed);
     
     float lensWaveHeight = -1e30f;
     if (_oceanEnable && _globalOcean) {
@@ -3876,12 +3876,12 @@ void HdGeminiRenderer::_RenderTilesSYCL(HdRenderThread *renderThread, HdGeminiRe
     float invHeight = 1.0f / height;
     float lensDistortion = _lensDistortion;
     bool enableDoF = _enableDoF;
-    float focalLength = _enablePhysicalCamera ? _focalLength : _hydraFocalLength;
-    float fStop = _enablePhysicalCamera ? _fStop : _hydraFStop;
-    float focusDist = _enablePhysicalCamera ? _focusDistance : _hydraFocusDistance;
+    float focalLength = std::max(0.01f, _enablePhysicalCamera ? _focalLength : _hydraFocalLength);
+    float fStop = std::max(0.01f, _enablePhysicalCamera ? _fStop : _hydraFStop);
+    float focusDist = std::max(0.01f, _enablePhysicalCamera ? _focusDistance : _hydraFocusDistance);
     int bokehBlades = _bokehBlades;
-    float iso = _enablePhysicalCamera ? _iso : _hydraIso;
-    float shutterSpeed = _enablePhysicalCamera ? _shutterSpeed : _hydraShutterSpeed;
+    float iso = std::max(0.01f, _enablePhysicalCamera ? _iso : _hydraIso);
+    float shutterSpeed = std::max(0.0001f, _enablePhysicalCamera ? _shutterSpeed : _hydraShutterSpeed);
     
     float meniscusSize = _meniscusSize;
     float meniscusBend = _meniscusBend;

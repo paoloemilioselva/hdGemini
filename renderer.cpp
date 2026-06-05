@@ -2832,7 +2832,8 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
                 
                 SampledSpectrum bounceRad = totalRadiance - totalRadianceBeforeBounce;
                 for(int i=0; i<SPECTRUM_SAMPLES; ++i) {
-                    giVirtualRadiance[i] = bounceRad[i] / std::max(throughput[i], 1e-6f);
+                    float val = bounceRad[i] / std::max(throughput[i], 1e-6f);
+                    giVirtualRadiance[i] = (std::isnan(val) || std::isinf(val)) ? 0.0f : val;
                 }
                 totalRadiance = totalRadianceBeforeBounce; // Undo addition to totalRadiance
                 hasGiData = true;
@@ -3164,9 +3165,10 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
         }
         
         r.W = (p_hat_final > 0.0f) ? (r.w_sum / (p_hat_final * r.M)) : 0.0f;
+        if (std::isnan(r.W) || std::isinf(r.W)) r.W = 0.0f;
         r.W = std::min(r.W, 50.0f); // Clamp to prevent firefly explosions
         
-        if (p_hat_final > 0.0f) {
+        if (p_hat_final > 0.0f && r.W > 0.0f) {
             SampledSpectrum giResRadiance = RGBToSpectrum(r.virtualLightRadiance, lambda);
             // Diffuse BRDF approximation: albedo / pi
             SampledSpectrum diffAlbedo = RGBToSpectrum(giPrimaryAlbedo, lambda) * (1.0f / (float)M_PI);
@@ -3175,7 +3177,10 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
             float G = nDotL_final / std::max(finalDistSq, 1e-6f);
             // RIS estimator: throughput * f * L * G * W
             for(int i=0; i<SPECTRUM_SAMPLES; ++i) {
-                totalRadiance[i] += giPrimaryThroughput[i] * diffAlbedo[i] * giResRadiance[i] * G * r.W;
+                float added = giPrimaryThroughput[i] * diffAlbedo[i] * giResRadiance[i] * G * r.W;
+                if (!std::isnan(added) && !std::isinf(added)) {
+                    totalRadiance[i] += added;
+                }
             }
         }
         

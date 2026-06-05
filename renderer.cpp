@@ -1729,6 +1729,7 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
     int giPrevX = pixelX, giPrevY = pixelY;
     bool giFoundPrev = false;
     bool giPrimaryCaptured = false;
+    int giPrimaryBounce = -1;
     GfVec3f giVirtualLightPos, giVirtualLightNormal;
     SampledSpectrum giVirtualRadiance(0.0f);
     SampledSpectrum giPrimaryThroughput(0.0f);
@@ -2354,6 +2355,7 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
         // Capture the first non-transmissive hit as the GI primary (skip glass surfaces)
         if (useRestirGI && !giPrimaryCaptured && hit.transmission < 0.5f) {
             giPrimaryCaptured = true;
+            giPrimaryBounce = bounce;
             giPrimaryPos = hitPos;
             giPrimaryNormal = shadingNormal;
             giPrimaryDepth = hit.t;
@@ -2823,7 +2825,7 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
 
         // --- End of Direct Lighting / ReSTIR GI Virtual Light Capture ---
         // Capture on the bounce AFTER the primary was captured (first non-transmissive hit after primary)
-        if (useRestirGI && giPrimaryCaptured && !hasGiData && bounce > 0 && hit.transmission < 0.5f) {
+        if (useRestirGI && giPrimaryCaptured && !hasGiData && bounce > giPrimaryBounce && hit.transmission < 0.5f) {
             giVirtualLightPos = hitPos;
             giVirtualLightNormal = shadingNormal;
             

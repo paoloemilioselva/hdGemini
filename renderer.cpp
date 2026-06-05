@@ -2207,6 +2207,7 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
                 }
             }
             if (outNormal) *outNormal = hit.smoothNormal;
+            if (outAlbedo && std::isnan((*outAlbedo)[0])) *outAlbedo = GfVec3f(0.0f);
         }
 
         GfVec3f hitPos = currentRayOrigin + currentRayDir * hit.t;
@@ -3948,6 +3949,10 @@ HdGeminiRenderer::ReapplyPostProcess()
             GfVec3f hero = _accumHeroRGB[idx] * invSamples;
             GfVec3f diff = _accumDiffRGB[idx] * invSamples;
             GfVec3f finalRGB = hero + diff;
+            auto sanitize = [](float& val) {
+                if (std::isnan(val) || std::isinf(val)) val = 0.0f;
+            };
+            sanitize(finalRGB[0]); sanitize(finalRGB[1]); sanitize(finalRGB[2]);
             float pixel[4] = { finalRGB[0], finalRGB[1], finalRGB[2], 1.0f };
             _colorBuffer->Write(GfVec3i(x, y, 0), 4, pixel);
         }

@@ -391,7 +391,10 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
 
     HdMeshTopology topology = GetMeshTopology(sceneDelegate);    
     if (HdChangeTracker::IsTransformDirty(*dirtyBits, id)) {
+        _previousTransform = _transform;
         _transform = GfMatrix4f(sceneDelegate->GetTransform(id));
+    } else {
+        _previousTransform = _transform;
     }
 
     // --- COMPUTED PRIMVARS ---
@@ -577,6 +580,44 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
             }
             _normalInterp = normalInterp;
             _subsetsDirty = true;
+        }
+    }
+
+    // --- VELOCITY UPDATING ---
+    TfToken velocityToken = HdTokens->velocities;
+    bool velocitiesDirty = HdChangeTracker::IsPrimvarDirty(*dirtyBits, id, velocityToken) || _velocities.empty();
+    if (velocitiesDirty) {
+        HdInterpolation velocityInterp = HdInterpolationVertex;
+        bool found = false;
+        for (int i = 0; i < HdInterpolationCount; ++i) {
+            HdPrimvarDescriptorVector pvs = sceneDelegate->GetPrimvarDescriptors(id, (HdInterpolation)i);
+            for (const auto& pv : pvs) {
+                if (pv.name == velocityToken) {
+                    velocityInterp = pv.interpolation;
+                    found = true;
+                    break;
+                }
+            }
+            if (found) break;
+        }
+
+        VtIntArray velocityIndices;
+        VtValue val = sceneDelegate->GetIndexedPrimvar(id, velocityToken, &velocityIndices);
+        if (val.IsEmpty()) val = sceneDelegate->Get(id, velocityToken);
+
+        if (!val.IsEmpty() && val.IsHolding<VtVec3fArray>()) {
+            VtVec3fArray velocities = val.UncheckedGet<VtVec3fArray>();
+            if (!velocityIndices.empty()) {
+                VtVec3fArray flattened(velocityIndices.size());
+                for (size_t i = 0; i < velocityIndices.size(); ++i) {
+                    flattened[i] = velocities[velocityIndices[i]];
+                }
+                velocities = flattened;
+            }
+            _velocities = velocities;
+            _velocityInterp = velocityInterp;
+        } else {
+            _velocities.clear();
         }
     }
 

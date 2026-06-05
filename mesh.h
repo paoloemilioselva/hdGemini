@@ -40,10 +40,13 @@ public:
 
     const VtVec3fArray& GetPoints() const { return _points; }
     const GfMatrix4f& GetTransform() const { return _transform; }
+    const GfMatrix4f& GetPreviousTransform() const { return _previousTransform; }
     bool IsVisible() const { return _visible; }
     const VtVec3fArray& GetColors() const { return _colors; }
     const VtVec2fArray& GetUVs() const { return _uvs; }
     const VtVec3fArray& GetNormals() const { return _normals; }
+    const VtVec3fArray& GetVelocities() const { return _velocities; }
+    HdInterpolation GetVelocityInterpolation() const { return _velocityInterp; }
     
     const std::vector<Subset>& GetSubsets() const { return _subsets; }
     const SdfPath& GetInstancerId() const { return _instancerId; }
@@ -66,6 +69,7 @@ private:
 
     VtVec3fArray _points;
     GfMatrix4f _transform;
+    GfMatrix4f _previousTransform;
     SdfPath _instancerId;
     std::vector<Subset> _subsets;
     bool _visible;
@@ -79,10 +83,12 @@ private:
     VtVec3fArray _colors;
     VtVec2fArray _uvs;
     VtVec3fArray _normals;
+    VtVec3fArray _velocities;
 
     HdInterpolation _colorInterp = HdInterpolationConstant;
     HdInterpolation _uvInterp = HdInterpolationConstant;
     HdInterpolation _normalInterp = HdInterpolationConstant;
+    HdInterpolation _velocityInterp = HdInterpolationConstant;
 
     HdGeminiMesh(const HdGeminiMesh&) = delete;
     HdGeminiMesh &operator =(const HdGeminiMesh&) = delete;

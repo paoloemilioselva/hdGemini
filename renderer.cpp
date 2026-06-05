@@ -2824,18 +2824,24 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
         }
 
         // --- End of Direct Lighting / ReSTIR GI Virtual Light Capture ---
-        // Capture on the bounce AFTER the primary was captured (first non-transmissive hit after primary)
-        if (useRestirGI && giPrimaryCaptured && !hasGiData && bounce > giPrimaryBounce && hit.transmission < 0.5f) {
-            giVirtualLightPos = hitPos;
-            giVirtualLightNormal = shadingNormal;
-            
-            SampledSpectrum bounceRad = totalRadiance - totalRadianceBeforeBounce;
-            for(int i=0; i<SPECTRUM_SAMPLES; ++i) {
-                giVirtualRadiance[i] = bounceRad[i] / std::max(throughput[i], 1e-6f);
+        // Capture on the bounce AFTER the primary was captured
+        if (useRestirGI && giPrimaryCaptured && !hasGiData && bounce == giPrimaryBounce + 1) {
+            if (hit.transmission < 0.5f) {
+                giVirtualLightPos = hitPos;
+                giVirtualLightNormal = shadingNormal;
+                
+                SampledSpectrum bounceRad = totalRadiance - totalRadianceBeforeBounce;
+                for(int i=0; i<SPECTRUM_SAMPLES; ++i) {
+                    giVirtualRadiance[i] = bounceRad[i] / std::max(throughput[i], 1e-6f);
+                }
+                totalRadiance = totalRadianceBeforeBounce; // Undo addition to totalRadiance
+                hasGiData = true;
+                break; // Stop path tracing base path
+            } else {
+                // If the bounce after primary is transmissive, we cannot straight-line connect!
+                // Disable ReSTIR GI for this ray and continue normally.
+                useRestirGI = false;
             }
-            totalRadiance = totalRadianceBeforeBounce; // Undo addition to totalRadiance
-            hasGiData = true;
-            break; // Stop path tracing base path
         }
         
         // --- Indirect Path Selection (BSDF Sampling) ---
@@ -3145,8 +3151,15 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
             finalDir /= finalDist;
             float nDotL = std::max(0.0f, GfDot(giPrimaryNormal, finalDir));
             if (nDotL > 0.0f) {
-                float lumFinal = 0.2126f * r.virtualLightRadiance[0] + 0.7152f * r.virtualLightRadiance[1] + 0.0722f * r.virtualLightRadiance[2];
-                p_hat_final = lumFinal * nDotL / finalDistSq;
+                // Final visibility check
+                GfVec3f shadowOrigin = giPrimaryPos + giPrimaryNormal * RAY_EPSILON(giPrimaryPos);
+                float shadowTransDepth = 0; GfVec3f sc(0); GfVec3f tc(0);
+                SampledSpectrum shadowVis = _TraceShadowRay(shadowOrigin, finalDir, finalDist - 1e-3f, false, shadowTransDepth, tc, sc, renderThread, sampleIdx, qmcDim, rng, lambda);
+                
+                if (shadowVis[0] > 0 || shadowVis[1] > 0 || shadowVis[2] > 0) {
+                    float lumFinal = 0.2126f * r.virtualLightRadiance[0] + 0.7152f * r.virtualLightRadiance[1] + 0.0722f * r.virtualLightRadiance[2];
+                    p_hat_final = lumFinal * nDotL / finalDistSq;
+                }
             }
         }
         

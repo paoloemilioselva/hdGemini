@@ -20,6 +20,18 @@ def "Render"
 {
     def RenderSettings "GeminiRenderSettings"
     {
+        custom bool gemini:enableSubsurface = True (
+            uiHints = {
+                string displayName = "Enable Subsurface Scattering"
+                string displayGroup = "Performance"
+            }
+        )
+        custom bool gemini:enableRestirGI = True (
+            uiHints = {
+                string displayName = "Enable ReSTIR GI"
+                string displayGroup = "Performance"
+            }
+        )
         custom bool gemini:enablePhysicalCamera = True (
             uiHints = {
                 string displayName = "Override Physical Camera Parameters"

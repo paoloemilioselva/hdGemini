@@ -2200,7 +2200,12 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
         }
 
         if (bounce == 0) {
-            if (outAlbedo) *outAlbedo = hit.baseColor;
+            if (outAlbedo) {
+                *outAlbedo = hit.baseColor;
+                if (hit.transmission > 0.0f) {
+                    *outAlbedo = hit.baseColor * (1.0f - hit.transmission) + hit.transmissionColor * hit.transmission;
+                }
+            }
             if (outNormal) *outNormal = hit.smoothNormal;
         }
 
@@ -2928,7 +2933,14 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
                         if (isInside) {
                             if (mediumStackCount > 1) mediumStackCount--;
                         } else {
-                            if (mediumStackCount < 16) mediumStack[mediumStackCount++] = MediumState{hit.ior, hit.transmissionScatter, hit.transmissionDepth, hit.transmissionColor};
+                            if (remainingProb >= sssProb) {
+                                // It is Transmission
+                                if (mediumStackCount < 16) mediumStack[mediumStackCount++] = MediumState{hit.ior, hit.transmissionScatter, hit.transmissionDepth, hit.transmissionColor};
+                            } else {
+                                // It is SSS
+                                // For SSS, subsurfaceColor acts as scatter color, subsurfaceScale acts as depth
+                                if (mediumStackCount < 16) mediumStack[mediumStackCount++] = MediumState{hit.ior, hit.subsurfaceColor, hit.subsurfaceScale, hit.baseColor};
+                            }
                         }
                         
                         if (remainingProb >= sssProb) {

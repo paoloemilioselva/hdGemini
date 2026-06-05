@@ -3149,13 +3149,18 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
         }
         
         r.W = (p_hat_final > 0.0f) ? (r.w_sum / (p_hat_final * r.M)) : 0.0f;
+        r.W = std::min(r.W, 50.0f); // Clamp to prevent firefly explosions
         
         if (p_hat_final > 0.0f) {
             SampledSpectrum giResRadiance = RGBToSpectrum(r.virtualLightRadiance, lambda);
-            // Diffuse approximation for the primary hit
+            // Diffuse BRDF approximation: albedo / pi
             SampledSpectrum diffAlbedo = RGBToSpectrum(giPrimaryAlbedo, lambda) * (1.0f / (float)M_PI);
+            // Geometric term G = nDotL / distSq
+            float nDotL_final = std::max(0.0f, GfDot(giPrimaryNormal, finalDir));
+            float G = nDotL_final / std::max(finalDistSq, 1e-6f);
+            // RIS estimator: throughput * f * L * G * W
             for(int i=0; i<SPECTRUM_SAMPLES; ++i) {
-                totalRadiance[i] += giPrimaryThroughput[i] * diffAlbedo[i] * giResRadiance[i] * (p_hat_final * finalDistSq / std::max(1e-6f, GfDot(giPrimaryNormal, finalDir))) * r.W;
+                totalRadiance[i] += giPrimaryThroughput[i] * diffAlbedo[i] * giResRadiance[i] * G * r.W;
             }
         }
         

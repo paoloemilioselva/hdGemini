@@ -914,6 +914,11 @@ HdGeminiRenderDelegate::SetRenderSetting(TfToken const& key, VtValue const& valu
             _renderer.SetEnableRestirDI(value.UncheckedGet<bool>());
             changed = true;
         }
+    } else if (key == HdGeminiRenderSettingsTokens->enableRestirGI) {
+        if (value.IsHolding<bool>()) {
+            _renderer.SetEnableRestirGI(value.UncheckedGet<bool>());
+            changed = true;
+        }
     } else if (key == HdGeminiRenderSettingsTokens->enablePathGuiding) {
         if (value.IsHolding<bool>()) {
             _renderer.SetEnablePathGuiding(value.UncheckedGet<bool>());

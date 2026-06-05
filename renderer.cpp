@@ -1724,9 +1724,11 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
     // ReSTIR GI Variables
     bool useRestirGI = (_enableRestirGI && pixelX >= 0 && pixelY >= 0 && depth == 0);
     GfVec3f giPrimaryPos, giPrimaryNormal;
+    GfVec3f giPrimaryAlbedo(0.5f);
     float giPrimaryDepth = 0.0f;
     int giPrevX = pixelX, giPrevY = pixelY;
     bool giFoundPrev = false;
+    bool giPrimaryCaptured = false;
     GfVec3f giVirtualLightPos, giVirtualLightNormal;
     SampledSpectrum giVirtualRadiance(0.0f);
     SampledSpectrum giPrimaryThroughput(0.0f);
@@ -2349,11 +2351,14 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
         GfVec3f shadingNormal = hit.smoothNormal;
         if (isInside) shadingNormal = -shadingNormal;
 
-        if (bounce == 0 && useRestirGI) {
+        // Capture the first non-transmissive hit as the GI primary (skip glass surfaces)
+        if (useRestirGI && !giPrimaryCaptured && hit.transmission < 0.5f) {
+            giPrimaryCaptured = true;
             giPrimaryPos = hitPos;
             giPrimaryNormal = shadingNormal;
             giPrimaryDepth = hit.t;
             giPrimaryThroughput = throughput;
+            giPrimaryAlbedo = hit.baseColor;
             if (hit.hitMesh && hit.hit) {
                 GfVec3f localPos = hit.hitMesh->GetTransform().GetInverse().Transform(hitPos);
                 GfVec3f prevWorldPos = hit.hitMesh->GetPreviousTransform().Transform(localPos);
@@ -2816,8 +2821,9 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
             totalRadiance += throughput * causticRadiance;
         }
 
-        // --- End of Direct Lighting ---
-        if (useRestirGI && bounce == 1) {
+        // --- End of Direct Lighting / ReSTIR GI Virtual Light Capture ---
+        // Capture on the bounce AFTER the primary was captured (first non-transmissive hit after primary)
+        if (useRestirGI && giPrimaryCaptured && !hasGiData && bounce > 0 && hit.transmission < 0.5f) {
             giVirtualLightPos = hitPos;
             giVirtualLightNormal = shadingNormal;
             
@@ -3059,6 +3065,111 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
         }
     }
 
+    // --- ReSTIR GI ---
+    if (useRestirGI && hasGiData && !_giPrevTemporalReservoirs.empty()) {
+        GIReservoir r;
+        
+        // Target weight of base sample
+        float lumBase = 0.2126f * giVirtualRadiance[0] + 0.7152f * giVirtualRadiance[1] + 0.0722f * giVirtualRadiance[2];
+        float p_hat_base = lumBase * (throughput[0] + throughput[1] + throughput[2]) / 3.0f;
+        
+        float randValBase = qmc::SampleDimension(sampleIdx, qmcDim++, rng);
+        r.Update(giVirtualLightPos, giVirtualLightNormal, GfVec3f(giVirtualRadiance[0], giVirtualRadiance[1], giVirtualRadiance[2]), (p_hat_base > 0.0f) ? 1.0f : 0.0f, randValBase);
+        
+        // Temporal Reuse
+        if (giFoundPrev) {
+            GIReservoir prevRes = _giPrevTemporalReservoirs[giPrevY * _lastWidth + giPrevX];
+            float depthDiff = std::abs(prevRes.depth - giPrimaryDepth);
+            float normalDot = GfDot(prevRes.normal, giPrimaryNormal);
+            
+            if (depthDiff < 0.1f * giPrimaryDepth && normalDot > 0.8f && prevRes.M > 0) {
+                GfVec3f dir = prevRes.virtualLightPos - giPrimaryPos;
+                float distSq = GfDot(dir, dir);
+                if (distSq > 1e-4f) {
+                    float dist = std::sqrt(distSq);
+                    dir /= dist;
+                    float nDotL = std::max(0.0f, GfDot(giPrimaryNormal, dir));
+                    if (nDotL > 0.0f) {
+                        float lumPrev = 0.2126f * prevRes.virtualLightRadiance[0] + 0.7152f * prevRes.virtualLightRadiance[1] + 0.0722f * prevRes.virtualLightRadiance[2];
+                        float p_hat_prev = lumPrev * nDotL / distSq;
+                        
+                        float randValTemp = qmc::SampleDimension(sampleIdx, qmcDim++, rng);
+                        r.Update(prevRes.virtualLightPos, prevRes.virtualLightNormal, prevRes.virtualLightRadiance, p_hat_prev * prevRes.W * std::min(prevRes.M, 20), randValTemp);
+                    }
+                }
+            }
+        }
+        
+        // Spatial Reuse
+        const int spatialNeighbors = 3;
+        for (int i = 0; i < spatialNeighbors; ++i) {
+            float u1 = qmc::SampleDimension(sampleIdx, qmcDim++, rng);
+            float u2 = qmc::SampleDimension(sampleIdx, qmcDim++, rng);
+            int nx = pixelX + (int)((u1 - 0.5f) * 30.0f);
+            int ny = pixelY + (int)((u2 - 0.5f) * 30.0f);
+            if (nx >= 0 && nx < _lastWidth && ny >= 0 && ny < _lastHeight) {
+                GIReservoir neighborRes = _giPrevTemporalReservoirs[ny * _lastWidth + nx];
+                if (neighborRes.M > 0) {
+                    GfVec3f dir = neighborRes.virtualLightPos - giPrimaryPos;
+                    float distSq = GfDot(dir, dir);
+                    if (distSq > 1e-4f) {
+                        float dist = std::sqrt(distSq);
+                        dir /= dist;
+                        float nDotL = std::max(0.0f, GfDot(giPrimaryNormal, dir));
+                        if (nDotL > 0.0f) {
+                            // Visibility check for spatial reuse
+                            GfVec3f shadowOrigin = giPrimaryPos + giPrimaryNormal * RAY_EPSILON(giPrimaryPos);
+                            float shadowTransDepth = 0; GfVec3f sc(0); GfVec3f tc(0);
+                            SampledSpectrum shadowVis = _TraceShadowRay(shadowOrigin, dir, dist - 1e-3f, false, shadowTransDepth, tc, sc, renderThread, sampleIdx, qmcDim, rng, lambda);
+                            
+                            if (shadowVis[0] > 0 || shadowVis[1] > 0 || shadowVis[2] > 0) {
+                                float lumNeighbor = 0.2126f * neighborRes.virtualLightRadiance[0] + 0.7152f * neighborRes.virtualLightRadiance[1] + 0.0722f * neighborRes.virtualLightRadiance[2];
+                                float p_hat_neighbor = lumNeighbor * nDotL / distSq;
+                                float randValSpat = qmc::SampleDimension(sampleIdx, qmcDim++, rng);
+                                r.Update(neighborRes.virtualLightPos, neighborRes.virtualLightNormal, neighborRes.virtualLightRadiance, p_hat_neighbor * neighborRes.W, randValSpat);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Final evaluation
+        float p_hat_final = 0.0f;
+        GfVec3f finalDir = r.virtualLightPos - giPrimaryPos;
+        float finalDistSq = GfDot(finalDir, finalDir);
+        if (finalDistSq > 1e-4f) {
+            float finalDist = std::sqrt(finalDistSq);
+            finalDir /= finalDist;
+            float nDotL = std::max(0.0f, GfDot(giPrimaryNormal, finalDir));
+            if (nDotL > 0.0f) {
+                float lumFinal = 0.2126f * r.virtualLightRadiance[0] + 0.7152f * r.virtualLightRadiance[1] + 0.0722f * r.virtualLightRadiance[2];
+                p_hat_final = lumFinal * nDotL / finalDistSq;
+            }
+        }
+        
+        r.W = (p_hat_final > 0.0f) ? (r.w_sum / (p_hat_final * r.M)) : 0.0f;
+        
+        if (p_hat_final > 0.0f) {
+            SampledSpectrum giResRadiance = RGBToSpectrum(r.virtualLightRadiance, lambda);
+            // Diffuse approximation for the primary hit
+            SampledSpectrum diffAlbedo = RGBToSpectrum(giPrimaryAlbedo, lambda) * (1.0f / (float)M_PI);
+            for(int i=0; i<SPECTRUM_SAMPLES; ++i) {
+                totalRadiance[i] += giPrimaryThroughput[i] * diffAlbedo[i] * giResRadiance[i] * (p_hat_final * finalDistSq / std::max(1e-6f, GfDot(giPrimaryNormal, finalDir))) * r.W;
+            }
+        }
+        
+        r.depth = giPrimaryDepth;
+        r.normal = giPrimaryNormal;
+        
+        if (pixelX >= 0 && pixelY >= 0) {
+            size_t idx = (size_t)pixelY * _lastWidth + pixelX;
+            if (idx < _giTemporalReservoirs.size()) {
+                _giTemporalReservoirs[idx] = r;
+            }
+        }
+    }
+    
     return totalRadiance;
 }
 

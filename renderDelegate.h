@@ -32,6 +32,7 @@ TF_DECLARE_PUBLIC_TOKENS(HdGeminiAovTokens, HD_GEMINI_AOV_TOKENS);
     (enableFireflyFilter)                \
     (enableChromaticityBlur)             \
     (enableRestirDI)                     \
+    (enableRestirGI)                     \
     (enablePathGuiding)                  \
     (targetSampleCount)                  \
     (maxReflectionBounces)               \

@@ -71,8 +71,11 @@ public:
     void SetEnableChromaticityBlur(bool enable) { _enableChromaticityBlur = enable; }
     bool GetEnableChromaticityBlur() const { return _enableChromaticityBlur; }
     void SetTargetSampleCount(int count) { _targetSampleCount = count; }
-    void SetEnableRestirDI(bool val) { _enableRestirDI = val; }
+    void SetEnableRestirDI(bool e) { _enableRestirDI = e; MarkAovBuffersUnconverged(); }
     bool GetEnableRestirDI() const { return _enableRestirDI; }
+
+    void SetEnableRestirGI(bool e) { _enableRestirGI = e; MarkAovBuffersUnconverged(); }
+    bool GetEnableRestirGI() const { return _enableRestirGI; }
     void SetEnablePathGuiding(bool val) { _enablePathGuiding = val; }
     bool GetEnablePathGuiding() const { return _enablePathGuiding; }
     void SetMaxReflectionBounces(int bounces) { _maxReflectionBounces = bounces; }
@@ -146,6 +149,7 @@ private:
     bool _enableChromaticityBlur = true;
     int _targetSampleCount = 32;
     bool _enableRestirDI = true;
+    bool _enableRestirGI = true;
     int _maxReflectionBounces = 8;
     int _maxRefractionBounces = 8;
     int _initialResolutionLevel = 2;
@@ -280,6 +284,8 @@ private:
         bool isVolumeHit = false;
         const void* densityGrid = nullptr;
         bool isOcean = false;
+        
+        class HdGeminiMesh* hitMesh = nullptr;
     };
 
     struct TextureData {
@@ -378,11 +384,36 @@ private:
         float W = 0.0f;
         int M = 0;
         
+        float depth = 0.0f;
+        GfVec3f normal = GfVec3f(0.0f);
+        
         void Update(const LightSample& s, float weight, float randVal) {
             w_sum += weight;
             M += 1;
             if (randVal < weight / std::max(w_sum, 1e-6f)) {
                 sample = s;
+            }
+        }
+    };
+    
+    struct GIReservoir {
+        GfVec3f virtualLightPos = GfVec3f(0.0f);
+        GfVec3f virtualLightNormal = GfVec3f(0.0f);
+        GfVec3f virtualLightRadiance = GfVec3f(0.0f);
+        float w_sum = 0.0f;
+        float W = 0.0f;
+        int M = 0;
+        
+        float depth = 0.0f;
+        GfVec3f normal = GfVec3f(0.0f);
+        
+        void Update(const GfVec3f& vPos, const GfVec3f& vNormal, const GfVec3f& vRadiance, float weight, float randVal) {
+            w_sum += weight;
+            M += 1;
+            if (randVal < weight / std::max(w_sum, 1e-6f)) {
+                virtualLightPos = vPos;
+                virtualLightNormal = vNormal;
+                virtualLightRadiance = vRadiance;
             }
         }
     };
@@ -534,7 +565,7 @@ private:
     void _SubdivideTLAS(int nodeIdx, int start, int end, class HdRenderThread *renderThread);
     bool _IntersectTLAS(const GfVec3f& rayOrigin, const GfVec3f& rayDir, HitRecord& hit, class HdRenderThread* renderThread, uint32_t sampleIdx, uint32_t& qmcDim, uint32_t& rng) const;
     SampledSpectrum _TraceShadowRay(const GfVec3f& rayOrigin, const GfVec3f& rayDir, float maxDist, bool currentlyInside, float currentTransmissionDepth, const GfVec3f& currentTransmissionColor, const GfVec3f& currentTransmissionScatter, class HdRenderThread* renderThread, uint32_t sampleIdx, uint32_t& qmcDim, uint32_t& rng, const SampledWavelengths& lambda) const;
-    SampledSpectrum _TraceRay(const GfVec3f& rayOrigin, const GfVec3f& rayDir, int depth, bool isInteractive, class HdRenderThread* renderThread, uint32_t sampleIdx, uint32_t& qmcDim, uint32_t& rng, const SampledWavelengths& lambda, GfVec3f* outAlbedo = nullptr, GfVec3f* outNormal = nullptr, float* outDepth = nullptr, float exposureMultiplier = 1.0f, struct Reservoir* temporalReservoir = nullptr) const;
+    SampledSpectrum _TraceRay(const GfVec3f& rayOrigin, const GfVec3f& rayDir, int depth, bool isInteractive, class HdRenderThread* renderThread, uint32_t sampleIdx, uint32_t& qmcDim, uint32_t& rng, const SampledWavelengths& lambda, GfVec3f* outAlbedo = nullptr, GfVec3f* outNormal = nullptr, float* outDepth = nullptr, float exposureMultiplier = 1.0f, int pixelX = -1, int pixelY = -1) const;
     void _TracePhoton(class HdRenderThread* renderThread, uint32_t sampleIdx, uint32_t& rng, const SampledWavelengths& lambda);
     GfVec3f _SampleEnvironment(const GfVec3f& rayDir) const;
     GfVec3f _SamplePhysicalSky(const GfVec3f& rayDir, const GfVec3f& sunDir, bool includeSun) const;
@@ -556,6 +587,11 @@ private:
     GfMatrix4d _projMatrix;
     GfMatrix4d _inverseViewMatrix;
     GfMatrix4d _inverseProjMatrix;
+    
+    GfMatrix4d _previousViewMatrix;
+    GfMatrix4d _previousProjMatrix;
+    GfMatrix4d _previousInverseViewMatrix;
+    GfMatrix4d _previousInverseProjMatrix;
     std::vector<SceneInstance> _instances;
     std::vector<HdGeminiLight*> _activeLights;
     std::vector<float> _lightPowerCdf;
@@ -581,7 +617,11 @@ private:
     unsigned int _colorBufferVersion = 0xFFFFFFFF;
     int _lastWidth = 0;
     int _lastHeight = 0;
-    std::vector<Reservoir> _temporalReservoirs;
+    mutable std::vector<Reservoir> _temporalReservoirs;
+    mutable std::vector<Reservoir> _prevTemporalReservoirs;
+    
+    mutable std::vector<GIReservoir> _giTemporalReservoirs;
+    mutable std::vector<GIReservoir> _giPrevTemporalReservoirs;
     PhotonMap _photonMap;
     bool _enableSPPM = true;
     uint32_t _sppmPasses = 0;

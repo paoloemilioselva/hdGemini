@@ -382,6 +382,11 @@ HdGeminiRenderDelegate::GetRenderSettingDescriptors() const
         VtValue(true)
     });
     list.push_back({
+        "Performance:Enable ReSTIR GI",
+        HdGeminiRenderSettingsTokens->enableRestirGI,
+        VtValue(true)
+    });
+    list.push_back({
         "Enable Path Guiding",
         HdGeminiRenderSettingsTokens->enablePathGuiding,
         VtValue(true)
@@ -706,6 +711,8 @@ HdGeminiRenderDelegate::GetRenderSetting(TfToken const& key) const
         return VtValue(_renderer.GetEnableChromaticityBlur());
     } else if (key == HdGeminiRenderSettingsTokens->enableRestirDI) {
         return VtValue(_renderer.GetEnableRestirDI());
+    } else if (key == HdGeminiRenderSettingsTokens->enableRestirGI) {
+        return VtValue(_renderer.GetEnableRestirGI());
     } else if (key == HdGeminiRenderSettingsTokens->enablePathGuiding) {
         return VtValue(_renderer.GetEnablePathGuiding());
     } else if (key == HdGeminiRenderSettingsTokens->targetSampleCount) {

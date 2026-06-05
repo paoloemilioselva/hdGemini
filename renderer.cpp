@@ -1017,6 +1017,7 @@ bool HdGeminiRenderer::_IntersectTLAS(const GfVec3f& rayOrigin, const GfVec3f& r
                     if (inst.subset->bvh.Intersect(objRayOrigin, objRayDir, instT, instNormal, instUv, instSmoothNormal, instDpdu, instDpdv, instSmoothColor, matIdx)) {
                     if (instT < hit.t) {
                         hit.t = instT;
+                        hit.hitMesh = inst.mesh;
                         GfMatrix4f invTransp = inst.invTransform.GetTranspose();
                         hit.normal = invTransp.TransformDir(instNormal).GetNormalized();
                         hit.smoothNormal = invTransp.TransformDir(instSmoothNormal).GetNormalized();
@@ -1713,12 +1714,25 @@ SampledSpectrum HdGeminiRenderer::_TraceShadowRay(const GfVec3f& rayOrigin, cons
     return transmittance;
 }
 
-SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVec3f& rayDir, int depth, bool isInteractive, HdRenderThread* renderThread, uint32_t sampleIdx, uint32_t& qmcDim, uint32_t& rng, const SampledWavelengths& lambda, GfVec3f* outAlbedo, GfVec3f* outNormal, float* outDepth, float exposureMultiplier, Reservoir* temporalReservoir) const
+SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVec3f& rayDir, int depth, bool isInteractive, HdRenderThread* renderThread, uint32_t sampleIdx, uint32_t& qmcDim, uint32_t& rng, const SampledWavelengths& lambda, GfVec3f* outAlbedo, GfVec3f* outNormal, float* outDepth, float exposureMultiplier, int pixelX, int pixelY) const
 {
     SampledSpectrum throughput(exposureMultiplier);
     SampledSpectrum totalRadiance(0.0f);
     GfVec3f currentRayOrigin = rayOrigin;
     GfVec3f currentRayDir = rayDir;
+
+    // ReSTIR GI Variables
+    bool useRestirGI = (_enableRestirGI && pixelX >= 0 && pixelY >= 0 && depth == 0);
+    GfVec3f giPrimaryPos, giPrimaryNormal;
+    float giPrimaryDepth = 0.0f;
+    int giPrevX = pixelX, giPrevY = pixelY;
+    bool giFoundPrev = false;
+    GfVec3f giVirtualLightPos, giVirtualLightNormal;
+    SampledSpectrum giVirtualRadiance(0.0f);
+    SampledSpectrum giPrimaryThroughput(0.0f);
+    bool hasGiData = false;
+    SampledSpectrum totalRadianceBeforeBounce(0.0f);
+
 
     auto EvaluateLight = [&](const LightSample& ls, const GfVec3f& targetPos, GfVec3f& lDir, float& lightDist, GfVec3f& lColor, float& lightPdf) {
         HdGeminiLight* light = _activeLights[ls.lightIdx];
@@ -1941,6 +1955,7 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
     float lastBsdfPdf = 0.0f;
 
     for (int bounce = 0; bounce < maxDepth; ++bounce) {
+        totalRadianceBeforeBounce = totalRadiance;
         if (renderThread->IsStopRequested()) break;
 
         HitRecord hit;
@@ -2328,6 +2343,28 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
         GfVec3f shadingNormal = hit.smoothNormal;
         if (isInside) shadingNormal = -shadingNormal;
 
+        if (bounce == 0 && useRestirGI) {
+            giPrimaryPos = hitPos;
+            giPrimaryNormal = shadingNormal;
+            giPrimaryDepth = hit.t;
+            giPrimaryThroughput = throughput;
+            if (hit.hitMesh && hit.hit) {
+                GfVec3f localPos = hit.hitMesh->GetTransform().GetInverse().Transform(hitPos);
+                GfVec3f prevWorldPos = hit.hitMesh->GetPreviousTransform().Transform(localPos);
+                GfVec3d prevCamPos = _previousViewMatrix.Transform(GfVec3d(prevWorldPos[0], prevWorldPos[1], prevWorldPos[2]));
+                if (prevCamPos[2] < 0.0) {
+                    GfVec3d prevNdcPos = _previousProjMatrix.Transform(prevCamPos);
+                    if (prevNdcPos[0] >= -1.0 && prevNdcPos[0] <= 1.0 && prevNdcPos[1] >= -1.0 && prevNdcPos[1] <= 1.0) {
+                        giPrevX = (int)((prevNdcPos[0] + 1.0) * 0.5 * _lastWidth);
+                        giPrevY = (int)((prevNdcPos[1] + 1.0) * 0.5 * _lastHeight);
+                        if (giPrevX >= 0 && giPrevX < _lastWidth && giPrevY >= 0 && giPrevY < _lastHeight) {
+                            giFoundPrev = true;
+                        }
+                    }
+                }
+            }
+        }
+        
         // --- Volumetric SSS (Random Walk for Objects) ---
         if (isInside && hit.subsurface > 0.0f && !hit.thinWalled) {
             GfVec3f d_mfp = GfCompMult(hit.subsurfaceRadius, GfVec3f(hit.subsurfaceScale));
@@ -2418,9 +2455,47 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
             float restirWeight = 1.0f;
             HdGeminiLight* light = nullptr;
             
-            bool useRestir = (temporalReservoir != nullptr && depth == 0);
+            bool useRestir = (pixelX >= 0 && pixelY >= 0 && depth == 0 && _enableRestirDI);
+            Reservoir temporalReservoirLocal;
+            Reservoir* temporalReservoir = nullptr;
             
             if (useRestir) {
+                int prevX = pixelX;
+                int prevY = pixelY;
+                bool foundPrev = false;
+
+                if (hit.hitMesh && hit.hit) {
+                    GfVec3f localPos = hit.hitMesh->GetTransform().GetInverse().Transform(hitPos);
+                    GfVec3f prevWorldPos = hit.hitMesh->GetPreviousTransform().Transform(localPos);
+
+                    GfVec3d prevCamPos = _previousViewMatrix.Transform(GfVec3d(prevWorldPos[0], prevWorldPos[1], prevWorldPos[2]));
+                    
+                    if (prevCamPos[2] < 0.0) {
+                        GfVec3d prevNdcPos = _previousProjMatrix.Transform(prevCamPos);
+
+                        if (prevNdcPos[0] >= -1.0 && prevNdcPos[0] <= 1.0 && prevNdcPos[1] >= -1.0 && prevNdcPos[1] <= 1.0) {
+                            prevX = (int)((prevNdcPos[0] + 1.0) * 0.5 * _lastWidth);
+                            prevY = (int)((prevNdcPos[1] + 1.0) * 0.5 * _lastHeight);
+                            
+                            if (prevX >= 0 && prevX < _lastWidth && prevY >= 0 && prevY < _lastHeight) {
+                                foundPrev = true;
+                            }
+                        }
+                    }
+                }
+                
+                if (foundPrev && !_prevTemporalReservoirs.empty()) {
+                    Reservoir prevRes = _prevTemporalReservoirs[prevY * _lastWidth + prevX];
+                    
+                    float depthDiff = std::abs(prevRes.depth - hit.t);
+                    float normalDot = GfDot(prevRes.normal, hit.normal);
+                    
+                    if (depthDiff < 0.1f * hit.t && normalDot > 0.8f) {
+                        temporalReservoirLocal = prevRes;
+                    }
+                }
+                temporalReservoir = &temporalReservoirLocal;
+
                 Reservoir risReservoir;
                 const int M_init = 8;
                 for (int m = 0; m < M_init; ++m) {
@@ -2476,8 +2551,17 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
                 }
                 
                 *temporalReservoir = combined;
-                restirWeight = combined.W;
+                temporalReservoir->depth = hit.t;
+                temporalReservoir->normal = hit.normal;
                 
+                if (!_temporalReservoirs.empty() && pixelY >= 0 && pixelX >= 0) {
+                    size_t idx = (size_t)pixelY * _lastWidth + pixelX;
+                    if (idx < _temporalReservoirs.size()) {
+                        _temporalReservoirs[idx] = *temporalReservoir;
+                    }
+                }
+                
+                restirWeight = combined.W;
             } else {
                 float uLight = qmc::SampleDimension(sampleIdx, qmcDim++, rng);
                 auto itLight = std::lower_bound(_lightPowerCdf.begin(), _lightPowerCdf.end(), uLight);
@@ -2726,6 +2810,20 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
             totalRadiance += throughput * causticRadiance;
         }
 
+        // --- End of Direct Lighting ---
+        if (useRestirGI && bounce == 1) {
+            giVirtualLightPos = hitPos;
+            giVirtualLightNormal = shadingNormal;
+            
+            SampledSpectrum bounceRad = totalRadiance - totalRadianceBeforeBounce;
+            for(int i=0; i<SPECTRUM_SAMPLES; ++i) {
+                giVirtualRadiance[i] = bounceRad[i] / std::max(throughput[i], 1e-6f);
+            }
+            totalRadiance = totalRadianceBeforeBounce; // Undo addition to totalRadiance
+            hasGiData = true;
+            break; // Stop path tracing base path
+        }
+        
         // --- Indirect Path Selection (BSDF Sampling) ---
         float fresnel = FresnelDielectric(GfDot(currentRayDir, hit.smoothNormal), etaI_fresnel, etaT_fresnel);
         float reflectProb = fresnel * hit.specular;
@@ -3473,7 +3571,10 @@ HdGeminiRenderer::_RenderTiles(HdRenderThread *renderThread, HdGeminiRenderDeleg
         
         if (_enableRestirDI) {
             _temporalReservoirs.assign(width * height, Reservoir{});
+            _prevTemporalReservoirs.assign(width * height, Reservoir{});
         }
+        _giTemporalReservoirs.assign(width * height, GIReservoir{});
+        _giPrevTemporalReservoirs.assign(width * height, GIReservoir{});
         _photonMap.Clear();
         _sppmPasses = 0;
         
@@ -3483,9 +3584,22 @@ HdGeminiRenderer::_RenderTiles(HdRenderThread *renderThread, HdGeminiRenderDeleg
     
     if (!_enableRestirDI && !_temporalReservoirs.empty()) {
         _temporalReservoirs.clear();
+        _prevTemporalReservoirs.clear();
     } else if (_enableRestirDI && _temporalReservoirs.size() != width * height) {
         _temporalReservoirs.assign(width * height, Reservoir{});
-    }    
+        _prevTemporalReservoirs.assign(width * height, Reservoir{});
+    } else if (_enableRestirDI) {
+        std::swap(_temporalReservoirs, _prevTemporalReservoirs);
+        _temporalReservoirs.assign(width * height, Reservoir{});
+    }
+    
+    if (_giTemporalReservoirs.size() != width * height) {
+        _giTemporalReservoirs.assign(width * height, GIReservoir{});
+        _giPrevTemporalReservoirs.assign(width * height, GIReservoir{});
+    } else {
+        std::swap(_giTemporalReservoirs, _giPrevTemporalReservoirs);
+        _giTemporalReservoirs.assign(width * height, GIReservoir{});
+    }
     if (_enableSPPM && !_activeLights.empty()) {
         _sppmPasses++;
         _photonMap.searchRadius = std::max(0.001f, 0.1f / std::sqrt((float)_sppmPasses));
@@ -3655,12 +3769,7 @@ HdGeminiRenderer::_RenderTiles(HdRenderThread *renderThread, HdGeminiRenderDeleg
                     GfVec3f albedo(0.0f), normal(0.0f);
                     float hitDepth = 1.0f;
                     
-                    Reservoir* pixelReservoir = nullptr;
-                    if (!_temporalReservoirs.empty() && (y * width + x) < _temporalReservoirs.size()) {
-                        pixelReservoir = &_temporalReservoirs[y * width + x];
-                    }
-
-                    SampledSpectrum hitSpectrum = _TraceRay(rayOriginWorld, rayDirWorld, 0, isInteractive, renderThread, sampleIdx, qmcDim, rng, lambda, &albedo, &normal, &hitDepth, exposureMultiplier, pixelReservoir);
+                    SampledSpectrum hitSpectrum = _TraceRay(rayOriginWorld, rayDirWorld, 0, isInteractive, renderThread, sampleIdx, qmcDim, rng, lambda, &albedo, &normal, &hitDepth, exposureMultiplier, x, y);
                     
                     if (lensWaveHeight > -1e29f) {
                         float distToWater = rayOriginWorld[1] - lensWaveHeight;
@@ -3850,6 +3959,11 @@ HdGeminiRenderer::ReapplyPostProcess()
             static_cast<HdGeminiRenderBuffer*>(binding.renderBuffer)->SetConverged(true);
         }
     }
+    
+    _previousViewMatrix = _viewMatrix;
+    _previousProjMatrix = _projMatrix;
+    _previousInverseViewMatrix = _inverseViewMatrix;
+    _previousInverseProjMatrix = _inverseProjMatrix;
 }
 
 #ifdef HDGEMINI_HAS_SYCL
@@ -4064,7 +4178,7 @@ void HdGeminiRenderer::_RenderTilesSYCL(HdRenderThread *renderThread, HdGeminiRe
             float hitDepth = 1.0f;
             uint32_t sampleIdx = 0; // GPU/SYCL not yet tracking variance count correctly via CPU loop
             uint32_t qmcDim = 0;
-            SampledSpectrum hitSpectrum = _TraceRay(rayOriginWorld, rayDirWorld, 0, false, renderThread, sampleIdx, qmcDim, rng, rs.lambda, &albedo, &normal, &hitDepth, rs.exposureMultiplier);
+            SampledSpectrum hitSpectrum = _TraceRay(rayOriginWorld, rayDirWorld, 0, false, renderThread, sampleIdx, qmcDim, rng, rs.lambda, &albedo, &normal, &hitDepth, rs.exposureMultiplier, rs.x, rs.y);
             
             SampledSpectrum heroSpec;
             for(int j=0; j<4; ++j) heroSpec[j] = hitSpectrum[0];
@@ -4094,6 +4208,11 @@ void HdGeminiRenderer::_RenderTilesSYCL(HdRenderThread *renderThread, HdGeminiRe
     if (!renderThread->IsStopRequested() && _albedoBuffer) _albedoBuffer->ResolveBucket(0, 0, width, height);
     if (!renderThread->IsStopRequested() && _normalBuffer) _normalBuffer->ResolveBucket(0, 0, width, height);
     if (!renderThread->IsStopRequested() && _depthBuffer) _depthBuffer->ResolveBucket(0, 0, width, height);
+    
+    _previousViewMatrix = _viewMatrix;
+    _previousProjMatrix = _projMatrix;
+    _previousInverseViewMatrix = _inverseViewMatrix;
+    _previousInverseProjMatrix = _inverseProjMatrix;
 }
 #endif
 

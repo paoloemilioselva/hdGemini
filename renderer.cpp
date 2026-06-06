@@ -3174,12 +3174,14 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
             SampledSpectrum diffAlbedo = RGBToSpectrum(giPrimaryAlbedo, lambda) * (1.0f / (float)M_PI);
             // Geometric term G = nDotL / distSq
             float nDotL_final = std::max(0.0f, GfDot(giPrimaryNormal, finalDir));
-            float G = nDotL_final / std::max(finalDistSq, 1e-6f);
+            float G = nDotL_final / std::max(finalDistSq, 1e-4f);
+            G = std::min(G, 100.0f); // Bound the geometry term singularity to prevent massive fireflies
+            
             // RIS estimator: throughput * f * L * G * W
             for(int i=0; i<SPECTRUM_SAMPLES; ++i) {
                 float added = giPrimaryThroughput[i] * diffAlbedo[i] * giResRadiance[i] * G * r.W;
                 if (!std::isnan(added) && !std::isinf(added)) {
-                    totalRadiance[i] += added;
+                    totalRadiance[i] += std::min(added, 500.0f); // Hard clamp to avoid denoiser destruction
                 }
             }
         }
@@ -3356,10 +3358,10 @@ HdGeminiRenderer::_Denoise()
         float g = std::max(0.0f, heroOutput[i*3+1] + diffOutput[i*3+1]);
         float b = std::max(0.0f, heroOutput[i*3+2] + diffOutput[i*3+2]);
         sanitize(r); sanitize(g); sanitize(b);
-        // Clamp to prevent overflow in OIDN's internal fp16 network
-        prefiltered[i*3+0] = std::min(r, 65000.0f);
-        prefiltered[i*3+1] = std::min(g, 65000.0f);
-        prefiltered[i*3+2] = std::min(b, 65000.0f);
+        // Clamp to prevent overflow in OIDN's internal fp16 network. 65000 is too high and causes black screen!
+        prefiltered[i*3+0] = std::min(r, 4000.0f);
+        prefiltered[i*3+1] = std::min(g, 4000.0f);
+        prefiltered[i*3+2] = std::min(b, 4000.0f);
     }
 
     if (!albedo.empty()) {

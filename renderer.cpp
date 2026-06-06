@@ -3348,8 +3348,13 @@ HdGeminiRenderer::_Denoise()
     std::vector<float> heroOutput(width * height * 3);
     std::vector<float> diffOutput(width * height * 3);
 
-    float invSamples = 1.0f / (float)std::max(1, _frameCount);
+    HdGeminiRenderBuffer* renderBuf = static_cast<HdGeminiRenderBuffer*>(_colorBuffer);
     for(size_t i=0; i<width*height; ++i) {
+        int x = i % width;
+        int y = i / width;
+        int sampleCount = renderBuf->GetPixelSampleCount(GfVec3i(x, y, 0));
+        float invSamples = 1.0f / (float)std::max(1, sampleCount);
+        
         heroOutput[i*3+0] = _accumHeroRGB[i][0] * invSamples;
         heroOutput[i*3+1] = _accumHeroRGB[i][1] * invSamples;
         heroOutput[i*3+2] = _accumHeroRGB[i][2] * invSamples;
@@ -4095,10 +4100,13 @@ HdGeminiRenderer::ReapplyPostProcess()
     unsigned int width = _dataWindow.GetWidth();
     unsigned int height = _dataWindow.GetHeight();
 
-    float invSamples = 1.0f / (float)std::max(1, _frameCount);
+    HdGeminiRenderBuffer* renderBuf = static_cast<HdGeminiRenderBuffer*>(_colorBuffer);
     for (unsigned int y = 0; y < height; ++y) {
         for (unsigned int x = 0; x < width; ++x) {
             size_t idx = y * width + x;
+            int sampleCount = renderBuf->GetPixelSampleCount(GfVec3i(x, y, 0));
+            float invSamples = 1.0f / (float)std::max(1, sampleCount);
+            
             GfVec3f hero = _accumHeroRGB[idx] * invSamples;
             GfVec3f diff = _accumDiffRGB[idx] * invSamples;
             GfVec3f finalRGB = hero + diff;

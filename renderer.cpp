@@ -3080,10 +3080,22 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
         
         // Target weight of base sample
         float lumBase = 0.2126f * giVirtualRadiance[0] + 0.7152f * giVirtualRadiance[1] + 0.0722f * giVirtualRadiance[2];
-        float p_hat_base = lumBase * (throughput[0] + throughput[1] + throughput[2]) / 3.0f;
+        float p_hat_base = 0.0f;
+        GfVec3f dirBase = giVirtualLightPos - giPrimaryPos;
+        float distSqBase = GfDot(dirBase, dirBase);
+        if (distSqBase > 1e-4f) {
+            float distBase = std::sqrt(distSqBase);
+            dirBase /= distBase;
+            float nDotLBase = std::max(0.0f, GfDot(giPrimaryNormal, dirBase));
+            if (nDotLBase > 0.0f) {
+                float G_base = std::min(nDotLBase / std::max(distSqBase, 1e-4f), 100.0f);
+                p_hat_base = lumBase * G_base;
+            }
+        }
         
         float randValBase = qmc::SampleDimension(sampleIdx, qmcDim++, rng);
-        r.Update(giVirtualLightPos, giVirtualLightNormal, GfVec3f(giVirtualRadiance[0], giVirtualRadiance[1], giVirtualRadiance[2]), (p_hat_base > 0.0f) ? 1.0f : 0.0f, randValBase);
+        float w_initial = (p_hat_base > 0.0f) ? (lumBase * (float)M_PI) : 0.0f;
+        r.Update(giVirtualLightPos, giVirtualLightNormal, GfVec3f(giVirtualRadiance[0], giVirtualRadiance[1], giVirtualRadiance[2]), w_initial, randValBase);
         
         // Temporal Reuse
         if (giFoundPrev) {
@@ -3100,7 +3112,8 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
                     float nDotL = std::max(0.0f, GfDot(giPrimaryNormal, dir));
                     if (nDotL > 0.0f) {
                         float lumPrev = 0.2126f * prevRes.virtualLightRadiance[0] + 0.7152f * prevRes.virtualLightRadiance[1] + 0.0722f * prevRes.virtualLightRadiance[2];
-                        float p_hat_prev = lumPrev * nDotL / distSq;
+                        float G_prev = std::min(nDotL / std::max(distSq, 1e-4f), 100.0f);
+                        float p_hat_prev = lumPrev * G_prev;
                         
                         float randValTemp = qmc::SampleDimension(sampleIdx, qmcDim++, rng);
                         r.Update(prevRes.virtualLightPos, prevRes.virtualLightNormal, prevRes.virtualLightRadiance, p_hat_prev * prevRes.W * std::min(prevRes.M, 20), randValTemp);
@@ -3133,7 +3146,8 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
                             
                             if (shadowVis[0] > 0 || shadowVis[1] > 0 || shadowVis[2] > 0) {
                                 float lumNeighbor = 0.2126f * neighborRes.virtualLightRadiance[0] + 0.7152f * neighborRes.virtualLightRadiance[1] + 0.0722f * neighborRes.virtualLightRadiance[2];
-                                float p_hat_neighbor = lumNeighbor * nDotL / distSq;
+                                float G_neighbor = std::min(nDotL / std::max(distSq, 1e-4f), 100.0f);
+                                float p_hat_neighbor = lumNeighbor * G_neighbor;
                                 float randValSpat = qmc::SampleDimension(sampleIdx, qmcDim++, rng);
                                 r.Update(neighborRes.virtualLightPos, neighborRes.virtualLightNormal, neighborRes.virtualLightRadiance, p_hat_neighbor * neighborRes.W, randValSpat);
                             }
@@ -3159,7 +3173,8 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
                 
                 if (shadowVis[0] > 0 || shadowVis[1] > 0 || shadowVis[2] > 0) {
                     float lumFinal = 0.2126f * r.virtualLightRadiance[0] + 0.7152f * r.virtualLightRadiance[1] + 0.0722f * r.virtualLightRadiance[2];
-                    p_hat_final = lumFinal * nDotL / finalDistSq;
+                    float G_final = std::min(nDotL / std::max(finalDistSq, 1e-4f), 100.0f);
+                    p_hat_final = lumFinal * G_final;
                 }
             }
         }

@@ -222,6 +222,7 @@ def editSelectedPrim(usdviewApi):
                 elif isinstance(val, float):
                     dsb = QtWidgets.QDoubleSpinBox()
                     dsb.setRange(-999999.0, 999999.0)
+                    dsb.setDecimals(6)
                     dsb.setValue(val)
                     dsb.valueChanged.connect(lambda v, a=attr: a.Set(v))
                     group_box.addRow(display_name, dsb)
@@ -234,9 +235,9 @@ def editSelectedPrim(usdviewApi):
                     w = QtWidgets.QWidget()
                     l = QtWidgets.QHBoxLayout(w)
                     l.setContentsMargins(0,0,0,0)
-                    s1 = QtWidgets.QDoubleSpinBox(); s1.setRange(-9999.0, 9999.0); s1.setValue(val[0])
-                    s2 = QtWidgets.QDoubleSpinBox(); s2.setRange(-9999.0, 9999.0); s2.setValue(val[1])
-                    s3 = QtWidgets.QDoubleSpinBox(); s3.setRange(-9999.0, 9999.0); s3.setValue(val[2])
+                    s1 = QtWidgets.QDoubleSpinBox(); s1.setRange(-9999.0, 9999.0); s1.setDecimals(6); s1.setValue(val[0])
+                    s2 = QtWidgets.QDoubleSpinBox(); s2.setRange(-9999.0, 9999.0); s2.setDecimals(6); s2.setValue(val[1])
+                    s3 = QtWidgets.QDoubleSpinBox(); s3.setRange(-9999.0, 9999.0); s3.setDecimals(6); s3.setValue(val[2])
                     
                     def update_vec3f(val_unused, a=attr, v1=s1, v2=s2, v3=s3):
                         a.Set(Gf.Vec3f(v1.value(), v2.value(), v3.value()))

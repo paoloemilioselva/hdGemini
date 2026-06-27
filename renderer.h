@@ -16,10 +16,13 @@
 #include "ocean.h"
 #include "spectrum.h"
 #include <vector>
-#include <atomic>
 #include <map>
-#include <memory>
+#include <string>
 #include <mutex>
+#include <shared_mutex>
+#include <atomic>
+#include <thread>
+#include <memory>
 
 #ifdef HDGEMINI_HAS_SYCL
 #include <sycl/sycl.hpp>
@@ -293,6 +296,8 @@ private:
         std::vector<float> pixels;
         int width = 0;
         int height = 0;
+        std::atomic<bool> isLoaded{false};
+        std::atomic<bool> isFailed{false};
     };
 
 #ifdef HDGEMINI_HAS_SYCL
@@ -645,8 +650,8 @@ private:
     float _envMapTotalLuminance = 0.0f;
     SdfAssetPath _lastEnvMapPath;
 
-    mutable std::map<std::string, TextureData> _textureCache;
-    mutable std::mutex _textureMutex;
+    mutable std::map<std::string, std::shared_ptr<TextureData>> _textureCache;
+    mutable std::shared_mutex _textureMutex;
     mutable std::mutex _statsMutex;
 
 #ifdef HDGEMINI_HAS_SYCL

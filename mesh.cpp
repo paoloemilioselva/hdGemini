@@ -418,12 +418,12 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
             VtValue val = sceneDelegate->Get(id, HdTokens->points);
             if (!val.IsEmpty()) {
                 if (val.IsHolding<VtVec3fArray>()) {
-                    _points = val.UncheckedGet<VtVec3fArray>();
+                    _basePoints = val.UncheckedGet<VtVec3fArray>();
                     pointsActuallyUpdated = true;
                 } else if (val.IsHolding<VtVec3dArray>()) {
                     const auto& arr = val.UncheckedGet<VtVec3dArray>();
-                    _points.resize(arr.size());
-                    for (size_t j = 0; j < arr.size(); ++j) _points[j] = GfVec3f(arr[j]);
+                    _basePoints.resize(arr.size());
+                    for (size_t j = 0; j < arr.size(); ++j) _basePoints[j] = GfVec3f(arr[j]);
                     pointsActuallyUpdated = true;
                 }
             }
@@ -471,19 +471,7 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
                     colors = flattened;
                 }
 
-                if (colorInterp == HdInterpolationFaceVarying) {
-                    HdMeshTopology topology = GetMeshTopology(sceneDelegate);
-                    HdMeshUtil meshUtil(&topology, id);
-                    VtValue triangulated;
-                    meshUtil.ComputeTriangulatedFaceVaryingPrimvar(colors.data(), (int)colors.size(), HdTypeFloatVec3, &triangulated);
-                    if (!triangulated.IsEmpty() && triangulated.IsHolding<VtVec3fArray>()) {
-                        _colors = triangulated.Get<VtVec3fArray>();
-                    } else {
-                        _colors = colors;
-                    }
-                } else {
-                    _colors = colors;
-                }
+                _baseColors = colors;
                 _colorInterp = colorInterp;
                 _subsetsDirty = true;
             }
@@ -527,7 +515,7 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
                 uvs = flattened;
             }
 
-            _uvs = uvs;
+            _baseUVs = uvs;
             _uvInterp = stInterp;
             _subsetsDirty = true;
         }
@@ -565,19 +553,7 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
                 normals = flattened;
             }
 
-            if (normalInterp == HdInterpolationFaceVarying) {
-                HdMeshTopology topology = GetMeshTopology(sceneDelegate);
-                HdMeshUtil meshUtil(&topology, id);
-                VtValue triangulated;
-                meshUtil.ComputeTriangulatedFaceVaryingPrimvar(normals.data(), (int)normals.size(), HdTypeFloatVec3, &triangulated);
-                if (!triangulated.IsEmpty() && triangulated.IsHolding<VtVec3fArray>()) {
-                    _normals = triangulated.Get<VtVec3fArray>();
-                } else {
-                    _normals = normals;
-                }
-            } else {
-                _normals = normals;
-            }
+            _baseNormals = normals;
             _normalInterp = normalInterp;
             _subsetsDirty = true;
         }
@@ -648,10 +624,10 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
         VtVec3iArray allTriangulatedIndices;
         VtIntArray trianglePrimitiveParams;
 
-        if (doSubdivide && !_points.empty()) {
+        if (doSubdivide && !_basePoints.empty()) {
             typedef OpenSubdiv::Far::TopologyDescriptor Descriptor;
             Descriptor desc;
-            desc.numVertices = _points.size();
+            desc.numVertices = _basePoints.size();
             desc.numFaces = topology.GetFaceVertexCounts().size();
             desc.numVertsPerFace = topology.GetFaceVertexCounts().cdata();
             desc.vertIndicesPerFace = topology.GetFaceVertexIndices().cdata();
@@ -661,24 +637,24 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
             Descriptor::FVarChannel channels[3];
 
             std::vector<int> fvIndices, fvColorsIndices, fvNormalsIndices;
-            if (_uvInterp == HdInterpolationFaceVarying && !_uvs.empty()) {
-                fvIndices.resize(_uvs.size());
+            if (_uvInterp == HdInterpolationFaceVarying && !_baseUVs.empty()) {
+                fvIndices.resize(_baseUVs.size());
                 for(size_t i=0; i<fvIndices.size(); ++i) fvIndices[i] = (int)i;
-                channels[numChannels].numValues = _uvs.size();
+                channels[numChannels].numValues = _baseUVs.size();
                 channels[numChannels].valueIndices = fvIndices.data();
                 uvChannelIdx = numChannels++;
             }
-            if (_colorInterp == HdInterpolationFaceVarying && !_colors.empty()) {
-                fvColorsIndices.resize(_colors.size());
+            if (_colorInterp == HdInterpolationFaceVarying && !_baseColors.empty()) {
+                fvColorsIndices.resize(_baseColors.size());
                 for(size_t i=0; i<fvColorsIndices.size(); ++i) fvColorsIndices[i] = (int)i;
-                channels[numChannels].numValues = _colors.size();
+                channels[numChannels].numValues = _baseColors.size();
                 channels[numChannels].valueIndices = fvColorsIndices.data();
                 colorChannelIdx = numChannels++;
             }
-            if (_normalInterp == HdInterpolationFaceVarying && !_normals.empty()) {
-                fvNormalsIndices.resize(_normals.size());
+            if (_normalInterp == HdInterpolationFaceVarying && !_baseNormals.empty()) {
+                fvNormalsIndices.resize(_baseNormals.size());
                 for(size_t i=0; i<fvNormalsIndices.size(); ++i) fvNormalsIndices[i] = (int)i;
-                channels[numChannels].numValues = _normals.size();
+                channels[numChannels].numValues = _baseNormals.size();
                 channels[numChannels].valueIndices = fvNormalsIndices.data();
                 normalChannelIdx = numChannels++;
             }
@@ -768,8 +744,8 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
                 OpenSubdiv::Far::PrimvarRefiner primvarRefiner(*refiner);
 
                 // Interpolate Points
-                std::vector<OsdGfVec3f> srcPoints(_points.size());
-                for(size_t i=0; i<_points.size(); ++i) srcPoints[i] = OsdGfVec3f(_points[i]);
+                std::vector<OsdGfVec3f> srcPoints(_basePoints.size());
+                for(size_t i=0; i<_basePoints.size(); ++i) srcPoints[i] = OsdGfVec3f(_basePoints[i]);
                 for (int level = 1; level <= refineLevel; ++level) {
                     std::vector<OsdGfVec3f> dstPoints(refiner->GetLevel(level).GetNumVertices());
                     primvarRefiner.Interpolate(level, srcPoints, dstPoints);
@@ -781,8 +757,8 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
                 // Interpolate FVar
                 std::vector<OsdGfVec2f> srcUvs;
                 if (uvChannelIdx >= 0) {
-                    srcUvs.resize(_uvs.size());
-                    for(size_t i=0; i<_uvs.size(); ++i) srcUvs[i] = OsdGfVec2f(_uvs[i]);
+                    srcUvs.resize(_baseUVs.size());
+                    for(size_t i=0; i<_baseUVs.size(); ++i) srcUvs[i] = OsdGfVec2f(_baseUVs[i]);
                     for (int level = 1; level <= refineLevel; ++level) {
                         std::vector<OsdGfVec2f> dstUvs(refiner->GetLevel(level).GetNumFVarValues(uvChannelIdx));
                         primvarRefiner.InterpolateFaceVarying(level, srcUvs, dstUvs, uvChannelIdx);
@@ -791,8 +767,8 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
                 }
                 std::vector<OsdGfVec3f> srcColors;
                 if (colorChannelIdx >= 0) {
-                    srcColors.resize(_colors.size());
-                    for(size_t i=0; i<_colors.size(); ++i) srcColors[i] = OsdGfVec3f(_colors[i]);
+                    srcColors.resize(_baseColors.size());
+                    for(size_t i=0; i<_baseColors.size(); ++i) srcColors[i] = OsdGfVec3f(_baseColors[i]);
                     for (int level = 1; level <= refineLevel; ++level) {
                         std::vector<OsdGfVec3f> dstColors(refiner->GetLevel(level).GetNumFVarValues(colorChannelIdx));
                         primvarRefiner.InterpolateFaceVarying(level, srcColors, dstColors, colorChannelIdx);
@@ -801,8 +777,8 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
                 }
                 std::vector<OsdGfVec3f> srcNormals;
                 if (normalChannelIdx >= 0) {
-                    srcNormals.resize(_normals.size());
-                    for(size_t i=0; i<_normals.size(); ++i) srcNormals[i] = OsdGfVec3f(_normals[i]);
+                    srcNormals.resize(_baseNormals.size());
+                    for(size_t i=0; i<_baseNormals.size(); ++i) srcNormals[i] = OsdGfVec3f(_baseNormals[i]);
                     for (int level = 1; level <= refineLevel; ++level) {
                         std::vector<OsdGfVec3f> dstNormals(refiner->GetLevel(level).GetNumFVarValues(normalChannelIdx));
                         primvarRefiner.InterpolateFaceVarying(level, srcNormals, dstNormals, normalChannelIdx);
@@ -863,13 +839,18 @@ HdGeminiMesh::Sync(HdSceneDelegate* sceneDelegate,
                     }
                 }
                 
-                if (uvChannelIdx >= 0) _uvs = triangulatedUvs;
-                if (colorChannelIdx >= 0) _colors = triangulatedColors;
-                if (normalChannelIdx >= 0) _normals = triangulatedNormals;
+                if (uvChannelIdx < 0) _uvs = _baseUVs;
+                if (colorChannelIdx < 0) _colors = _baseColors;
+                if (normalChannelIdx < 0) _normals = _baseNormals;
                 
                 delete refiner;
             }
         } else {
+            _points = _basePoints;
+            _uvs = _baseUVs;
+            _colors = _baseColors;
+            _normals = _baseNormals;
+
             HdMeshUtil meshUtil(&topology, id);
             meshUtil.ComputeTriangleIndices(&allTriangulatedIndices, &trianglePrimitiveParams);
 

@@ -80,6 +80,11 @@ private:
     uint32_t _authoredOceanPrimvars = 0;
     std::unique_ptr<HdGeminiOcean> _oceanSimulator;
     
+    VtVec3fArray _basePoints;
+    VtVec3fArray _baseColors;
+    VtVec2fArray _baseUVs;
+    VtVec3fArray _baseNormals;
+
     VtVec3fArray _colors;
     VtVec2fArray _uvs;
     VtVec3fArray _normals;

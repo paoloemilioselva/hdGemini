@@ -1375,112 +1375,122 @@ GfVec4f HdGeminiRenderer::_SampleTexture(const SdfAssetPath& path, const GfVec2f
 
     std::string cacheKey = assetPath + (forceLinear ? "_lin" : "_srgb");
 
+    std::shared_ptr<TextureData> textureData;
+
     {
-        std::lock_guard<std::mutex> lock(_textureMutex);
+        std::shared_lock<std::shared_mutex> lock(_textureMutex);
         auto it = _textureCache.find(cacheKey);
         if (it != _textureCache.end()) {
-            const TextureData& data = it->second;
-            if (data.pixels.empty()) return GfVec4f(1.0f);
-            return _SampleTextureData(data, uv);
+            textureData = it->second;
         }
     }
 
-    // Not in cache, load it (hold lock for loading to prevent redundant loads)
-    std::lock_guard<std::mutex> lock(_textureMutex);
-    
-    // Check again in case another thread loaded it while we were waiting for the lock
-    auto it = _textureCache.find(cacheKey);
-    if (it != _textureCache.end()) {
-        const TextureData& data = it->second;
-        if (data.pixels.empty()) return GfVec4f(1.0f);
-        return _SampleTextureData(data, uv);
-    }
-
-    if (path.GetAssetPath().find("<UDIM>") != std::string::npos) {
-        HDGEMINI_LOG << "[Gemini]   UDIM detected! Original: " << path.GetAssetPath() << " -> Resolved: " << assetPath << std::endl;
-    } else {
-        HDGEMINI_LOG << "[Gemini]   Loading texture: " << assetPath << std::endl;
-    }
-
-    HioImageSharedPtr image = HioImage::OpenForReading(resolvedPath.empty() ? assetPath : resolvedPath);
-    if (!image) {
-        image = HioImage::OpenForReading(assetPath);
-    }
-    if (!image) {
-        HDGEMINI_LOG << "[Gemini]   Failed to open texture: " << (resolvedPath.empty() ? assetPath : resolvedPath) << std::endl;
-        _textureCache[cacheKey] = TextureData();
-        return GfVec4f(-1.0f);
-    }
-
-    TextureData data;
-    data.width = image->GetWidth();
-    data.height = image->GetHeight();
-    HDGEMINI_LOG << "[Gemini]   Texture loaded: " << data.width << "x" << data.height << std::endl;
-    data.pixels.assign(data.width * data.height * 4, 0.0f);
-
-    HioFormat format = image->GetFormat();
-    int channels = HioGetComponentCount(format);
-    if (channels <= 0 || data.width == 0 || data.height == 0) {
-        HDGEMINI_LOG << "[Gemini]   Invalid texture channels or dimensions: " << assetPath << std::endl;
-        _textureCache[cacheKey] = TextureData();
-        return GfVec4f(-1.0f);
-    }
-    bool isFloat = (format == HioFormatFloat32 || format == HioFormatFloat32Vec2 || format == HioFormatFloat32Vec3 || format == HioFormatFloat32Vec4 ||
-                    format == HioFormatFloat16 || format == HioFormatFloat16Vec2 || format == HioFormatFloat16Vec3 || format == HioFormatFloat16Vec4);
-    bool isOriginalSrgb = (format == HioFormatUNorm8srgb || format == HioFormatUNorm8Vec2srgb || format == HioFormatUNorm8Vec3srgb || format == HioFormatUNorm8Vec4srgb);
-    bool applySrgb = isOriginalSrgb && !forceLinear;
-
-    HioImage::StorageSpec spec;
-    spec.format = format;
-    spec.width = data.width;
-    spec.height = data.height;
-
-    if (isFloat) {
-        // Just read as Float32 regardless of original float type (HioImage converts internally for floats usually, but let's be safe and read as Float32)
-        spec.format = channels == 4 ? HioFormatFloat32Vec4 : (channels == 3 ? HioFormatFloat32Vec3 : (channels == 2 ? HioFormatFloat32Vec2 : HioFormatFloat32));
-        std::vector<float> rawData(data.width * data.height * channels);
-        spec.data = rawData.data();
-        if (!image->Read(spec)) {
-            HDGEMINI_LOG << "[Gemini]   Failed to read texture pixels (float): " << path.GetAssetPath() << std::endl;
+    if (!textureData) {
+        std::unique_lock<std::shared_mutex> lock(_textureMutex);
+        auto it = _textureCache.find(cacheKey);
+        if (it != _textureCache.end()) {
+            textureData = it->second;
         } else {
-            for (int i = 0; i < data.width * data.height; ++i) {
-                data.pixels[i*4+0] = rawData[i*channels+0];
-                data.pixels[i*4+1] = channels > 1 ? rawData[i*channels+1] : rawData[i*channels+0];
-                data.pixels[i*4+2] = channels > 2 ? rawData[i*channels+2] : rawData[i*channels+0];
-                data.pixels[i*4+3] = channels > 3 ? rawData[i*channels+3] : 1.0f;
-            }
-        }
-    } else {
-        // Read as UNorm8 using original format
-        spec.format = channels == 4 ? (isOriginalSrgb ? HioFormatUNorm8Vec4srgb : HioFormatUNorm8Vec4) :
-                      (channels == 3 ? (isOriginalSrgb ? HioFormatUNorm8Vec3srgb : HioFormatUNorm8Vec3) :
-                      (channels == 2 ? (isOriginalSrgb ? HioFormatUNorm8Vec2srgb : HioFormatUNorm8Vec2) : 
-                      (isOriginalSrgb ? HioFormatUNorm8srgb : HioFormatUNorm8)));
-                      
-        std::vector<unsigned char> rawData(data.width * data.height * channels);
-        spec.data = rawData.data();
-        if (!image->Read(spec)) {
-            HDGEMINI_LOG << "[Gemini]   Failed to read texture pixels (unorm8): " << path.GetAssetPath() << std::endl;
-        } else {
-            for (int i = 0; i < data.width * data.height; ++i) {
-                float r = rawData[i*channels+0] / 255.0f;
-                float g = channels > 1 ? rawData[i*channels+1] / 255.0f : r;
-                float b = channels > 2 ? rawData[i*channels+2] / 255.0f : r;
-                if (applySrgb) {
-                    r = std::pow(r, 2.2f);
-                    g = std::pow(g, 2.2f);
-                    b = std::pow(b, 2.2f);
+            textureData = std::make_shared<TextureData>();
+            _textureCache[cacheKey] = textureData;
+            
+            std::thread([this, assetPath, resolvedPath, forceLinear, textureData]() {
+                if (assetPath.find("<UDIM>") != std::string::npos) {
+                    HDGEMINI_LOG << "[Gemini]   UDIM detected! Original: " << assetPath << " -> Resolved: " << resolvedPath << std::endl;
+                } else {
+                    HDGEMINI_LOG << "[Gemini]   Loading texture: " << assetPath << std::endl;
                 }
-                data.pixels[i*4+0] = r;
-                data.pixels[i*4+1] = g;
-                data.pixels[i*4+2] = b;
-                data.pixels[i*4+3] = channels > 3 ? rawData[i*channels+3] / 255.0f : 1.0f;
-            }
+
+                HioImageSharedPtr image = HioImage::OpenForReading(resolvedPath.empty() ? assetPath : resolvedPath);
+                if (!image) {
+                    image = HioImage::OpenForReading(assetPath);
+                }
+                if (!image) {
+                    HDGEMINI_LOG << "[Gemini]   Failed to open texture: " << (resolvedPath.empty() ? assetPath : resolvedPath) << std::endl;
+                    textureData->isFailed = true;
+                    return;
+                }
+
+                int width = image->GetWidth();
+                int height = image->GetHeight();
+                HDGEMINI_LOG << "[Gemini]   Texture loaded: " << width << "x" << height << std::endl;
+                std::vector<float> pixels(width * height * 4, 0.0f);
+
+                HioFormat format = image->GetFormat();
+                int channels = HioGetComponentCount(format);
+                if (channels <= 0 || width == 0 || height == 0) {
+                    HDGEMINI_LOG << "[Gemini]   Invalid texture channels or dimensions: " << assetPath << std::endl;
+                    textureData->isFailed = true;
+                    return;
+                }
+                bool isFloat = (format == HioFormatFloat32 || format == HioFormatFloat32Vec2 || format == HioFormatFloat32Vec3 || format == HioFormatFloat32Vec4 ||
+                                format == HioFormatFloat16 || format == HioFormatFloat16Vec2 || format == HioFormatFloat16Vec3 || format == HioFormatFloat16Vec4);
+                bool isOriginalSrgb = (format == HioFormatUNorm8srgb || format == HioFormatUNorm8Vec2srgb || format == HioFormatUNorm8Vec3srgb || format == HioFormatUNorm8Vec4srgb);
+                bool applySrgb = isOriginalSrgb && !forceLinear;
+
+                HioImage::StorageSpec spec;
+                spec.format = format;
+                spec.width = width;
+                spec.height = height;
+
+                if (isFloat) {
+                    spec.format = channels == 4 ? HioFormatFloat32Vec4 : (channels == 3 ? HioFormatFloat32Vec3 : (channels == 2 ? HioFormatFloat32Vec2 : HioFormatFloat32));
+                    std::vector<float> rawData(width * height * channels);
+                    spec.data = rawData.data();
+                    if (!image->Read(spec)) {
+                        HDGEMINI_LOG << "[Gemini]   Failed to read texture pixels (float): " << assetPath << std::endl;
+                        textureData->isFailed = true;
+                        return;
+                    } else {
+                        for (int i = 0; i < width * height; ++i) {
+                            pixels[i*4+0] = rawData[i*channels+0];
+                            pixels[i*4+1] = channels > 1 ? rawData[i*channels+1] : rawData[i*channels+0];
+                            pixels[i*4+2] = channels > 2 ? rawData[i*channels+2] : rawData[i*channels+0];
+                            pixels[i*4+3] = channels > 3 ? rawData[i*channels+3] : 1.0f;
+                        }
+                    }
+                } else {
+                    spec.format = channels == 4 ? (isOriginalSrgb ? HioFormatUNorm8Vec4srgb : HioFormatUNorm8Vec4) :
+                                  (channels == 3 ? (isOriginalSrgb ? HioFormatUNorm8Vec3srgb : HioFormatUNorm8Vec3) :
+                                  (channels == 2 ? (isOriginalSrgb ? HioFormatUNorm8Vec2srgb : HioFormatUNorm8Vec2) : 
+                                  (isOriginalSrgb ? HioFormatUNorm8srgb : HioFormatUNorm8)));
+                                  
+                    std::vector<unsigned char> rawData(width * height * channels);
+                    spec.data = rawData.data();
+                    if (!image->Read(spec)) {
+                        HDGEMINI_LOG << "[Gemini]   Failed to read texture pixels (unorm8): " << assetPath << std::endl;
+                        textureData->isFailed = true;
+                        return;
+                    } else {
+                        for (int i = 0; i < width * height; ++i) {
+                            float r = rawData[i*channels+0] / 255.0f;
+                            float g = channels > 1 ? rawData[i*channels+1] / 255.0f : r;
+                            float b = channels > 2 ? rawData[i*channels+2] / 255.0f : r;
+                            if (applySrgb) {
+                                r = std::pow(r, 2.2f);
+                                g = std::pow(g, 2.2f);
+                                b = std::pow(b, 2.2f);
+                            }
+                            pixels[i*4+0] = r;
+                            pixels[i*4+1] = g;
+                            pixels[i*4+2] = b;
+                            pixels[i*4+3] = channels > 3 ? rawData[i*channels+3] / 255.0f : 1.0f;
+                        }
+                    }
+                }
+
+                textureData->width = width;
+                textureData->height = height;
+                textureData->pixels = std::move(pixels);
+                textureData->isLoaded = true;
+            }).detach();
         }
     }
 
-    _textureCache[cacheKey] = std::move(data);
-    return _SampleTextureData(_textureCache[cacheKey], uv);
+    if (textureData->isFailed) return GfVec4f(-1.0f);
+    if (!textureData->isLoaded) return GfVec4f(0.5f); // Gray placeholder while loading
+
+    return _SampleTextureData(*textureData, uv);
 }
 
 GfVec4f HdGeminiRenderer::_SampleTextureData(const TextureData& data, const GfVec2f& uv) const {

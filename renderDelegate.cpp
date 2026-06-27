@@ -43,6 +43,8 @@ const TfTokenVector HdGeminiRenderDelegate::SUPPORTED_SPRIM_TYPES =
     HdPrimTypeTokens->sphereLight,
     HdPrimTypeTokens->domeLight,
     HdPrimTypeTokens->rectLight,
+    HdPrimTypeTokens->diskLight,
+    HdPrimTypeTokens->cylinderLight,
 };
 
 const TfTokenVector HdGeminiRenderDelegate::SUPPORTED_BPRIM_TYPES =
@@ -225,6 +227,7 @@ HdGeminiRenderDelegate::DestroyRprim(HdRprim *rPrim)
     if (rPrim) {
         RemoveMesh(rPrim->GetId());
         RemoveBasisCurves(rPrim->GetId());
+        RemoveVolume(rPrim->GetId());
         delete rPrim;
     }
 }

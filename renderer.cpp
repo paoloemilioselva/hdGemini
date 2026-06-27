@@ -819,7 +819,6 @@ HdGeminiRenderer::_PrepareScene(HdRenderThread *renderThread, HdGeminiRenderDele
         _instances.push_back(inst);
     }
 
-    _BuildTLAS(renderThread);
 #ifdef HDGEMINI_HAS_SYCL
     if (_syclQueue) {
         size_t numLights = _activeLights.size();
@@ -829,7 +828,6 @@ HdGeminiRenderer::_PrepareScene(HdRenderThread *renderThread, HdGeminiRenderDele
             _lightBufferSize = numLights;
         }
         _numActiveLights = numLights;
-        _hasDomeLight = false;
         
         for (size_t i = 0; i < numLights; ++i) {
             HdGeminiLight* l = _activeLights[i];
@@ -872,7 +870,6 @@ HdGeminiRenderer::_PrepareScene(HdRenderThread *renderThread, HdGeminiRenderDele
                 _usmEnvMapColCdf = sycl::malloc_shared<float>(_envMapColCdf.size(), *_syclQueue);
                 _usmEnvMapColCdfSize = _envMapColCdf.size();
             }
-            std::copy(_envMapColCdf.begin(), _envMapColCdf.end(), _usmEnvMapColCdf);
             std::copy(_envMapColCdf.begin(), _envMapColCdf.end(), _usmEnvMapColCdf);
         }
     }
@@ -1007,6 +1004,67 @@ bool HdGeminiRenderer::_IntersectTLAS(const GfVec3f& rayOrigin, const GfVec3f& r
                         }
                     }
 #endif
+                } else if (inst.type == SceneInstance::Type::BasisCurves) {
+                    GfVec3f instNormal;
+                    GfVec2f instUv;
+                    GfVec3f instSmoothNormal;
+                    GfVec3f instDpdu, instDpdv;
+                    GfVec3f instSmoothColor;
+                    int matIdx = -1;
+                    if (inst.curveSubset->bvh.Intersect(objRayOrigin, objRayDir, instT, instNormal, instUv, instSmoothNormal, instDpdu, instDpdv, instSmoothColor, matIdx)) {
+                        if (instT < hit.t) {
+                            hit.t = instT;
+                            GfMatrix4f invTransp = inst.invTransform.GetTranspose();
+                            hit.normal = invTransp.TransformDir(instNormal).GetNormalized();
+                            hit.smoothNormal = invTransp.TransformDir(instSmoothNormal).GetNormalized();
+                            hit.dpdu = inst.transform.TransformDir(instDpdu).GetNormalized();
+                            hit.dpdv = inst.transform.TransformDir(instDpdv).GetNormalized();
+                            hit.uv = instUv;
+                            hit.baseColor = instSmoothColor;
+                            
+                            if (inst.material && !inst.material->GetId().IsEmpty()) {
+                                hit.baseColor = inst.material->GetDiffuseColor();
+                                hit.metallic = inst.material->GetMetallic();
+                                hit.roughness = inst.material->GetRoughness();
+                                hit.specularColor = inst.material->GetSpecularColor();
+                                hit.specular = inst.material->GetSpecular();
+                                hit.opacity = inst.material->GetOpacity();
+                                hit.ior = inst.material->GetIor();
+                                
+                                hit.transmission = inst.material->GetTransmission();
+                                hit.transmissionColor = inst.material->GetTransmissionColor();
+                                hit.emission = inst.material->GetEmissionColor() * inst.material->GetEmission();
+                                hit.diffuseTexture = &inst.material->GetDiffuseTexture();
+                                hit.normalTexture = &inst.material->GetNormalTexture();
+                                hit.metallicTexture = &inst.material->GetMetallicTexture();
+                                hit.roughnessTexture = &inst.material->GetRoughnessTexture();
+                                hit.opacityTexture = &inst.material->GetOpacityTexture();
+                                hit.transmissionTexture = &inst.material->GetTransmissionTexture();
+                                hit.metallicTextureChannel = inst.material->GetMetallicTextureChannel();
+                                hit.roughnessTextureChannel = inst.material->GetRoughnessTextureChannel();
+                                hit.opacityTextureChannel = inst.material->GetOpacityTextureChannel();
+                                hit.transmissionTextureChannel = inst.material->GetTransmissionTextureChannel();
+                                
+                                hit.coat = inst.material->GetCoat();
+                                hit.coatColor = inst.material->GetCoatColor();
+                                hit.coatRoughness = inst.material->GetCoatRoughness();
+                                hit.coatIor = inst.material->GetCoatIor();
+                                hit.transmissionDepth = inst.material->GetTransmissionDepth();
+                                hit.transmissionScatter = inst.material->GetTransmissionScatter();
+                                hit.sheen = inst.material->GetSheen();
+                                hit.sheenColor = inst.material->GetSheenColor();
+                                hit.sheenRoughness = inst.material->GetSheenRoughness();
+                                hit.subsurface = inst.material->GetSubsurface();
+                                hit.subsurfaceColor = inst.material->GetSubsurfaceColor();
+                                hit.subsurfaceRadius = inst.material->GetSubsurfaceRadius();
+                                hit.subsurfaceScale = inst.material->GetSubsurfaceScale();
+                                hit.subsurfaceAnisotropy = inst.material->GetSubsurfaceAnisotropy();
+                                hit.thinWalled = inst.material->GetThinWalled();
+                                hit.diffuseRoughness = inst.material->GetDiffuseRoughness();
+                            }
+                            wasHit = true;
+                        }
+                    }
                 } else if (inst.type == SceneInstance::Type::Mesh) {
                     GfVec3f instNormal;
                     GfVec2f instUv;
@@ -1039,6 +1097,7 @@ bool HdGeminiRenderer::_IntersectTLAS(const GfVec3f& rayOrigin, const GfVec3f& r
                             hit.transmissionColor = inst.material->GetTransmissionColor();
                             hit.emission = inst.material->GetEmissionColor() * inst.material->GetEmission();
                             hit.diffuseTexture = &inst.material->GetDiffuseTexture();
+                            hit.emissiveTexture = &inst.material->GetEmissiveTexture();
                             hit.normalTexture = &inst.material->GetNormalTexture();
                             hit.metallicTexture = &inst.material->GetMetallicTexture();
                             hit.roughnessTexture = &inst.material->GetRoughnessTexture();
@@ -3061,9 +3120,9 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
             const auto& pv = pathHistory[i];
             SampledSpectrum addedRadiance = totalRadiance - pv.totalRadianceBefore;
             GfVec3f returningL(0.0f);
-            for(int i=0; i<SPECTRUM_SAMPLES; ++i) {
-                if (pv.throughput[i] > 1e-6f) {
-                    returningL[i] = addedRadiance[i] / pv.throughput[i];
+            for(int s=0; s<SPECTRUM_SAMPLES; ++s) {
+                if (s < 3 && pv.throughput[s] > 1e-6f) {
+                    returningL[s] = addedRadiance[s] / pv.throughput[s];
                 }
             }
             float lum = 0.2126f * returningL[0] + 0.7152f * returningL[1] + 0.0722f * returningL[2];

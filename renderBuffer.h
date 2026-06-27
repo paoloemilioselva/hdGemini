@@ -29,10 +29,11 @@ public:
     virtual bool IsMultiSampled() const override { return _multiSampled; }
 
     virtual void* Map() override { 
+        _mapped = true;
         return _buffer.data(); 
     }
-    virtual void Unmap() override {}
-    virtual bool IsMapped() const override { return false; }
+    virtual void Unmap() override { _mapped = false; }
+    virtual bool IsMapped() const override { return _mapped; }
 
     virtual void Resolve() override;
     void ResolveBucket(unsigned int startX, unsigned int startY, unsigned int endX, unsigned int endY);
@@ -71,6 +72,7 @@ private:
     std::atomic<bool> _converged;
     std::mutex _bufferMutex;
     unsigned int _version = 0;
+    bool _mapped = false;
 };
 
 #endif // HD_GEMINI_RENDER_BUFFER_H

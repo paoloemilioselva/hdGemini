@@ -104,6 +104,9 @@ public:
     const SdfAssetPath& GetDiffuseTexture() const { return _diffuseTexture; }
     void SetDiffuseTexture(const SdfAssetPath& v) { _diffuseTexture = v; }
 
+    const SdfAssetPath& GetEmissiveTexture() const { return _emissiveTexture; }
+    void SetEmissiveTexture(const SdfAssetPath& v) { _emissiveTexture = v; }
+
     const SdfAssetPath& GetNormalTexture() const { return _normalTexture; }
     void SetNormalTexture(const SdfAssetPath& v) { _normalTexture = v; }
 
@@ -160,6 +163,7 @@ public:
     float _diffuseRoughness;
 
     SdfAssetPath _diffuseTexture;
+    SdfAssetPath _emissiveTexture;
     SdfAssetPath _normalTexture;
     SdfAssetPath _metallicTexture;
     SdfAssetPath _roughnessTexture;

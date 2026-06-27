@@ -297,10 +297,7 @@ static void _ProcessNodeUpstream(
                 if (param.first == TfToken("file") && 
                     param.second.IsHolding<SdfAssetPath>()) {
                     HDGEMINI_LOG << "[Gemini]       Mapped emissive texture: " << param.second.UncheckedGet<SdfAssetPath>().GetAssetPath() << std::endl;
-                    // For now, if diffuse is empty, use emissive as a placeholder so it shows up
-                    if (material->GetDiffuseTexture().GetAssetPath().empty()) {
-                        material->SetDiffuseTexture(param.second.UncheckedGet<SdfAssetPath>());
-                    }
+                    material->SetEmissiveTexture(param.second.UncheckedGet<SdfAssetPath>());
                 }
             }
         } else if (targetInput == TfToken("geometry_opacity") || targetInput == TfToken("opacity")) {

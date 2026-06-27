@@ -4,6 +4,11 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(TARGET "hdGemini")
+project( 
+    ${TARGET}
+    LANGUAGES CXX C
+)
+
 add_definitions(-DNOMINMAX)
 
 option(HDGEMINI_DEBUG_PRINTS "Enable verbose debug printing" OFF)
@@ -12,11 +17,6 @@ if(HDGEMINI_DEBUG_PRINTS)
 endif()
 
 option(HDGEMINI_USE_SYCL "Enable SYCL backend for ray generation" OFF)
-
-project( 
-    ${TARGET}
-    LANGUAGES CXX C
-)
 
 # Force MSVC runtime to DLL (/MD) to avoid TBB linkage errors with icx
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
@@ -52,7 +52,10 @@ if( _target_name MATCHES "houdini" )
 
 elseif( _target_name MATCHES "usd" )
     list(GET _t_config 1 USD_VERSION )
-    set(USD_ROOT "C:\\dev\\usd-${USD_VERSION}" )
+    set(USD_ROOT "$ENV{USD_ROOT}" CACHE PATH "USD installation root")
+    if(NOT USD_ROOT)
+        set(USD_ROOT "C:\\dev\\usd-${USD_VERSION}")
+    endif()
 
 else()
     MESSAGE(FATAL_ERROR "Invalid target " ${_target_name})
@@ -181,10 +184,14 @@ set(_installation_folder "")
 if( _target_name MATCHES "houdini" )
     set(_installation_folder ${HOUDINI_ROOT_USER}/${DELEGATE_NAME})
     install(TARGETS ${DELEGATE_NAME} DESTINATION ${_installation_folder}/dso/usd_plugins)
-    install(FILES ${CMAKE_SOURCE_DIR}/plugInfo.json DESTINATION ${_installation_folder}/dso/usd_plugins)
+    configure_file(${CMAKE_SOURCE_DIR}/plugInfo.json ${CMAKE_BINARY_DIR}/plugInfo.json @ONLY)
+    install(FILES ${CMAKE_BINARY_DIR}/plugInfo.json DESTINATION ${_installation_folder}/dso/usd_plugins)
 
 elseif( _target_name MATCHES "usd" )
-    set(_installation_folder "C:/Users/paolo/Desktop/usd-26.03-extra")
+    set(_installation_folder "$ENV{HDGEMINI_INSTALL_DIR}" CACHE PATH "Installation directory")
+    if(NOT _installation_folder)
+        set(_installation_folder "${CMAKE_BINARY_DIR}/install")
+    endif()
     install(TARGETS ${DELEGATE_NAME} RUNTIME DESTINATION ${_installation_folder}/plugin/usd)
     install(FILES $<TARGET_PDB_FILE:${DELEGATE_NAME}> DESTINATION ${_installation_folder}/plugin/usd OPTIONAL)
     install(FILES ${CMAKE_SOURCE_DIR}/usd-extra/plugInfo.json DESTINATION ${_installation_folder}/plugin/usd/${DELEGATE_NAME}/resources )

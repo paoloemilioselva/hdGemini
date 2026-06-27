@@ -1,60 +1,765 @@
 #usda 1.0
 (
-    metersPerUnit = 1.0
-    upAxis = "Y"
+    "Created by UsdView"
+    customLayerData = {
+        string License = "CC BY 4.0"
+        string Version = "1.1"
+    }
+    defaultPrim = "standard_shader_ball_scene"
+    endTimeCode = 3
+    framesPerSecond = 24
+    metersPerUnit = 0.01
+    startTimeCode = 3
     subLayers = [
-        @C:\Users\paolo\Desktop\code\assets\full_assets\StandardShaderBall\standard_shader_ball_scene.usda@,
+        @C:\Users\paolo\Desktop\code\assets\full_assets\StandardShaderBall\standard_shader_ball_scene.usda@
     ]
+    timeCodesPerSecond = 24
+    upAxis = "Y"
 )
-
-over "standard_shader_ball_scene" (
-    variants = {
-        string example_material = "mtlx_glass"
-    }    
-)
-{
-
-}
 
 def "Render"
 {
-    def RenderSettings "GeminiRenderSettings"
+    def RenderSettings "GeminiSettings" (
+        active = true
+    )
     {
-        custom bool gemini:enableSubsurface = True (
-            uiHints = {
-                string displayName = "Enable Subsurface Scattering"
-                string displayGroup = "Performance"
+        custom int gemini:adaptiveMinSamples = 32 (
+            customData = {
+                dictionary uiHints = {
+                    string displayGroup = "Sampling"
+                    string displayName = "Adaptive Min Samples"
+                    string doc = ""
+                }
             }
         )
-        custom bool gemini:enableRestirGI = True (
-            uiHints = {
-                string displayName = "Enable ReSTIR GI"
-                string displayGroup = "Performance"
+        custom float gemini:adaptiveVarianceThreshold = 0.01 (
+            customData = {
+                dictionary uiHints = {
+                    string displayGroup = "Sampling"
+                    string displayName = "Adaptive Variance Threshold"
+                    string doc = ""
+                }
             }
         )
-        custom bool gemini:enablePhysicalCamera = True (
-            uiHints = {
-                string displayName = "Override Physical Camera Parameters"
-                string displayGroup = "Camera"
+        custom int gemini:antiAliasingFilter = 1 (
+            customData = {
+                dictionary uiHints = {
+                    string displayGroup = "Sampling"
+                    string displayName = "Anti-Aliasing Filter (0=None, 1=Box, 2=Tent, 3=Gaussian)"
+                    string doc = ""
+                }
             }
         )
-        custom float gemini:iso = 400.0 (
-            uiHints = {
-                string displayName = "ISO"
-                string displayGroup = "Camera"
+        custom int gemini:bokehBlades = 0 (
+            customData = {
+                dictionary uiHints = {
+                    string displayGroup = "Camera"
+                    string displayName = "Bokeh Blades"
+                    string doc = ""
+                }
+            }
+        )
+        custom float gemini:chromaticAberration = 0 (
+            customData = {
+                dictionary uiHints = {
+                    string displayGroup = "Camera"
+                    string displayName = "Chromatic Aberration"
+                    string doc = ""
+                }
+            }
+        )
+        custom bool gemini:enableAdaptiveSampling = 1 (
+            customData = {
+                dictionary uiHints = {
+                    string displayGroup = "Sampling"
+                    string displayName = "Enable Adaptive Sampling"
+                    string doc = ""
+                }
+            }
+        )
+        custom bool gemini:enableChromaticityBlur = 1 (
+            customData = {
+                dictionary uiHints = {
+                    string displayGroup = "Post-Processing"
+                    string displayName = "Enable Pre-Pass: Chromaticity Blur"
+                    string doc = ""
+                }
+            }
+        )
+        custom bool gemini:enableDenoiser = 1 (
+            customData = {
+                dictionary uiHints = {
+                    string displayGroup = "Post-Processing"
+                    string displayName = "Enable OIDN Denoiser"
+                    string doc = ""
+                }
+            }
+        )
+        custom bool gemini:enableDoF = 0 (
+            customData = {
+                dictionary uiHints = {
+                    string displayGroup = "Camera"
+                    string displayName = "Enable DoF"
+                    string doc = ""
+                }
+            }
+        )
+        custom bool gemini:enableFireflyFilter = 1 (
+            customData = {
+                dictionary uiHints = {
+                    string displayGroup = "Post-Processing"
+                    string displayName = "Enable Pre-Pass: Firefly Filter"
+                    string doc = ""
+                }
+            }
+        )
+        custom bool gemini:enableGenAi = 0 (
+            customData = {
+                dictionary uiHints = {
+                    string displayGroup = "General"
+                    string displayName = "Generative AI: Enable"
+                    string doc = ""
+                }
+            }
+        )
+        custom bool gemini:enableLensFlare = 0 (
+            customData = {
+                dictionary uiHints = {
+                    string displayGroup = "Camera"
+                    string displayName = "Enable Lens Flare"
+                    string doc = ""
+                }
+            }
+        )
+        custom bool gemini:enableOnScreenStats = 1 (
+            customData = {
+                dictionary uiHints = {
+                    string displayGroup = "System"
+                    string displayName = "Enable On-Screen Stats"
+                    string doc = ""
+                }
+            }
+        )
+        custom bool gemini:enablePathGuiding = 1 (
+            customData = {
+                dictionary uiHints = {
+                    string displayGroup = "Sampling"
+                    string displayName = "Enable Path Guiding"
+                    string doc = ""
+                }
+            }
+        )
+        custom bool gemini:enablePhysicalCamera = 1 (
+            customData = {
+                dictionary uiHints = {
+                    string displayGroup = "Camera"
+                    string displayName = "Override Physical Camera Parameters"
+                    string doc = ""
+                }
+            }
+        )
+        custom bool gemini:enableRestirDI = 1 (
+            customData = {
+                dictionary uiHints = {
+                    string displayGroup = "Sampling"
+                    string displayName = "Enable ReSTIR Direct Illumination"
+                    string doc = ""
+                }
+            }
+        )
+        custom bool gemini:enableSubdivision = 1 (
+            customData = {
+                dictionary uiHints = {
+                    string displayGroup = "General"
+                    string displayName = "Enable Subdivision"
+                    string doc = ""
+                }
+            }
+        )
+        custom bool gemini:enableSubsurface = 1 (
+            customData = {
+                dictionary uiHints = {
+                    string displayGroup = "General"
+                    string displayName = "Enable Subsurface Scattering"
+                    string doc = ""
+                }
+            }
+        )
+        custom bool gemini:enableSycl = 1 (
+            customData = {
+                dictionary uiHints = {
+                    string displayGroup = "System"
+                    string displayName = "Enable SYCL GPU Acceleration"
+                    string doc = ""
+                }
+            }
+        )
+        custom float gemini:focalLength = 50 (
+            customData = {
+                dictionary uiHints = {
+                    string displayGroup = "Camera"
+                    string displayName = "Focal Length (mm)"
+                    string doc = ""
+                }
+            }
+        )
+        custom float gemini:focusDistance = 10 (
+            customData = {
+                dictionary uiHints = {
+                    string displayGroup = "Camera"
+                    string displayName = "Focus Distance"
+                    string doc = ""
+                }
+            }
+        )
+        custom float gemini:fStop = 5.6 (
+            customData = {
+                dictionary uiHints = {
+                    string displayGroup = "Camera"
+                    string displayName = "F-Stop (Aperture)"
+                    string doc = ""
+                }
+            }
+        )
+        custom string gemini:genAiPrompt = "" (
+            customData = {
+                dictionary uiHints = {
+                    string displayGroup = "Generative AI"
+                    string displayName = "Generative AI: Prompt"
+                    string doc = ""
+                }
+            }
+        )
+        custom float gemini:genAiStrength = 0.5 (
+            customData = {
+                dictionary uiHints = {
+                    string displayGroup = "Generative AI"
+                    string displayName = "Generative AI: Strength"
+                    string doc = ""
+                }
+            }
+        )
+        custom float gemini:iso = 400 (
+            customData = {
+                dictionary uiHints = {
+                    string displayGroup = "Camera"
+                    string displayName = "ISO"
+                    string doc = ""
+                }
+            }
+        )
+        custom float gemini:lensDistortion = 0 (
+            customData = {
+                dictionary uiHints = {
+                    string displayGroup = "Camera"
+                    string displayName = "Lens Distortion"
+                    string doc = ""
+                }
+            }
+        )
+        custom int gemini:maxReflectionBounces = 16 (
+            customData = {
+                dictionary uiHints = {
+                    string displayGroup = "Sampling"
+                    string displayName = "Max Reflection Bounces"
+                    string doc = ""
+                }
+            }
+        )
+        custom int gemini:maxRefractionBounces = 16 (
+            customData = {
+                dictionary uiHints = {
+                    string displayGroup = "Sampling"
+                    string displayName = "Max Refraction Bounces"
+                    string doc = ""
+                }
+            }
+        )
+        custom float gemini:meniscusBend = 0.2 (
+            customData = {
+                dictionary uiHints = {
+                    string displayGroup = "Camera"
+                    string displayName = "Camera Waterline Meniscus Bend"
+                    string doc = ""
+                }
+            }
+        )
+        custom float gemini:meniscusSize = 0.015 (
+            customData = {
+                dictionary uiHints = {
+                    string displayGroup = "Camera"
+                    string displayName = "Camera Waterline Meniscus Size"
+                    string doc = ""
+                }
+            }
+        )
+        custom float3 gemini:meniscusTint = (0.02, 0.05, 0.04) (
+            customData = {
+                dictionary uiHints = {
+                    string displayGroup = "Camera"
+                    string displayName = "Camera Waterline Meniscus Tint"
+                    string doc = ""
+                }
+            }
+        )
+        custom float gemini:metersPerUnit = 0.01 (
+            customData = {
+                dictionary uiHints = {
+                    string displayGroup = "System"
+                    string displayName = "System Meters Per Unit"
+                    string doc = ""
+                }
+            }
+        )
+        custom float gemini:oceanAmplitude1 = 0 (
+            customData = {
+                dictionary uiHints = {
+                    string displayGroup = "Ocean"
+                    string displayName = "Ocean Amplitude 1"
+                    string doc = ""
+                }
+            }
+        )
+        custom float gemini:oceanAmplitude2 = 0 (
+            customData = {
+                dictionary uiHints = {
+                    string displayGroup = "Ocean"
+                    string displayName = "Ocean Amplitude 2"
+                    string doc = ""
+                }
+            }
+        )
+        custom float gemini:oceanAmplitude3 = 0 (
+            customData = {
+                dictionary uiHints = {
+                    string displayGroup = "Ocean"
+                    string displayName = "Ocean Amplitude 3"
+                    string doc = ""
+                }
+            }
+        )
+        custom float gemini:oceanChoppiness1 = 1.2 (
+            customData = {
+                dictionary uiHints = {
+                    string displayGroup = "Ocean"
+                    string displayName = "Ocean Choppiness 1"
+                    string doc = ""
+                }
+            }
+        )
+        custom float gemini:oceanChoppiness2 = 1.2 (
+            customData = {
+                dictionary uiHints = {
+                    string displayGroup = "Ocean"
+                    string displayName = "Ocean Choppiness 2"
+                    string doc = ""
+                }
+            }
+        )
+        custom float gemini:oceanChoppiness3 = 1.2 (
+            customData = {
+                dictionary uiHints = {
+                    string displayGroup = "Ocean"
+                    string displayName = "Ocean Choppiness 3"
+                    string doc = ""
+                }
+            }
+        )
+        custom bool gemini:oceanContinuousDicing = 0 (
+            customData = {
+                dictionary uiHints = {
+                    string displayGroup = "Ocean"
+                    string displayName = "Ocean Continuous Dicing"
+                    string doc = ""
+                }
+            }
+        )
+        custom float gemini:oceanDicingScale = 10 (
+            customData = {
+                dictionary uiHints = {
+                    string displayGroup = "Ocean"
+                    string displayName = "Ocean Dicing Scale"
+                    string doc = ""
+                }
+            }
+        )
+        custom bool gemini:oceanDisableShader = 0 (
+            customData = {
+                dictionary uiHints = {
+                    string displayGroup = "Ocean"
+                    string displayName = "Ocean Disable Shader"
+                    string doc = ""
+                }
+            }
+        )
+        custom bool gemini:oceanEnable = 0 (
+            customData = {
+                dictionary uiHints = {
+                    string displayGroup = "Ocean"
+                    string displayName = "Ocean Enable"
+                    string doc = ""
+                }
+            }
+        )
+        custom float gemini:oceanFoamVisibility = 1 (
+            customData = {
+                dictionary uiHints = {
+                    string displayGroup = "Ocean"
+                    string displayName = "Ocean Foam Visibility"
+                    string doc = ""
+                }
+            }
+        )
+        custom int gemini:oceanGridSize = 128 (
+            customData = {
+                dictionary uiHints = {
+                    string displayGroup = "Ocean"
+                    string displayName = "Ocean Grid Size"
+                    string doc = ""
+                }
+            }
+        )
+        custom float gemini:oceanMaxK1 = 1000000 (
+            customData = {
+                dictionary uiHints = {
+                    string displayGroup = "Ocean"
+                    string displayName = "Ocean Max K 1"
+                    string doc = ""
+                }
+            }
+        )
+        custom float gemini:oceanMaxK2 = 1000000 (
+            customData = {
+                dictionary uiHints = {
+                    string displayGroup = "Ocean"
+                    string displayName = "Ocean Max K 2"
+                    string doc = ""
+                }
+            }
+        )
+        custom float gemini:oceanMaxK3 = 1000000 (
+            customData = {
+                dictionary uiHints = {
+                    string displayGroup = "Ocean"
+                    string displayName = "Ocean Max K 3"
+                    string doc = ""
+                }
+            }
+        )
+        custom float gemini:oceanMinK1 = 0 (
+            customData = {
+                dictionary uiHints = {
+                    string displayGroup = "Ocean"
+                    string displayName = "Ocean Min K 1"
+                    string doc = ""
+                }
+            }
+        )
+        custom float gemini:oceanMinK2 = 0 (
+            customData = {
+                dictionary uiHints = {
+                    string displayGroup = "Ocean"
+                    string displayName = "Ocean Min K 2"
+                    string doc = ""
+                }
+            }
+        )
+        custom float gemini:oceanMinK3 = 0 (
+            customData = {
+                dictionary uiHints = {
+                    string displayGroup = "Ocean"
+                    string displayName = "Ocean Min K 3"
+                    string doc = ""
+                }
+            }
+        )
+        custom bool gemini:oceanRepeat = 1 (
+            customData = {
+                dictionary uiHints = {
+                    string displayGroup = "Ocean"
+                    string displayName = "Ocean Repeat"
+                    string doc = ""
+                }
+            }
+        )
+        custom float3 gemini:oceanScatteringColor = (0.02, 0.15, 0.25) (
+            customData = {
+                dictionary uiHints = {
+                    string displayGroup = "Ocean"
+                    string displayName = "Ocean Scattering Color"
+                    string doc = ""
+                }
+            }
+        )
+        custom float gemini:oceanScatteringDepth = 10 (
+            customData = {
+                dictionary uiHints = {
+                    string displayGroup = "Ocean"
+                    string displayName = "Ocean Scattering Depth"
+                    string doc = ""
+                }
+            }
+        )
+        custom float gemini:oceanSize = 100 (
+            customData = {
+                dictionary uiHints = {
+                    string displayGroup = "Ocean"
+                    string displayName = "Ocean Size"
+                    string doc = ""
+                }
+            }
+        )
+        custom float gemini:oceanStrength1 = 1 (
+            customData = {
+                dictionary uiHints = {
+                    string displayGroup = "Ocean"
+                    string displayName = "Ocean Strength 1"
+                    string doc = ""
+                }
+            }
+        )
+        custom float gemini:oceanStrength2 = 1 (
+            customData = {
+                dictionary uiHints = {
+                    string displayGroup = "Ocean"
+                    string displayName = "Ocean Strength 2"
+                    string doc = ""
+                }
+            }
+        )
+        custom float gemini:oceanStrength3 = 1 (
+            customData = {
+                dictionary uiHints = {
+                    string displayGroup = "Ocean"
+                    string displayName = "Ocean Strength 3"
+                    string doc = ""
+                }
+            }
+        )
+        custom float gemini:oceanTime = 0 (
+            customData = {
+                dictionary uiHints = {
+                    string displayGroup = "Ocean"
+                    string displayName = "Ocean Time"
+                    string doc = ""
+                }
+            }
+        )
+        custom float gemini:oceanWaterHeight = 0 (
+            customData = {
+                dictionary uiHints = {
+                    string displayGroup = "Ocean"
+                    string displayName = "Ocean Water Height"
+                    string doc = ""
+                }
+            }
+        )
+        custom float gemini:oceanWindDirectionX1 = 1 (
+            customData = {
+                dictionary uiHints = {
+                    string displayGroup = "Ocean"
+                    string displayName = "Ocean Wind Direction X 1"
+                    string doc = ""
+                }
+            }
+        )
+        custom float gemini:oceanWindDirectionX2 = 1 (
+            customData = {
+                dictionary uiHints = {
+                    string displayGroup = "Ocean"
+                    string displayName = "Ocean Wind Direction X 2"
+                    string doc = ""
+                }
+            }
+        )
+        custom float gemini:oceanWindDirectionX3 = 1 (
+            customData = {
+                dictionary uiHints = {
+                    string displayGroup = "Ocean"
+                    string displayName = "Ocean Wind Direction X 3"
+                    string doc = ""
+                }
+            }
+        )
+        custom float gemini:oceanWindDirectionY1 = 1 (
+            customData = {
+                dictionary uiHints = {
+                    string displayGroup = "Ocean"
+                    string displayName = "Ocean Wind Direction Y 1"
+                    string doc = ""
+                }
+            }
+        )
+        custom float gemini:oceanWindDirectionY2 = 1 (
+            customData = {
+                dictionary uiHints = {
+                    string displayGroup = "Ocean"
+                    string displayName = "Ocean Wind Direction Y 2"
+                    string doc = ""
+                }
+            }
+        )
+        custom float gemini:oceanWindDirectionY3 = 1 (
+            customData = {
+                dictionary uiHints = {
+                    string displayGroup = "Ocean"
+                    string displayName = "Ocean Wind Direction Y 3"
+                    string doc = ""
+                }
+            }
+        )
+        custom float gemini:oceanWindSpeed1 = 0 (
+            customData = {
+                dictionary uiHints = {
+                    string displayGroup = "Ocean"
+                    string displayName = "Ocean Wind Speed 1"
+                    string doc = ""
+                }
+            }
+        )
+        custom float gemini:oceanWindSpeed2 = 0 (
+            customData = {
+                dictionary uiHints = {
+                    string displayGroup = "Ocean"
+                    string displayName = "Ocean Wind Speed 2"
+                    string doc = ""
+                }
+            }
+        )
+        custom float gemini:oceanWindSpeed3 = 0 (
+            customData = {
+                dictionary uiHints = {
+                    string displayGroup = "Ocean"
+                    string displayName = "Ocean Wind Speed 3"
+                    string doc = ""
+                }
+            }
+        )
+        custom float gemini:physicalSkyAltitude = 90 (
+            customData = {
+                dictionary uiHints = {
+                    string displayGroup = "Physical Sky"
+                    string displayName = "Physical Sky Altitude"
+                    string doc = ""
+                }
+            }
+        )
+        custom float gemini:physicalSkyAzimuth = 0 (
+            customData = {
+                dictionary uiHints = {
+                    string displayGroup = "Physical Sky"
+                    string displayName = "Physical Sky Azimuth"
+                    string doc = ""
+                }
+            }
+        )
+        custom bool gemini:physicalSkyEnable = 0 (
+            customData = {
+                dictionary uiHints = {
+                    string displayGroup = "Physical Sky"
+                    string displayName = "Enable Physical Sky"
+                    string doc = ""
+                }
+            }
+        )
+        custom float gemini:physicalSkySkyExposure = 0 (
+            customData = {
+                dictionary uiHints = {
+                    string displayGroup = "Physical Sky"
+                    string displayName = "Physical Sky Sky Exposure"
+                    string doc = ""
+                }
+            }
+        )
+        custom float gemini:physicalSkySunExposure = 0 (
+            customData = {
+                dictionary uiHints = {
+                    string displayGroup = "Physical Sky"
+                    string displayName = "Physical Sky Sun Exposure"
+                    string doc = ""
+                }
+            }
+        )
+        custom bool gemini:renderAlbedoOnly = 0 (
+            customData = {
+                dictionary uiHints = {
+                    string displayGroup = "General"
+                    string displayName = "Render Albedo Only (Debug)"
+                    string doc = ""
+                }
+            }
+        )
+        custom bool gemini:renderIblBackground = 1 (
+            customData = {
+                dictionary uiHints = {
+                    string displayGroup = "Physical Sky"
+                    string displayName = "Render IBL Background"
+                    string doc = ""
+                }
+            }
+        )
+        custom bool gemini:renderLightGeometry = 1 (
+            customData = {
+                dictionary uiHints = {
+                    string displayGroup = "General"
+                    string displayName = "Render Light Geometry"
+                    string doc = ""
+                }
+            }
+        )
+        custom int gemini:resolutionLevel = 2 (
+            customData = {
+                dictionary uiHints = {
+                    string displayGroup = "Sampling"
+                    string displayName = "Resolution Level"
+                    string doc = ""
+                }
             }
         )
         custom float gemini:shutterSpeed = 0.05 (
-            uiHints = {
-                string displayName = "Shutter Speed"
-                string displayGroup = "Camera"
+            customData = {
+                dictionary uiHints = {
+                    string displayGroup = "Camera"
+                    string displayName = "Shutter Speed"
+                    string doc = ""
+                }
             }
         )
         custom int gemini:targetSampleCount = 1024 (
-            uiHints = {
-                string displayName = "Target Sample Count"
-                string displayGroup = "Sampling"
+            customData = {
+                dictionary uiHints = {
+                    string displayGroup = "Sampling"
+                    string displayName = "Target Sample Count"
+                    string doc = ""
+                }
+            }
+        )
+        custom float gemini:volumeDensityScale = 1 (
+            customData = {
+                dictionary uiHints = {
+                    string displayGroup = "Volume"
+                    string displayName = "Volume Density Scale"
+                    string doc = ""
+                }
+            }
+        )
+        custom float gemini:volumeStepSize = 0.1 (
+            customData = {
+                dictionary uiHints = {
+                    string displayGroup = "Volume"
+                    string displayName = "Volume Step Size"
+                    string doc = ""
+                }
             }
         )
     }
 }
+
+over "standard_shader_ball_scene" (
+    variants = {
+        string example_material = "mtlx_glass"
+    }
+)
+{
+}
+

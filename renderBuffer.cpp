@@ -151,17 +151,31 @@ HdGeminiRenderBuffer::WriteSampleLockFree(size_t idx, GfVec4f const& color)
 {
     if (idx * 4 + 3 >= _accumBuffer.size()) return;
 
-    _accumBuffer[idx * 4 + 0] += color[0];
-    _accumBuffer[idx * 4 + 1] += color[1];
-    _accumBuffer[idx * 4 + 2] += color[2];
-    _accumBuffer[idx * 4 + 3] += color[3];
+    auto atomicAdd = [](float* addr, float val) {
+        std::atomic<int32_t>* ptr = reinterpret_cast<std::atomic<int32_t>*>(addr);
+        int32_t expected = ptr->load(std::memory_order_relaxed);
+        int32_t desired;
+        do {
+            float currentVal;
+            std::memcpy(&currentVal, &expected, sizeof(float));
+            float newVal = currentVal + val;
+            std::memcpy(&desired, &newVal, sizeof(float));
+        } while (!ptr->compare_exchange_weak(expected, desired, std::memory_order_relaxed));
+    };
+
+    atomicAdd(&_accumBuffer[idx * 4 + 0], color[0]);
+    atomicAdd(&_accumBuffer[idx * 4 + 1], color[1]);
+    atomicAdd(&_accumBuffer[idx * 4 + 2], color[2]);
+    atomicAdd(&_accumBuffer[idx * 4 + 3], color[3]);
     
-    _sumSquaredBuffer[idx * 4 + 0] += color[0] * color[0];
-    _sumSquaredBuffer[idx * 4 + 1] += color[1] * color[1];
-    _sumSquaredBuffer[idx * 4 + 2] += color[2] * color[2];
-    _sumSquaredBuffer[idx * 4 + 3] += color[3] * color[3];
+    atomicAdd(&_sumSquaredBuffer[idx * 4 + 0], color[0] * color[0]);
+    atomicAdd(&_sumSquaredBuffer[idx * 4 + 1], color[1] * color[1]);
+    atomicAdd(&_sumSquaredBuffer[idx * 4 + 2], color[2] * color[2]);
+    atomicAdd(&_sumSquaredBuffer[idx * 4 + 3], color[3] * color[3]);
     
-    _sampleCount[idx]++;
+    // Atomically increment sample count
+    std::atomic<int>* countPtr = reinterpret_cast<std::atomic<int>*>(&_sampleCount[idx]);
+    countPtr->fetch_add(1, std::memory_order_relaxed);
 
     float invCount = 1.0f / (float)_sampleCount[idx];
     float avg[4] = {
@@ -179,6 +193,7 @@ HdGeminiRenderBuffer::WriteSampleLockFree(size_t idx, GfVec4f const& color)
 void
 HdGeminiRenderBuffer::Resolve()
 {
+    std::lock_guard<std::mutex> lock(_bufferMutex);
     // Copy from background render buffer to front display buffer
     if (_buffer.size() == _renderBuffer.size() && !_buffer.empty()) {
         std::memcpy(_buffer.data(), _renderBuffer.data(), _buffer.size());

@@ -252,6 +252,7 @@ private:
         GfVec3f emission = GfVec3f(0.0f);
         float emissionPdf = 0.0f;
         const SdfAssetPath* diffuseTexture = nullptr;
+        const SdfAssetPath* emissiveTexture = nullptr;
         const SdfAssetPath* normalTexture = nullptr;
         const SdfAssetPath* metallicTexture = nullptr;
         const SdfAssetPath* roughnessTexture = nullptr;

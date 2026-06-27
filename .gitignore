@@ -27,3 +27,9 @@ env/
 .cache/
 sd_request.bin*
 sd_response.bin*
+
+# Dev artifacts
+diff.patch
+*.png
+patch*.py
+*_fragment.txt

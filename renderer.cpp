@@ -3110,8 +3110,8 @@ SampledSpectrum HdGeminiRenderer::_TraceRay(const GfVec3f& rayOrigin, const GfVe
 
         // --- Russian Roulette ---
         if (bounce > 3) {
-            float p = throughput.Max();
-            if (qmc::SampleDimension(sampleIdx, qmcDim++, rng) > p) break;
+            float p = std::min(1.0f, throughput.Max());
+            if (p < 1e-4f || qmc::SampleDimension(sampleIdx, qmcDim++, rng) > p) break;
             throughput = throughput * (1.0f / p);
         }
 

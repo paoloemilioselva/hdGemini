@@ -323,9 +323,9 @@ usd-26.03-extra/
 
 **Command:**
 ```cmd
-.\render_gemini.bat --imageWidth 1024 --camera PhysCamera001 gallery\intel_sponza.usda gallery\intel_sponza.jpg
+.\render_gemini.bat --imageWidth 512 --camera PhysCamera001 gallery\intel_sponza.usda gallery\intel_sponza.jpg
 ```
-**Render Time:** 501.08 seconds
+**Render Time:** 3787.84 seconds
 
 ![Intel Sponza Base Scene](gallery/intel_sponza.jpg)
 
@@ -334,9 +334,9 @@ usd-26.03-extra/
 
 **Command:**
 ```cmd
-.\render_gemini.bat --imageWidth 1024 --camera renderCam gallery\chess_board.usda gallery\chess_board.jpg
+.\render_gemini.bat --imageWidth 512 --camera renderCam gallery\chess_board.usda gallery\chess_board.jpg
 ```
-**Render Time:** 210.06 seconds
+**Render Time:** 572.16 seconds
 
 ![OpenChessSet](gallery/chess_board.jpg)
 
@@ -345,9 +345,9 @@ usd-26.03-extra/
 
 **Command:**
 ```cmd
-.\render_gemini.bat --imageWidth 1024 --camera camera gallery\shader_ball_bubblegum.usda gallery\shader_ball_bubblegum.jpg
+.\render_gemini.bat --imageWidth 512 --camera camera gallery\shader_ball_bubblegum.usda gallery\shader_ball_bubblegum.jpg
 ```
-**Render Time:** 243.94 seconds
+**Render Time:** 1374.31 seconds
 
 ![StandardShaderBall BubbleGum](gallery/shader_ball_bubblegum.jpg)
 
@@ -356,9 +356,9 @@ usd-26.03-extra/
 
 **Command:**
 ```cmd
-.\render_gemini.bat --imageWidth 1024 --camera camera gallery\shader_ball_glass.usda gallery\shader_ball_glass.jpg
+.\render_gemini.bat --imageWidth 512 --camera camera gallery\shader_ball_glass.usda gallery\shader_ball_glass.jpg
 ```
-**Render Time:** 6028.56 seconds
+**Render Time:** 1708.95 seconds
 
 ![StandardShaderBall Glass](gallery/shader_ball_glass.jpg)
 
@@ -367,8 +367,30 @@ usd-26.03-extra/
 
 **Command:**
 ```cmd
-.\render_gemini.bat --imageWidth 1024 --camera camera gallery\shader_ball_gold.usda gallery\shader_ball_gold.jpg
+.\render_gemini.bat --imageWidth 512 --camera camera gallery\shader_ball_gold.usda gallery\shader_ball_gold.jpg
 ```
-**Render Time:** 93.30 seconds
+**Render Time:** 1083.31 seconds
 
 ![StandardShaderBall Gold](gallery/shader_ball_gold.jpg)
+
+### Pixar's KitchenSet
+**Reference:** [Pixar's KitchenSet](https://openusd.org/release/dl_kitchen_set.html)
+
+**Command:**
+```cmd
+.\render_gemini.bat --imageWidth 512 --camera renderCam gallery\pixar_kitchen.usda gallery\pixar_kitchen.jpg
+```
+**Render Time:** 2284.67 seconds
+
+![Pixar's KitchenSet](gallery/pixar_kitchen.jpg)
+
+### Collective Project 001
+**Reference:** [Collective Project 001](https://github.com/usd-wg/collectiveproject001/blob/main/shots/s001_001/index.usda)
+
+**Command:**
+```cmd
+.\render_gemini.bat --imageWidth 512 --camera renderCam gallery\collectiveproject001.usda gallery\collectiveproject001.jpg
+```
+**Render Time:** 123.35 seconds
+
+![Collective Project 001](gallery/collectiveproject001.jpg)

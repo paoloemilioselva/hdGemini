@@ -23,6 +23,14 @@ def "Render"
         active = true
     )
     {
+        custom bool gemini:enableRestirGI = False (
+            customData = {
+                dictionary uiHints = {
+                    string displayName = "Enable ReSTIR GI"
+                    string displayGroup = "Performance"
+                }
+            }
+        )        
         custom int gemini:adaptiveMinSamples = 32 (
             customData = {
                 dictionary uiHints = {

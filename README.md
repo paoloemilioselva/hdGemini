@@ -389,8 +389,8 @@ usd-26.03-extra/
 
 **Command:**
 ```cmd
-.\render_gemini.bat --imageWidth 512 --camera renderCam gallery\collectiveproject001.usda gallery\collectiveproject001.jpg
+.\render_gemini.bat --imageWidth 512 --purposes render --camera mono gallery\collectiveproject001.usda gallery\collectiveproject001.jpg
 ```
-**Render Time:** 123.35 seconds
+**Render Time:** 332.69 seconds
 
 ![Collective Project 001](gallery/collectiveproject001.jpg)
